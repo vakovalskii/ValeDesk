@@ -43,6 +43,11 @@ https://github.com/user-attachments/assets/f60afb47-05cc-4578-9550-a319f1eae7df
 - ✅ **Memory Editor** — edit memory directly in settings with reload/open folder buttons
 - ✅ **Token Tracking** — display input/output tokens and API duration
 - ✅ **Request Logging** — full raw JSON request/response logs for debugging
+- ✅ **JavaScript Sandbox** — isolated Node.js VM for executing JS code within workspace
+- ✅ **Package Management** — install npm packages into isolated sandbox (`.cowork-sandbox/`)
+- ✅ **PDF Support** — extract text from PDF files using `pdf-parse` library
+- ✅ **Optional Workspace** — start empty chats without workspace folder, add it later when needed
+- ✅ **Stop Streaming** — interrupt LLM responses at any time
 
 ## 🚀 Quick Start
 
@@ -169,13 +174,21 @@ Agent: "You prefer Python over JavaScript" ✅
 
 ### File Operations
 - **Bash** — execute shell commands (PowerShell/bash)
-- **Read** — read file contents
+- **Read** — read file contents (text files only)
 - **Write** — create new files (prevents overwriting existing files)
 - **Edit** — modify files (search & replace)
 
 ### Search Tools
-- **Glob** — find files by pattern
+- **Glob** — find files by pattern (supports `**/*.pdf`, `*.js`, etc.)
 - **Grep** — search text in files
+
+### Code Execution
+- **ExecuteJS** — run JavaScript code in isolated Node.js VM sandbox
+  - Access to: `fs`, `path`, `crypto`, `console`, `__dirname`
+  - Can `require()` built-in modules and installed packages
+  - Isolated to workspace folder for security
+- **InstallPackage** — install npm packages into `.cowork-sandbox/` directory
+  - Example: `InstallPackage(['lodash', 'axios', 'pdf-parse'])`
 
 ### Web Tools (Optional)
 - **WebSearch** — search the web using Tavily API
@@ -188,7 +201,8 @@ Agent: "You prefer Python over JavaScript" ✅
   - `delete` — remove specific entries
   - `read` — view current memory
 
-> **Note:** Web tools require Tavily API key in Settings. Memory tool requires "Enable Memory" toggle.
+> **Note:** Web tools require Tavily API key in Settings. Memory tool requires "Enable Memory" toggle.  
+> **Security:** ExecuteJS and file operations are sandboxed to the workspace folder only.
 
 ## 📦 Building
 
@@ -229,6 +243,8 @@ src/
 │           ├── edit-tool.ts    # File editing
 │           ├── glob-tool.ts    # File search
 │           ├── grep-tool.ts    # Text search
+│           ├── execute-js-tool.ts # JS sandbox execution
+│           ├── install-package-tool.ts # npm package installer
 │           ├── web-search.ts   # Web search (Tavily)
 │           ├── extract-page-content.ts # Page extraction
 │           └── memory-tool.ts  # Memory management
