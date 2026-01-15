@@ -71,25 +71,35 @@ export const claudeCodePath = getClaudeCodePath();
 export const enhancedEnv = getEnhancedEnv();
 
 export const generateSessionTitle = async (userIntent: string | null) => {
-  if (!userIntent) return "New Session";
+  if (!userIntent) return "New Chat";
 
-  // Load GUI settings with priority
-  const guiSettings = loadApiSettings();
-  const env = getEnhancedEnv(guiSettings);
+  try {
+    // Load GUI settings with priority
+    const guiSettings = loadApiSettings();
+    
+    // If no valid settings, use simple title
+    if (!guiSettings || !guiSettings.apiKey || guiSettings.apiKey === 'dummy-key') {
+      return userIntent.slice(0, 50) + (userIntent.length > 50 ? '...' : '');
+    }
+    
+    const env = getEnhancedEnv(guiSettings);
 
-  const result: SDKResultMessage = await unstable_v2_prompt(
-    `please analynis the following user input to generate a short but clearly title to identify this conversation theme:
-    ${userIntent}
-    directly output the title, do not include any other content`, {
-    model: claudeCodeEnv.ANTHROPIC_MODEL,
-    env,
-    pathToClaudeCodeExecutable: claudeCodePath,
-  });
+    const result: SDKResultMessage = await unstable_v2_prompt(
+      `please analynis the following user input to generate a short but clearly title to identify this conversation theme:
+      ${userIntent}
+      directly output the title, do not include any other content`, {
+      model: claudeCodeEnv.ANTHROPIC_MODEL,
+      env,
+      pathToClaudeCodeExecutable: claudeCodePath,
+    });
 
-  if (result.subtype === "success") {
-    return result.result;
+    if (result.subtype === "success") {
+      return result.result;
+    }
+  } catch (error) {
+    console.error('Failed to generate session title:', error);
   }
 
-
-  return "New Session";
+  // Fallback: use first 50 chars of user input
+  return userIntent.slice(0, 50) + (userIntent.length > 50 ? '...' : '');
 };
