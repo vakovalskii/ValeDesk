@@ -107,17 +107,18 @@ export class ToolExecutor {
     }
   }
 
-  private getContext(): ToolExecutionContext {
+  private getContext(extra?: Partial<ToolExecutionContext>): ToolExecutionContext {
     return {
       cwd: this.cwd,
-      isPathSafe: this.isPathSafe.bind(this)
+      isPathSafe: this.isPathSafe.bind(this),
+      ...extra
     };
   }
 
-  async executeTool(toolName: string, args: Record<string, any>): Promise<ToolResult> {
+  async executeTool(toolName: string, args: Record<string, any>, extraContext?: Partial<ToolExecutionContext>): Promise<ToolResult> {
     console.log(`[Tool Executor] Executing ${toolName}`, args);
 
-    const context = this.getContext();
+    const context = this.getContext(extraContext);
 
     // Check if cwd is valid for file operations
     const fileOperationTools = ['write_file', 'edit_file', 'run_command', 'read_file', 'execute_js', 'read_document'];

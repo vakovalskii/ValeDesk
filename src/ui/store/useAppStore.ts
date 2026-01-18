@@ -153,7 +153,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       case "session.history": {
-        const { sessionId, messages, status, inputTokens, outputTokens } = event.payload;
+        const { sessionId, messages, status, inputTokens, outputTokens, todos } = event.payload;
         set((state) => {
           const existing = state.sessions[sessionId] ?? createSession(sessionId);
           return {
@@ -166,7 +166,9 @@ export const useAppStore = create<AppState>((set, get) => ({
                 hydrated: true,
                 // Use token counts from payload (from DB), fallback to existing values
                 inputTokens: inputTokens ?? existing.inputTokens,
-                outputTokens: outputTokens ?? existing.outputTokens
+                outputTokens: outputTokens ?? existing.outputTokens,
+                // Load todos from DB
+                todos: todos ?? existing.todos
               }
             }
           };

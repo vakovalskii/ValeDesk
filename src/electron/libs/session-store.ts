@@ -35,9 +35,18 @@ export type StoredSession = {
   outputTokens?: number;
 };
 
+export type TodoItem = {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  createdAt?: number;
+  updatedAt?: number;
+};
+
 export type SessionHistory = {
   session: StoredSession;
   messages: StreamMessage[];
+  todos: TodoItem[];
 };
 
 export class SessionStore {
@@ -142,6 +151,16 @@ export class SessionStore {
       .all(id) as Array<Record<string, unknown>>)
       .map((row) => JSON.parse(String(row.data)) as StreamMessage);
 
+    // Parse todos from JSON
+    let todos: TodoItem[] = [];
+    if (sessionRow.todos) {
+      try {
+        todos = JSON.parse(String(sessionRow.todos)) as TodoItem[];
+      } catch (e) {
+        console.error('Failed to parse todos:', e);
+      }
+    }
+
     return {
       session: {
         id: String(sessionRow.id),
@@ -157,8 +176,27 @@ export class SessionStore {
         inputTokens: sessionRow.input_tokens ? Number(sessionRow.input_tokens) : undefined,
         outputTokens: sessionRow.output_tokens ? Number(sessionRow.output_tokens) : undefined
       },
-      messages
+      messages,
+      todos
     };
+  }
+
+  saveTodos(sessionId: string, todos: TodoItem[]): void {
+    this.db
+      .prepare(`update sessions set todos = ?, updated_at = ? where id = ?`)
+      .run(JSON.stringify(todos), Date.now(), sessionId);
+  }
+
+  getTodos(sessionId: string): TodoItem[] {
+    const row = this.db
+      .prepare(`select todos from sessions where id = ?`)
+      .get(sessionId) as { todos: string | null } | undefined;
+    if (!row?.todos) return [];
+    try {
+      return JSON.parse(row.todos) as TodoItem[];
+    } catch {
+      return [];
+    }
   }
 
   updateSession(id: string, updates: Partial<Session>): Session | undefined {
@@ -327,6 +365,13 @@ export class SessionStore {
     // Migration: Add output_tokens column if it doesn't exist
     try {
       this.db.exec(`alter table sessions add column output_tokens integer default 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
+    // Migration: Add todos column if it doesn't exist
+    try {
+      this.db.exec(`alter table sessions add column todos text`);
     } catch (e) {
       // Column already exists, ignore
     }

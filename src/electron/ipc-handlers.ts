@@ -79,7 +79,7 @@ export function handleClientEvent(event: ClientEvent, windowId: number) {
     // Subscribe this window to the session
     sessionManager.setWindowSession(windowId, sessionId);
 
-    // Send history only to this window
+    // Send history only to this window (including todos)
     sessionManager.emitToWindow(windowId, {
       type: "session.history",
       payload: {
@@ -87,7 +87,8 @@ export function handleClientEvent(event: ClientEvent, windowId: number) {
         status: history.session.status,
         messages: history.messages,
         inputTokens: history.session.inputTokens,
-        outputTokens: history.session.outputTokens
+        outputTokens: history.session.outputTokens,
+        todos: history.todos || []
       }
     });
     return;
@@ -349,7 +350,8 @@ export function handleClientEvent(event: ClientEvent, windowId: number) {
         payload: {
           sessionId: updatedHistory.session.id,
           status: updatedHistory.session.status,
-          messages: updatedHistory.messages
+          messages: updatedHistory.messages,
+          todos: updatedHistory.todos || []
         }
       });
     }

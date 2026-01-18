@@ -24,6 +24,8 @@ export interface ToolResult {
 export interface ToolExecutionContext {
   cwd: string;
   isPathSafe: (path: string) => boolean;
+  sessionId?: string;
+  onTodosChanged?: (todos: any[]) => void;
 }
 
 export abstract class BaseTool {

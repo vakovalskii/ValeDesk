@@ -10,7 +10,7 @@ import type { Session } from "./session-store.js";
 import { loadApiSettings } from "./settings-store.js";
 import { TOOLS, getTools, getSystemPrompt } from "./tools-definitions.js";
 import { getInitialPrompt } from "./prompt-loader.js";
-import { getTodosSummary, getTodos } from "./tools/manage-todos-tool.js";
+import { getTodosSummary, getTodos, setTodos } from "./tools/manage-todos-tool.js";
 import { ToolExecutor } from "./tools-executor.js";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -208,6 +208,13 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       
       if (sessionStore && session.id) {
         const history = sessionStore.getSessionHistory(session.id);
+        
+        // Load todos from history
+        if (history && history.todos && history.todos.length > 0) {
+          console.log(`[OpenAI Runner] Loading ${history.todos.length} todos from history`);
+          setTodos(history.todos);
+        }
+        
         if (history && history.messages.length > 0) {
           console.log(`[OpenAI Runner] Loading ${history.messages.length} messages from history`);
           
@@ -730,22 +737,26 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           }
           // In default mode, execute immediately without asking
 
-          // Execute tool
-          const result = await toolExecutor.executeTool(toolName, toolArgs);
+          // Execute tool with callback for todos persistence
+          const result = await toolExecutor.executeTool(toolName, toolArgs, {
+            sessionId: session.id,
+            onTodosChanged: (todos) => {
+              // Save to DB
+              if (sessionStore && session.id) {
+                sessionStore.saveTodos(session.id, todos);
+              }
+              // Emit event for UI
+              onEvent({
+                type: 'todos.updated',
+                payload: { sessionId: session.id, todos }
+              });
+            }
+          });
 
           // If Memory tool was executed successfully, reload memory for next iteration
           if (toolName === 'manage_memory' && result.success) {
             console.log('[OpenAI Runner] Memory tool executed, reloading memory...');
             memoryContent = await loadMemory();
-          }
-          
-          // If manage_todos was executed, emit todos update event
-          if (toolName === 'manage_todos' && result.success) {
-            const todos = getTodos();
-            onEvent({
-              type: 'todos.updated',
-              payload: { sessionId: session.id, todos }
-            });
           }
 
           // Add tool result to messages

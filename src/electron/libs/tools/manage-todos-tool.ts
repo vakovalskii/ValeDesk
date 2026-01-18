@@ -134,6 +134,11 @@ export async function executeManageTodosTool(
           updatedAt: now
         }));
         
+        // Persist to DB via callback
+        if (context.onTodosChanged) {
+          context.onTodosChanged(currentTodos);
+        }
+        
         return {
           success: true,
           output: formatTodosOutput('📋 Todo list created', currentTodos)
@@ -167,6 +172,11 @@ export async function executeManageTodosTool(
           }
         }
         
+        // Persist to DB via callback
+        if (context.onTodosChanged) {
+          context.onTodosChanged(currentTodos);
+        }
+        
         return {
           success: true,
           output: formatTodosOutput('✅ Todos updated', currentTodos)
@@ -175,6 +185,12 @@ export async function executeManageTodosTool(
       
       case 'clear': {
         currentTodos = [];
+        
+        // Persist to DB via callback
+        if (context.onTodosChanged) {
+          context.onTodosChanged(currentTodos);
+        }
+        
         return {
           success: true,
           output: '🗑️ All todos cleared'
