@@ -265,27 +265,22 @@ function App() {
 
       <main className="flex flex-1 flex-col ml-[280px] bg-surface-cream overflow-hidden">
         <div 
-          className="flex items-center justify-between h-12 border-b border-ink-900/10 bg-surface-cream select-none px-4"
+          className="flex items-center justify-between h-12 min-h-[48px] border-b border-ink-900/10 bg-surface-cream select-none px-4 gap-2"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {apiSettings?.model && (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-info/10 border border-info/20">
-                <svg className="w-3.5 h-3.5 text-info" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-3.5 h-3.5 text-info flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M13 7H7v6h6V7z"/>
                   <path fillRule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clipRule="evenodd"/>
                 </svg>
-                <span className="text-xs font-medium text-info">{apiSettings.model}</span>
-              </div>
-            )}
-            {!apiSettings?.model && (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-ink-900/5">
-                <span className="text-xs text-muted">Default Claude</span>
+                <span className="text-xs font-medium text-info truncate max-w-[150px]">{apiSettings.model}</span>
               </div>
             )}
           </div>
-          <span className="text-sm font-medium text-ink-700">{activeSession?.title || "LocalDesk"}</span>
-          <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title || "LocalDesk"}</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Auto scroll toggle */}
             <button
               onClick={() => setAutoScrollEnabled(!autoScrollEnabled)}

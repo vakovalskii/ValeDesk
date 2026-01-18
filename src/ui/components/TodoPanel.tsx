@@ -27,7 +27,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
   const inProgress = todos.find(t => t.status === 'in_progress');
 
   return (
-    <div className="bg-surface-50 border border-border-200 rounded-lg p-3 mb-3 shadow-sm">
+    <div className="bg-surface-50 border border-border-200 rounded-lg p-3 mb-3 shadow-sm overflow-hidden">
       {/* Header with progress - clickable to collapse */}
       <div 
         className="flex items-center justify-between cursor-pointer select-none"
@@ -63,7 +63,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
           {inProgress && (
             <div className="bg-blue-50 border border-blue-200 rounded px-2 py-1.5 mb-2">
               <div className="flex items-center gap-1.5">
-                <span className="animate-spin text-sm">🔄</span>
+                <span className="text-sm">🔄</span>
                 <span className="text-xs text-blue-700 font-medium truncate">
                   {inProgress.content}
                 </span>
@@ -71,8 +71,8 @@ export function TodoPanel({ todos }: TodoPanelProps) {
             </div>
           )}
 
-          {/* Task list */}
-          <div className="space-y-1 max-h-32 overflow-y-auto">
+          {/* Task list - scrollable */}
+          <div className="space-y-1 max-h-48 overflow-y-auto overscroll-contain">
             {todos.map((todo) => {
               const config = statusConfig[todo.status];
               return (
