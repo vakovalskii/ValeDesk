@@ -344,6 +344,9 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       const recentToolCalls: { name: string; args: string }[] = [];
       const LOOP_DETECTION_WINDOW = 5; // Check last N tool calls
       const LOOP_THRESHOLD = 3; // Same tool called N times = loop
+      const MAX_LOOP_RETRIES = 5; // Max retries before stopping
+      let loopRetryCount = 0;
+      let loopHintAdded = false;
 
       while (!aborted && iterationCount < MAX_ITERATIONS) {
         iterationCount++;
@@ -556,41 +559,57 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           
           if (allSameTool) {
             const loopedTool = lastCalls[0].name;
-            console.warn(`[OpenAI Runner] ⚠️ LOOP DETECTED: Tool "${loopedTool}" called ${LOOP_THRESHOLD}+ times in a row`);
+            loopRetryCount++;
             
-            // Send warning to UI
-            sendMessage('text', {
-              text: `⚠️ **Loop detected**: The model appears to be stuck calling \`${loopedTool}\` repeatedly. This often happens with smaller models.\n\nStopping to prevent infinite loop. Please try:\n- Rephrasing your request\n- Using a larger/smarter model\n- Breaking down your task into smaller steps`
-            });
+            console.warn(`[OpenAI Runner] ⚠️ LOOP DETECTED: Tool "${loopedTool}" called ${LOOP_THRESHOLD}+ times (retry ${loopRetryCount}/${MAX_LOOP_RETRIES})`);
             
-            // Save warning to DB
-            saveToDb('text', {
-              text: `[LOOP DETECTED] Model stuck calling ${loopedTool} repeatedly. Stopped after ${iterationCount} iterations.`,
-              uuid: `loop_warning_${Date.now()}`
-            });
+            // Check if we've exceeded max retries
+            if (loopRetryCount >= MAX_LOOP_RETRIES) {
+              console.error(`[OpenAI Runner] ❌ Loop not resolved after ${MAX_LOOP_RETRIES} retries. Stopping.`);
+              
+              // Send warning to UI
+              sendMessage('text', {
+                text: `⚠️ **Loop detected**: The model is stuck calling \`${loopedTool}\` repeatedly (${MAX_LOOP_RETRIES} retries exhausted).\n\nPlease try:\n- Rephrasing your request\n- Using a larger/smarter model\n- Breaking down your task into smaller steps`
+              });
+              
+              // Save warning to DB
+              saveToDb('text', {
+                text: `[LOOP] Model stuck calling ${loopedTool} repeatedly. Stopped after ${loopRetryCount} retries.`,
+                uuid: `loop_warning_${Date.now()}`
+              });
+              
+              // End session with error
+              sendMessage('result', {
+                subtype: 'error',
+                is_error: true,
+                duration_ms: Date.now() - sessionStartTime,
+                duration_api_ms: Date.now() - sessionStartTime,
+                num_turns: iterationCount,
+                result: `Loop not resolved: ${loopedTool} called repeatedly`,
+                session_id: session.id,
+                total_cost_usd: 0,
+                usage: {
+                  input_tokens: totalInputTokens,
+                  output_tokens: totalOutputTokens
+                }
+              });
+              
+              onEvent({
+                type: "session.status",
+                payload: { sessionId: session.id, status: "idle", title: session.title }
+              });
+              
+              return; // Exit the runner
+            }
             
-            // End session with error
-            sendMessage('result', {
-              subtype: 'error',
-              is_error: true,
-              duration_ms: Date.now() - sessionStartTime,
-              duration_api_ms: Date.now() - sessionStartTime,
-              num_turns: iterationCount,
-              result: `Loop detected: ${loopedTool} called ${LOOP_THRESHOLD}+ times`,
-              session_id: session.id,
-              total_cost_usd: 0,
-              usage: {
-                input_tokens: totalInputTokens,
-                output_tokens: totalOutputTokens
-              }
-            });
+            // Add hint to help model break out of loop
+            if (!loopHintAdded) {
+              loopHintAdded = true;
+              console.log(`[OpenAI Runner] Adding loop-break hint to messages`);
+            }
             
-            onEvent({
-              type: "session.status",
-              payload: { sessionId: session.id, status: "idle", title: session.title }
-            });
-            
-            return; // Exit the runner
+            // Clear recent calls to give model fresh start
+            recentToolCalls.length = 0;
           }
         }
 
@@ -761,6 +780,21 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         
         // Add all tool results to messages
         messages.push(...toolResults);
+        
+        // Add loop-breaking hint if loop was detected
+        if (loopHintAdded && loopRetryCount > 0) {
+          messages.push({
+            role: 'user',
+            content: `⚠️ IMPORTANT: You've been calling the same tool repeatedly without making progress. Please:
+1. STOP and think about what you're trying to achieve
+2. Try a DIFFERENT approach or tool
+3. If the task is complete, respond to the user
+4. If stuck, explain what's blocking you
+
+DO NOT call the same tool again with similar arguments.`
+          });
+          loopHintAdded = false; // Reset so we don't add it every time
+        }
         
         // If memory was updated, refresh the first user message with new memory
         if (memoryContent !== undefined && messages.length > 1 && messages[1].role === 'user') {
