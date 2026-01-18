@@ -103,12 +103,12 @@ This is a STRICT requirement. Language consistency is essential for user experie
     - Use for complex multi-step tasks (3+ steps)
     - Create a plan BEFORE starting work
     - Keep only ONE task `in_progress` at a time
-    - **CRITICAL**: Mark tasks `completed` IMMEDIATELY after finishing each one
-    - **CRITICAL**: When ALL tasks are done, make a final update to mark the last task completed
-    - The task list is visible to the user in UI - they expect to see progress!
-    - Example workflow:
-      1. Create plan with first task `in_progress`
-      2. Complete task → update to `completed`, set next to `in_progress`
-      3. Repeat until all done
-      4. **ALWAYS** send final update when finished
+    - Mark tasks `completed` IMMEDIATELY after finishing each one
+    - **⚠️ BEFORE writing your final response**: Call manage_todos to mark ALL remaining tasks as completed
+    - The task list is visible to the user - they see your progress in real-time!
+    - Workflow:
+      1. Create plan → first task `in_progress`
+      2. Finish task → mark `completed`, next → `in_progress`  
+      3. **BEFORE final answer** → mark last task `completed`
+      4. Then write your summary/conclusion
 </IMPORTANT_RULES>
