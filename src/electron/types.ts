@@ -50,6 +50,8 @@ export type SessionInfo = {
   isPinned?: boolean;
   createdAt: number;
   updatedAt: number;
+  inputTokens?: number;
+  outputTokens?: number;
 };
 
 // Server -> Client events

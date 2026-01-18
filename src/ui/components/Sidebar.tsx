@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as Tooltip from "@radix-ui/react-tooltip";
 import { useAppStore } from "../store/useAppStore";
+import { SpinnerIcon } from "./SpinnerIcon";
 
 interface SidebarProps {
   connected: boolean;
@@ -27,6 +29,11 @@ export function Sidebar({
     const parts = cwd.split(/[\\/]+/).filter(Boolean);
     const tail = parts.slice(-2).join("/");
     return `/${tail || cwd}`;
+  };
+
+  const formatNumberWithSpaces = (num: number | undefined): string => {
+    if (num === undefined) return "0";
+    return num.toLocaleString("ru-RU", { useGrouping: true });
   };
 
   const sessionList = useMemo(() => {
@@ -142,41 +149,81 @@ export function Sidebar({
                   </svg>
                 )}
                 <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
-                  <div className={`text-[12px] font-medium ${session.status === "running" ? "text-info" : session.status === "completed" ? "text-success" : session.status === "error" ? "text-error" : "text-ink-800"}`}>
-                    {session.title}
+                  <div className="flex items-center gap-1.5">
+                    {session.status === "running" && (
+                      <SpinnerIcon className="h-3.5 w-3.5 text-info flex-shrink-0" />
+                    )}
+                    <div className={`text-[12px] font-medium truncate ${session.status === "running" ? "text-info" : session.status === "completed" ? "text-success" : session.status === "error" ? "text-error" : "text-ink-800"}`}>
+                      {session.title}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between mt-0.5 text-xs text-muted">
                     <span className="truncate">{formatCwd(session.cwd)}</span>
                   </div>
                 </div>
               </div>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <button className="flex-shrink-0 rounded-full p-1.5 text-ink-500 hover:bg-ink-900/10" aria-label="Open session menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                      <circle cx="5" cy="12" r="1.7" />
-                      <circle cx="12" cy="12" r="1.7" />
-                      <circle cx="19" cy="12" r="1.7" />
-                    </svg>
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content className="z-50 min-w-[220px] rounded-xl border border-ink-900/10 bg-white p-1 shadow-lg" align="center" sideOffset={8}>
-                    <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-700 outline-none hover:bg-ink-900/5" onSelect={() => togglePin(session.id)}>
-                      <svg viewBox="0 0 24 24" className={`h-4 w-4 ${session.isPinned ? 'text-info fill-info' : 'text-ink-500'}`} fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M12 2v8m0 0l4-4m-4 4L8 6m4 4l-2 10h4l-2-10z" strokeLinecap="round" strokeLinejoin="round"/>
+              <div className="flex items-center gap-1">
+                {(session.inputTokens !== undefined || session.outputTokens !== undefined) && (
+                  <Tooltip.Provider>
+                    <Tooltip.Root delayDuration={200}>
+                      <Tooltip.Trigger asChild>
+                        <button
+                          className="flex-shrink-0 rounded-full p-1.5 text-ink-400 hover:text-ink-600 hover:bg-ink-900/5"
+                          aria-label="View token usage"
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" strokeLinecap="round" strokeLinejoin="round"/>
+                            <circle cx="12" cy="17" r="1" fill="currentColor" />
+                          </svg>
+                        </button>
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" sideOffset={5}>
+                          <div className="flex flex-col gap-1">
+                            <div className="text-xs text-muted">
+                              <span className="font-medium">Input:</span> {formatNumberWithSpaces(session.inputTokens)} tokens
+                            </div>
+                            <div className="text-xs text-muted">
+                              <span className="font-medium">Output:</span> {formatNumberWithSpaces(session.outputTokens)} tokens
+                            </div>
+                          </div>
+                          <Tooltip.Arrow className="fill-white" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  </Tooltip.Provider>
+                )}
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="flex-shrink-0 rounded-full p-1.5 text-ink-500 hover:bg-ink-900/10" aria-label="Open session menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                        <circle cx="5" cy="12" r="1.7" />
+                        <circle cx="12" cy="12" r="1.7" />
+                        <circle cx="19" cy="12" r="1.7" />
                       </svg>
-                      {session.isPinned ? 'Unpin' : 'Pin'} session
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-700 outline-none hover:bg-ink-900/5" onSelect={() => onDeleteSession(session.id)}>
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 text-error/80" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="M7 7l1 12a1 1 0 0 0 1 .9h6a1 1 0 0 0 1-.9l1-12" />
-                      </svg>
-                      Delete this session
-                    </DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content className="z-50 min-w-[220px] rounded-xl border border-ink-900/10 bg-white p-1 shadow-lg" align="center" sideOffset={8}>
+                      <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-700 outline-none hover:bg-ink-900/5" onSelect={() => togglePin(session.id)}>
+                        <svg viewBox="0 0 24 24" className={`h-4 w-4 ${session.isPinned ? 'text-info fill-info' : 'text-ink-500'}`} fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <path d="M12 2v8m0 0l4-4m-4 4L8 6m4 4l-2 10h4l-2-10z" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        {session.isPinned ? 'Unpin' : 'Pin'} session
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-700 outline-none hover:bg-ink-900/5" onSelect={() => onDeleteSession(session.id)}>
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 text-error/80" fill="none" stroke="currentColor" strokeWidth="1.8">
+                          <path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="M7 7l1 12a1 1 0 0 0 1 .9h6a1 1 0 0 0 1-.9l1-12" />
+                        </svg>
+                        Delete this session
+                      </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+              </div>
             </div>
           </div>
         ))}

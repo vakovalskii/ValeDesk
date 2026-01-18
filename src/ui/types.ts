@@ -18,6 +18,8 @@ export type SessionInfo = {
   isPinned?: boolean;
   createdAt: number;
   updatedAt: number;
+  inputTokens?: number;
+  outputTokens?: number;
 };
 
 export type WebSearchProvider = 'tavily' | 'zai';

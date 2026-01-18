@@ -70,7 +70,7 @@ const StatusDot = ({ variant = "accent", isActive = false, isVisible = true }: {
 const SessionResult = ({ message }: { message: SDKResultMessage }) => {
   const formatMinutes = (ms: number | undefined) => typeof ms !== "number" ? "-" : `${(ms / 60000).toFixed(2)} min`;
   const formatUsd = (usd: number | undefined) => typeof usd !== "number" ? "-" : usd.toFixed(2);
-  const formatMillions = (tokens: number | undefined) => typeof tokens !== "number" ? "-" : `${(tokens / 1_000_000).toFixed(4)} M`;
+  const formatMillions = (tokens: number | undefined) => typeof tokens !== "number" ? "-" : `${(tokens / 1_000_000).toFixed(3)}m`;
   
   // Always hide cost display - not relevant for local models and confusing for users
   const hasCost = false;
@@ -87,8 +87,8 @@ const SessionResult = ({ message }: { message: SDKResultMessage }) => {
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[14px]">
           <span className="font-normal">Tokens</span>
-          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">Input {formatMillions(message.usage?.input_tokens)}</span>
-          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">Output {formatMillions(message.usage?.output_tokens)}</span>
+          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">in:{formatMillions(message.usage?.input_tokens)}</span>
+          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">out:{formatMillions(message.usage?.output_tokens)}</span>
           {hasCost && (
             <span className="inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-accent text-[13px]">
               ${formatUsd(message.total_cost_usd)}

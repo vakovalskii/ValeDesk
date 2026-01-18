@@ -14,9 +14,11 @@ import MDContent from "./render/markdown";
 
 function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const partialMessageRef = useRef("");
   const [partialMessage, setPartialMessage] = useState("");
   const [showPartialMessage, setShowPartialMessage] = useState(false);
+  const isUserScrolledUpRef = useRef(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [apiSettings, setApiSettings] = useState<ApiSettings | null>(null);
@@ -155,36 +157,67 @@ function App() {
     }
   }, [activeSessionId, connected, sessions, historyRequested, markHistoryRequested, sendEvent]);
 
+  // Track user scroll position to disable auto-scroll when user scrolls up
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const scrollPosition = container.scrollTop;
+      const scrollHeight = container.scrollHeight;
+      const clientHeight = container.clientHeight;
+
+      // User is considered "scrolled up" if they're more than 100px from the bottom
+      const distanceFromBottom = scrollHeight - scrollPosition - clientHeight;
+      isUserScrolledUpRef.current = distanceFromBottom > 100;
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // Auto-scroll when a complete message is added
   const prevMessagesLengthRef = useRef(0);
   useEffect(() => {
     // Only scroll if we actually added a new message (not just updated existing ones)
     if (messages.length > prevMessagesLengthRef.current) {
-      console.log('[AutoScroll] New message detected, autoScrollEnabled:', autoScrollEnabled);
-      if (autoScrollEnabled) {
+      console.log('[AutoScroll] New message detected, autoScrollEnabled:', autoScrollEnabled, 'isUserScrolledUp:', isUserScrolledUpRef.current);
+      if (autoScrollEnabled && !isUserScrolledUpRef.current) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }
       prevMessagesLengthRef.current = messages.length;
     }
   }, [messages, autoScrollEnabled]);
 
-  // Auto-scroll during streaming - ONLY if autoScrollEnabled is true
+  // Auto-scroll during streaming - ONLY if autoScrollEnabled is true AND user hasn't scrolled up
   const lastScrollTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!showPartialMessage || !partialMessage || !autoScrollEnabled) return;
+    if (!showPartialMessage || !partialMessage || !autoScrollEnabled || isUserScrolledUpRef.current) return;
 
-    const messagesContainer = document.querySelector('.overflow-y-auto');
-    if (!messagesContainer) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
 
     const now = Date.now();
     // Throttle scroll calls to max once per 30ms for more responsive scrolling
     if (now - lastScrollTimeRef.current > 30) {
       lastScrollTimeRef.current = now;
       // Force scroll to bottom immediately for long messages
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      container.scrollTop = container.scrollHeight;
     }
   }, [showPartialMessage, partialMessage, autoScrollEnabled]);
+
+  // Force scroll to bottom when history is first loaded
+  useEffect(() => {
+    if (activeSession?.hydrated && autoScrollEnabled && messages.length > 0) {
+      const container = messagesContainerRef.current;
+      if (container) {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      }
+    }
+  }, [activeSession?.hydrated, messages.length, autoScrollEnabled]);
 
   const handleNewSession = useCallback(() => {
     useAppStore.getState().setActiveSessionId(null);
@@ -339,7 +372,7 @@ function App() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-8 pb-40 pt-6">
+        <div ref={messagesContainerRef} id="messages-container" className="flex-1 overflow-y-auto overflow-x-hidden px-8 pb-40 pt-6">
           <div className="mx-auto w-full max-w-4xl min-w-0">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">

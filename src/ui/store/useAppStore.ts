@@ -20,6 +20,8 @@ export type SessionView = {
   createdAt?: number;
   updatedAt?: number;
   hydrated: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
 };
 
 interface AppState {
@@ -113,7 +115,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             cwd: session.cwd,
             isPinned: session.isPinned,
             createdAt: session.createdAt,
-            updatedAt: session.updatedAt
+            updatedAt: session.updatedAt,
+            inputTokens: session.inputTokens,
+            outputTokens: session.outputTokens
           };
         }
 
@@ -154,7 +158,15 @@ export const useAppStore = create<AppState>((set, get) => ({
           return {
             sessions: {
               ...state.sessions,
-              [sessionId]: { ...existing, status, messages, hydrated: true }
+              [sessionId]: { 
+                ...existing, 
+                status, 
+                messages, 
+                hydrated: true,
+                // Preserve token counts from existing session
+                inputTokens: existing.inputTokens,
+                outputTokens: existing.outputTokens
+              }
             }
           };
         });

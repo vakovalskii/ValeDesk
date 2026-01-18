@@ -31,6 +31,8 @@ export type StoredSession = {
   isPinned?: boolean;
   createdAt: number;
   updatedAt: number;
+  inputTokens?: number;
+  outputTokens?: number;
 };
 
 export type SessionHistory = {
@@ -88,7 +90,7 @@ export class SessionStore {
   listSessions(): StoredSession[] {
     const rows = this.db
       .prepare(
-        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, is_pinned, created_at, updated_at
+        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, is_pinned, created_at, updated_at, input_tokens, output_tokens
          from sessions
          order by updated_at desc`
       )
@@ -103,7 +105,9 @@ export class SessionStore {
       claudeSessionId: row.claude_session_id ? String(row.claude_session_id) : undefined,
       isPinned: row.is_pinned ? Boolean(row.is_pinned) : false,
       createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at)
+      updatedAt: Number(row.updated_at),
+      inputTokens: row.input_tokens ? Number(row.input_tokens) : undefined,
+      outputTokens: row.output_tokens ? Number(row.output_tokens) : undefined
     }));
   }
 
@@ -124,7 +128,7 @@ export class SessionStore {
   getSessionHistory(id: string): SessionHistory | null {
     const sessionRow = this.db
       .prepare(
-        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, is_pinned, created_at, updated_at
+        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, is_pinned, created_at, updated_at, input_tokens, output_tokens
          from sessions
          where id = ?`
       )
@@ -149,7 +153,9 @@ export class SessionStore {
         claudeSessionId: sessionRow.claude_session_id ? String(sessionRow.claude_session_id) : undefined,
         isPinned: sessionRow.is_pinned ? Boolean(sessionRow.is_pinned) : false,
         createdAt: Number(sessionRow.created_at),
-        updatedAt: Number(sessionRow.updated_at)
+        updatedAt: Number(sessionRow.updated_at),
+        inputTokens: sessionRow.input_tokens ? Number(sessionRow.input_tokens) : undefined,
+        outputTokens: sessionRow.output_tokens ? Number(sessionRow.output_tokens) : undefined
       },
       messages
     };
@@ -240,6 +246,12 @@ export class SessionStore {
       .run(isPinned ? 1 : 0, Date.now(), id);
   }
 
+  updateTokens(id: string, inputTokens: number, outputTokens: number): void {
+    this.db
+      .prepare(`update sessions set input_tokens = ?, output_tokens = ?, updated_at = ? where id = ?`)
+      .run(inputTokens, outputTokens, Date.now(), id);
+  }
+
   private persistSession(id: string, updates: Partial<Session>): void {
     const fields: string[] = [];
     const values: Array<string | number | null> = [];
@@ -281,7 +293,9 @@ export class SessionStore {
         last_prompt text,
         is_pinned integer default 0,
         created_at integer not null,
-        updated_at integer not null
+        updated_at integer not null,
+        input_tokens integer default 0,
+        output_tokens integer default 0
       )`
     );
     this.db.exec(
@@ -298,6 +312,20 @@ export class SessionStore {
     // Migration: Add is_pinned column if it doesn't exist
     try {
       this.db.exec(`alter table sessions add column is_pinned integer default 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
+    // Migration: Add input_tokens column if it doesn't exist
+    try {
+      this.db.exec(`alter table sessions add column input_tokens integer default 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
+    // Migration: Add output_tokens column if it doesn't exist
+    try {
+      this.db.exec(`alter table sessions add column output_tokens integer default 0`);
     } catch (e) {
       // Column already exists, ignore
     }

@@ -27,6 +27,18 @@ function emit(event: ServerEvent) {
     sessions.updateSession(event.payload.sessionId, { status: event.payload.status });
   }
   if (event.type === "stream.message") {
+    const message = event.payload.message as any;
+    // Check if this is a result message with token usage
+    if (message.type === "result" && message.usage) {
+      const { input_tokens, output_tokens } = message.usage;
+      if (input_tokens !== undefined || output_tokens !== undefined) {
+        sessions.updateTokens(
+          event.payload.sessionId,
+          input_tokens || 0,
+          output_tokens || 0
+        );
+      }
+    }
     sessions.recordMessage(event.payload.sessionId, event.payload.message);
   }
   if (event.type === "stream.user_prompt") {
