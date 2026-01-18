@@ -137,7 +137,7 @@ export class SessionStore {
   getSessionHistory(id: string): SessionHistory | null {
     const sessionRow = this.db
       .prepare(
-        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, is_pinned, created_at, updated_at, input_tokens, output_tokens
+        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, is_pinned, created_at, updated_at, input_tokens, output_tokens, todos
          from sessions
          where id = ?`
       )

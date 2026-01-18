@@ -111,3 +111,28 @@ code, pre, textarea.mono, input.mono {
 .animate-shimmer {
   animation: shimmer 1.4s linear infinite;
 }
+
+/* TodoPanel scrollable container */
+.todo-scroll-container {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.todo-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.todo-scroll-container::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.todo-scroll-container::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 3px;
+}
+
+.todo-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}

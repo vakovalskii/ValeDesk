@@ -2,7 +2,7 @@
  * TodoPanel - Displays agent's task plan with progress bar (collapsible)
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import type { TodoItem, TodoStatus } from "../types";
 
 interface TodoPanelProps {
@@ -18,7 +18,6 @@ const statusConfig: Record<TodoStatus, { emoji: string }> = {
 
 export function TodoPanel({ todos }: TodoPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
   
   if (!todos || todos.length === 0) return null;
 
@@ -28,7 +27,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
   const inProgress = todos.find(t => t.status === 'in_progress');
 
   return (
-    <div className="bg-white border border-ink-200 rounded-lg shadow-sm overflow-hidden">
+    <div className="bg-white border border-ink-200 rounded-lg shadow-sm">
       {/* Header - clickable to expand/collapse */}
       <button 
         type="button"
@@ -59,14 +58,7 @@ export function TodoPanel({ todos }: TodoPanelProps) {
       </div>
 
       {/* Expandable content */}
-      <div 
-        className="transition-all duration-200 ease-out"
-        style={{ 
-          maxHeight: isExpanded ? '400px' : '0px',
-          opacity: isExpanded ? 1 : 0,
-          overflow: 'hidden'
-        }}
-      >
+      {isExpanded && (
         <div className="px-3 pb-3">
           {/* Current task highlight */}
           {inProgress && (
@@ -80,42 +72,51 @@ export function TodoPanel({ todos }: TodoPanelProps) {
             </div>
           )}
 
-          {/* Task list - scrollable */}
+          {/* Task list - SCROLLABLE */}
           <div 
-            ref={scrollRef}
-            className="space-y-1 pr-1"
+            className="todo-scroll-container"
+            onWheel={(e) => {
+              // Force scroll to work
+              e.stopPropagation();
+              const el = e.currentTarget;
+              el.scrollTop += e.deltaY;
+            }}
             style={{ 
-              maxHeight: '250px', 
-              overflowY: 'scroll',
+              maxHeight: '180px',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              WebkitOverflowScrolling: 'touch',
               scrollbarWidth: 'thin',
-              scrollbarColor: '#d1d5db transparent'
+              scrollbarColor: '#9ca3af #f3f4f6'
             }}
           >
-            {todos.map((todo) => {
-              const config = statusConfig[todo.status];
-              return (
-                <div
-                  key={todo.id}
-                  className={`flex items-start gap-2 px-2 py-1.5 rounded text-xs ${
-                    todo.status === 'in_progress' ? 'bg-blue-50' : 'hover:bg-ink-50'
-                  }`}
-                >
-                  <span className="flex-shrink-0 mt-0.5">{config.emoji}</span>
-                  <span 
-                    className={`break-words ${
-                      todo.status === 'completed' ? 'line-through text-ink-400' : 
-                      todo.status === 'cancelled' ? 'line-through text-ink-400' :
-                      'text-ink-700'
+            <div className="space-y-1 pr-1">
+              {todos.map((todo) => {
+                const config = statusConfig[todo.status];
+                return (
+                  <div
+                    key={todo.id}
+                    className={`flex items-start gap-2 px-2 py-1.5 rounded text-xs ${
+                      todo.status === 'in_progress' ? 'bg-blue-50' : 'hover:bg-ink-50'
                     }`}
                   >
-                    {todo.content}
-                  </span>
-                </div>
-              );
-            })}
+                    <span className="flex-shrink-0 mt-0.5">{config.emoji}</span>
+                    <span 
+                      className={`break-words ${
+                        todo.status === 'completed' ? 'line-through text-ink-400' : 
+                        todo.status === 'cancelled' ? 'line-through text-ink-400' :
+                        'text-ink-700'
+                      }`}
+                    >
+                      {todo.content}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
