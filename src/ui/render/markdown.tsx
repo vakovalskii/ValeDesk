@@ -11,10 +11,11 @@ export default function MDContent({ text }: { text: string }) {
   };
 
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeRaw, rehypeHighlight]}
-      components={{
+    <div className="max-w-full">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        components={{
         h1: (props) => <h1 className="mt-4 text-xl font-semibold text-ink-900" {...props} />,
         h2: (props) => <h2 className="mt-4 text-lg font-semibold text-ink-900" {...props} />,
         h3: (props) => <h3 className="mt-3 text-base font-semibold text-ink-800" {...props} />,
@@ -75,8 +76,9 @@ export default function MDContent({ text }: { text: string }) {
           <td className="border-r border-ink-900/10 px-3 py-2 text-ink-700 last:border-r-0" {...props} />
         ),
       }}
-    >
-      {String(text ?? "")}
-    </ReactMarkdown>
+      >
+        {String(text ?? "")}
+      </ReactMarkdown>
+    </div>
   )
 }

@@ -151,10 +151,10 @@ const ToolResult = ({ messageContent }: { messageContent: ToolResultContent }) =
   }, [hasMoreLines, isExpanded]);
 
   return (
-    <div className="flex flex-col mt-4">
+    <div className="flex flex-col mt-4 overflow-hidden">
       <div className="header text-accent">Output</div>
-      <div className="mt-2 rounded-xl bg-surface-tertiary p-3">
-        <pre className={`text-sm whitespace-pre-wrap break-words font-mono ${isError ? "text-red-500" : "text-ink-700"}`}>
+      <div className="mt-2 rounded-xl bg-surface-tertiary p-3 overflow-hidden">
+        <pre className={`text-sm whitespace-pre-wrap break-words font-mono overflow-x-auto ${isError ? "text-red-500" : "text-ink-700"}`}>
           {isMarkdownContent ? <MDContent text={visibleContent} /> : visibleContent}
         </pre>
         {hasMoreLines && (
@@ -183,7 +183,7 @@ const AssistantBlockCard = ({ title, text, showIndicator = false, isTextBlock = 
   };
 
   return (
-    <div className="flex flex-col mt-4">
+    <div className="flex flex-col mt-4 overflow-hidden">
       <div className="header text-accent flex items-center gap-2">
         <StatusDot variant="success" isActive={showIndicator} isVisible={showIndicator} />
         {title}
@@ -299,7 +299,7 @@ const AskUserQuestionCard = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-[1rem] bg-surface-tertiary px-3 py-2 mt-4">
+    <div className="flex flex-col gap-2 rounded-[1rem] bg-surface-tertiary px-3 py-2 mt-4 overflow-hidden">
       <div className="flex flex-row items-center gap-2">
         <StatusDot variant="success" isActive={false} isVisible={true} />
         <span className="inline-flex items-center rounded-md text-accent py-0.5 text-sm font-medium">AskUserQuestion</span>
@@ -324,7 +324,7 @@ const SystemInfoCard = ({ message, showIndicator = false }: { message: SDKMessag
   );
   
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 overflow-hidden">
       <div className="header text-accent flex items-center gap-2">
         <StatusDot variant="success" isActive={showIndicator} isVisible={showIndicator} />
         System Init
@@ -364,7 +364,7 @@ const UserMessageCard = ({
   };
 
   return (
-    <div className="flex flex-col mt-4 group">
+    <div className="flex flex-col mt-4 group overflow-hidden">
       <div className="header text-accent flex items-center gap-2">
         <StatusDot variant="success" isActive={showIndicator} isVisible={showIndicator} />
         User
@@ -374,7 +374,7 @@ const UserMessageCard = ({
           <textarea
             value={editedText}
             onChange={(e) => setEditedText(e.target.value)}
-            className="w-full min-h-[100px] p-3 rounded-lg bg-surface-secondary border border-ink-900/10 focus:border-accent focus:outline-none resize-y"
+            className="w-full min-h-[100px] p-3 rounded-lg bg-surface-secondary border border-ink-900/10 focus:border-accent focus:outline-none resize-y max-w-full overflow-hidden"
             autoFocus
           />
           <div className="flex gap-2">
