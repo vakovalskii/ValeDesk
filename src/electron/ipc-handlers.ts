@@ -399,19 +399,41 @@ export function handleClientEvent(event: ClientEvent) {
 
 async function fetchModels(): Promise<Array<{ id: string; name: string; description?: string }>> {
   const settings = loadApiSettings();
-  
+
   if (!settings || !settings.baseUrl || !settings.apiKey) {
     throw new Error('API settings not configured');
   }
 
-  // Ensure baseURL ends with /v1 for OpenAI compatibility
-  let baseURL = settings.baseUrl;
-  if (!baseURL.endsWith('/v1')) {
-    baseURL = baseURL.endsWith('/') ? baseURL + 'v1' : baseURL + '/v1';
+  // Build the models URL
+  // For standard OpenAI-compatible APIs, add /v1/models
+  // For z.ai URLs that already contain /v4, extract the base URL and append /models
+  let modelsURL: string;
+  const baseURL = settings.baseUrl;
+
+  // Check if baseURL already ends with /v1 (standard OpenAI format)
+  if (baseURL.endsWith('/v1')) {
+    modelsURL = `${baseURL}/models`;
+  }
+  // Check if baseURL contains /v4 (z.ai format)
+  else if (baseURL.includes('/v4')) {
+    // Extract base URL up to /v4
+    const v4Index = baseURL.indexOf('/v4');
+    const baseURLUpToV4 = baseURL.substring(0, v4Index + 3); // Include /v4
+    modelsURL = `${baseURLUpToV4}/models`;
+  }
+  // Check if baseURL ends with / (trailing slash)
+  else if (baseURL.endsWith('/')) {
+    modelsURL = `${baseURL}v1/models`;
+  }
+  // Default: add /v1/models
+  else {
+    modelsURL = `${baseURL}/v1/models`;
   }
 
+  console.log('[IPC] Fetching models from:', modelsURL);
+
   try {
-    const response = await fetch(`${baseURL}/models`, {
+    const response = await fetch(modelsURL, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${settings.apiKey}`,
