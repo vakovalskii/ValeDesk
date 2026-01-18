@@ -1,9 +1,11 @@
 /**
  * render_page Tool - Render web pages using Electron's built-in Chromium
  * Perfect for JavaScript-heavy pages that Tavily/Z.AI can't extract properly
+ * 
+ * Uses hidden BrowserWindow for reliable network connectivity
  */
 
-import { BrowserWindow, BrowserView } from 'electron';
+import { BrowserWindow } from 'electron';
 import type { ToolDefinition, ToolResult, ToolExecutionContext } from './base-tool.js';
 
 export const RenderPageToolDefinition: ToolDefinition = {
@@ -46,26 +48,8 @@ Perfect for JavaScript-rendered pages (SPAs, React, Vue) that regular extractors
   }
 };
 
-// Hidden browser view for rendering
-let renderView: BrowserView | null = null;
-
-/**
- * Get or create the hidden BrowserView for rendering
- */
-function getRenderView(): BrowserView {
-  if (!renderView) {
-    renderView = new BrowserView({
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        javascript: true,
-        images: true,
-        webSecurity: true
-      }
-    });
-  }
-  return renderView;
-}
+// Standard Chrome User-Agent to avoid being blocked
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
  * Execute render_page tool
@@ -93,41 +77,50 @@ export async function executeRenderPageTool(
     console.log(`[render_page] Selector: ${selector}`);
   }
   
+  let renderWindow: BrowserWindow | null = null;
+  
   try {
-    const view = getRenderView();
+    // Create a hidden window for rendering
+    renderWindow = new BrowserWindow({
+      width: 1280,
+      height: 800,
+      show: false,  // Hidden from user
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        javascript: true,
+        images: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false
+      }
+    });
     
-    // Attach to main window temporarily (required for rendering)
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    if (!mainWindow) {
-      return {
-        success: false,
-        error: '❌ No main window available for rendering'
-      };
-    }
+    // Set User-Agent
+    renderWindow.webContents.setUserAgent(USER_AGENT);
     
-    // Add view but keep it hidden (zero size)
-    mainWindow.addBrowserView(view);
-    view.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
-    view.setAutoResize({ width: false, height: false });
-    
-    // Load URL with timeout
+    // Set up load promise BEFORE loading URL
     const loadPromise = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Page load timeout (30s)'));
       }, 30000);
       
-      view.webContents.once('did-finish-load', () => {
+      renderWindow!.webContents.once('did-finish-load', () => {
         clearTimeout(timeout);
         resolve();
       });
       
-      view.webContents.once('did-fail-load', (event, errorCode, errorDescription) => {
+      renderWindow!.webContents.once('did-fail-load', (event, errorCode, errorDescription) => {
         clearTimeout(timeout);
-        reject(new Error(`Failed to load page: ${errorDescription} (${errorCode})`));
+        reject(new Error(`${errorDescription} (${errorCode})`));
       });
     });
     
-    await view.webContents.loadURL(url);
+    // Load the URL
+    renderWindow.loadURL(url, {
+      userAgent: USER_AGENT,
+      httpReferrer: 'https://www.google.com/'
+    });
+    
     await loadPromise;
     
     console.log(`[render_page] Page loaded, waiting ${waitTime}ms for JS execution...`);
@@ -169,10 +162,11 @@ export async function executeRenderPageTool(
       `;
     }
     
-    const result = await view.webContents.executeJavaScript(extractScript);
+    const result = await renderWindow.webContents.executeJavaScript(extractScript);
     
-    // Remove view from window
-    mainWindow.removeBrowserView(view);
+    // Close the hidden window
+    renderWindow.close();
+    renderWindow = null;
     
     // Handle extraction error
     if (result.error) {
@@ -220,28 +214,16 @@ export async function executeRenderPageTool(
   } catch (error: any) {
     console.error('[render_page] Error:', error);
     
+    // Cleanup on error
+    if (renderWindow) {
+      try {
+        renderWindow.close();
+      } catch (e) { /* ignore */ }
+    }
+    
     return {
       success: false,
       error: `❌ Failed to render page: ${error.message}\n\n**Possible causes:**\n- Invalid URL\n- Network error\n- Page blocked the request\n- JavaScript error on page`
     };
-  }
-}
-
-/**
- * Cleanup: dispose the BrowserView
- */
-export function disposeRenderView(): void {
-  if (renderView) {
-    try {
-      const mainWindow = BrowserWindow.getAllWindows()[0];
-      if (mainWindow) {
-        mainWindow.removeBrowserView(renderView);
-      }
-      // @ts-ignore - destroy exists but not in types
-      renderView.webContents?.destroy?.();
-    } catch (e) {
-      // Ignore cleanup errors
-    }
-    renderView = null;
   }
 }
