@@ -97,12 +97,28 @@ class SessionManager {
   }
 
   /**
+   * Emit an event to ALL windows (for global updates like session.status)
+   * @param event The server event to emit
+   */
+  emitToAll(event: ServerEvent) {
+    for (const sub of this.subscriptions.values()) {
+      sub.webContents.send("server-event", JSON.stringify(event));
+    }
+  }
+
+  /**
    * Emit an event to appropriate windows based on sessionId
    * @param event The server event to emit
    * @param broadcastFunc Fallback broadcast function for events without sessionId
    */
   emit(event: ServerEvent, broadcastFunc: (e: ServerEvent) => void) {
     const sessionId = this.getSessionId(event);
+
+    // session.status should go to ALL windows so sidebar can update
+    if (event.type === "session.status") {
+      this.emitToAll(event);
+      return;
+    }
 
     if (!sessionId) {
       // Events without sessionId go to all windows (session.list, models.loaded, etc.)
