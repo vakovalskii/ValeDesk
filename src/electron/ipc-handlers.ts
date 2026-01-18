@@ -127,7 +127,8 @@ export function handleClientEvent(event: ClientEvent, windowId: number) {
       payload: { sessionId: session.id, status: "running", title: session.title, cwd: session.cwd }
     });
 
-    sessionManager.emitToWindow(windowId, {
+    // Use emit() to save user_prompt to DB AND send to UI
+    emit({
       type: "stream.user_prompt",
       payload: { sessionId: session.id, prompt: event.payload.prompt }
     });
@@ -203,7 +204,8 @@ export function handleClientEvent(event: ClientEvent, windowId: number) {
       payload: { sessionId: session.id, status: "running", title: sessionTitle, cwd: session.cwd }
     });
 
-    sessionManager.emitToWindow(windowId, {
+    // Use emit() to save user_prompt to DB AND send to UI
+    emit({
       type: "stream.user_prompt",
       payload: { sessionId: session.id, prompt: event.payload.prompt }
     });
