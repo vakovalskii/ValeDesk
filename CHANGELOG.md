@@ -2,6 +2,78 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.5] - 2026-01-18
+
+### ⚠️ Breaking Changes
+
+#### Tool Naming Migration (snake_case)
+All tools renamed to follow `verb_noun` pattern:
+| Old | New |
+|-----|-----|
+| `Bash` | `run_command` |
+| `Read` | `read_file` |
+| `Write` | `write_file` |
+| `Edit` | `edit_file` |
+| `Glob` | `search_files` |
+| `Grep` | `search_text` |
+| `WebSearch` | `search_web` |
+| `ExtractPageContent` | `extract_page` |
+| `ZaiReader` | `read_page` |
+| `Memory` | `manage_memory` |
+| `ExecuteJS` | `execute_js` |
+
+#### Removed Tools
+- ❌ `InstallPackage` — no longer needed (dependencies bundled)
+
+### 🚀 New Features
+
+#### WASM Sandbox (execute_js)
+- ✅ **QuickJS engine** — secure JavaScript execution via WebAssembly
+- ✅ **No dependencies** — works out of the box from DMG/EXE
+- ✅ **Available globals**: `fs`, `path`, `console`, `JSON`, `Math`, `Date`, `__dirname`
+- ✅ **Path sandboxing** — can only access workspace folder
+
+#### Document Support (read_document)
+- ✅ **PDF extraction** — bundled `pdf-parse` library
+- ✅ **DOCX extraction** — bundled `mammoth` library
+- ✅ **Size limits** — max 10MB per file
+- ✅ **Scanned PDF detection** — warns user about OCR requirements
+
+### ⚡ Performance Optimizations
+
+#### Streaming UI
+- ✅ **60fps updates** — requestAnimationFrame-based throttling
+- ✅ **Store optimization** — stream_event messages no longer saved to state
+- ✅ **Memory fix** — removed full chunk collection during streaming
+- ✅ **Lightweight logging** — no JSON.stringify on large response objects
+
+### 📝 Documentation
+- ✅ Updated README with new tool names and structure
+- ✅ Added PROJECT_STATUS.md with current state
+- ✅ Added bun installation instructions
+- ✅ Removed obsolete docs (DYNAMIC_SANDBOX_SUMMARY, RENAME_SUMMARY, etc.)
+
+### 🔧 Technical Changes
+- New: `src/electron/libs/container/quickjs-sandbox.ts`
+- New: `src/electron/libs/tools/read-document-tool.ts`
+- Deleted: `src/electron/libs/tools/install-package-tool.ts`
+- Updated: System prompt with new tool names
+
+---
+
+## [0.0.4] - 2026-01-16
+
+### ✨ Features
+- ✅ **Z.AI Reader** — alternative to Tavily for page extraction
+- ✅ **Web Search Provider** — choice between Tavily and Z.AI
+- ✅ **Memory Editor** — edit memory.md directly in settings
+
+### 🐛 Bug Fixes
+- 🔧 Fixed API 404 errors (baseURL must include `/v1`)
+- 🔧 Fixed session history loading
+
+---
+
 ## [0.0.3] - 2026-01-14
 
 ### 🚀 Major Changes
@@ -18,7 +90,7 @@ All notable changes to this project will be documented in this file.
 - ✅ **GUI Settings Modal** - configure API key, base URL, model, and temperature
 - ✅ **Temperature Control** - adjust model creativity (0.0 - 2.0)
 - ✅ **Model Indicator** - shows current model in UI
-- ✅ **Settings Storage** - saved to `~/.agent-cowork/settings.json`
+- ✅ **Settings Storage** - saved to `~/.localdesk/settings.json`
 - ✅ **No Claude Code required** - completely standalone
 
 #### Security & Safety
@@ -50,7 +122,7 @@ All notable changes to this project will be documented in this file.
 - ✅ **No Cost Display** - removed for local models
 
 #### Developer Experience
-- ✅ **Request Logging** - full API requests saved to `~/.agent-cowork/logs/`
+- ✅ **Request Logging** - full API requests saved to `~/.localdesk/logs/`
 - ✅ **Console Debugging** - detailed logs for message flow
 - ✅ **Message Inspection** - last 3 messages logged before each API call
 
@@ -87,9 +159,9 @@ All notable changes to this project will be documented in this file.
   - `src/electron/libs/runner.ts` - old Claude SDK runner (kept for reference)
 
 #### Data Storage
-- **Settings:** `~/.agent-cowork/settings.json`
-- **Database:** `~/.agent-cowork/sessions.db` (SQLite)
-- **Logs:** `~/.agent-cowork/logs/openai-request-*.json`
+- **Settings:** `~/.localdesk/settings.json`
+- **Database:** `~/.localdesk/sessions.db` (SQLite)
+- **Logs:** `~/.localdesk/logs/openai-request-*.json`
 
 ### 📝 Documentation
 
@@ -102,7 +174,7 @@ All notable changes to this project will be documented in this file.
 
 1. **No backward compatibility** with original settings
    - Old: `~/.claude/settings.json`
-   - New: `~/.agent-cowork/settings.json`
+   - New: `~/.localdesk/settings.json`
 
 2. **Different API format** - OpenAI instead of Claude
    - Must configure API key, base URL, model in GUI
@@ -145,5 +217,5 @@ All notable changes to this project will be documented in this file.
 **Note:** This project is a community fork focused on flexibility, local model support, and user control.
 
 **License:** MIT  
-**Contributors:** Community  
-**Repository:** https://github.com/DevAgentForge/agent-cowork
+**Author:** [Valerii Kovalskii](https://github.com/vakovalskii)  
+**Repository:** https://github.com/vakovalskii/LocalDesk
