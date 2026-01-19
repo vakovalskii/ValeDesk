@@ -86,7 +86,7 @@ export class ToolExecutor {
     // Now these tools have fallbacks, so we can always initialize them
     const provider = apiSettings?.webSearchProvider || "tavily";
     const zaiApiUrl = apiSettings?.zaiApiUrl || "default";
-    
+
     // Web search tool with DuckDuckGo fallback
     if (provider === "tavily" && apiSettings?.tavilyApiKey) {
       this.webSearchTool = new WebSearchTool(
@@ -104,7 +104,7 @@ export class ToolExecutor {
       // Use DuckDuckGo fallback (no API key required)
       this.webSearchTool = new WebSearchTool(null, "tavily", "default");
     }
-    
+
     // Page extraction with fetch fallback
     if (provider === "tavily" && apiSettings?.tavilyApiKey) {
       this.extractPageTool = new ExtractPageContentTool(
@@ -128,10 +128,9 @@ export class ToolExecutor {
       this.zaiReaderTool = new ZaiReaderTool(null, "default");
     }
 
-      // Initialize scheduler tool
-      if (schedulerStore) {
-        this.scheduleTaskTool = new ScheduleTaskTool(schedulerStore);
-      }
+    // Initialize scheduler tool
+    if (schedulerStore) {
+      this.scheduleTaskTool = new ScheduleTaskTool(schedulerStore);
     }
   }
 
@@ -307,60 +306,60 @@ export class ToolExecutor {
 
         // Fetch tools
         case "fetch":
-          return await executeFetchTool(context);
+          return await executeFetchTool(args as any, context);
 
         case "fetch_json":
-          return await executeFetchJsonTool(context);
+          return await executeFetchJsonTool(args as any, context);
 
         case "fetch_html":
-          return await executeFetchHtmlTool(context);
+          return await executeFetchHtmlTool(args as any, context);
 
         case "download":
-          return await executeDownloadTool(context);
+          return await executeDownloadTool(args as any, context);
 
         // Browser automation tools
         case "browser_navigate":
-          return await executeBrowserNavigateTool(context);
+          return await executeBrowserNavigateTool(args as any, context);
 
         case "browser_click":
-          return await executeBrowserClickTool(context);
+          return await executeBrowserClickTool(args as any, context);
 
         case "browser_type":
-          return await executeBrowserTypeTool(context);
+          return await executeBrowserTypeTool(args as any, context);
 
         case "browser_select":
-          return await executeBrowserSelectTool(context);
+          return await executeBrowserSelectTool(args as any, context);
 
         case "browser_hover":
-          return await executeBrowserHoverTool(context);
+          return await executeBrowserHoverTool(args as any, context);
 
         case "browser_scroll":
-          return await executeBrowserScrollTool(context);
+          return await executeBrowserScrollTool(args as any, context);
 
         case "browser_press_key":
-          return await executeBrowserPressKeyTool(context);
+          return await executeBrowserPressKeyTool(args as any, context);
 
         case "browser_wait_for":
-          return await executeBrowserWaitForTool(context);
+          return await executeBrowserWaitForTool(args as any, context);
 
         case "browser_snapshot":
-          return await executeBrowserSnapshotTool(context);
+          return await executeBrowserSnapshotTool(args as any, context);
 
         case "browser_screenshot":
-          return await executeBrowserScreenshotTool(context);
+          return await executeBrowserScreenshotTool(args as any, context);
 
         case "browser_execute_script":
-          return await executeBrowserExecuteScriptTool(context);
+          return await executeBrowserExecuteScriptTool(args as any, context);
 
         // DuckDuckGo search tools
         case "search":
-          return await executeSearchTool(context);
+          return await executeSearchTool(args as any, context);
 
         case "search_news":
-          return await executeSearchNewsTool(context);
+          return await executeSearchNewsTool(args as any, context);
 
         case "search_images":
-          return await executeSearchImagesTool(context);
+          return await executeSearchImagesTool(args as any, context);
 
         case "Scheduler":
           return await this.executeScheduleTask(args, context);

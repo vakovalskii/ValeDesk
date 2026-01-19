@@ -250,8 +250,13 @@ function extractTitle(html: string): string | null {
 // ============================================================================
 
 export async function executeFetchTool(
-  args: { url: string; method?: string; headers?: Record<string, string>; body?: string },
-  context: ToolExecutionContext
+  args: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  },
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   const { url, method = "GET", headers = {}, body } = args;
 
@@ -290,8 +295,13 @@ export async function executeFetchTool(
 }
 
 export async function executeFetchJsonTool(
-  args: { url: string; method?: string; headers?: Record<string, string>; body?: any },
-  context: ToolExecutionContext
+  args: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: any;
+  },
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   const { url, method = "GET", headers = {}, body } = args;
 
@@ -330,7 +340,7 @@ export async function executeFetchJsonTool(
 
 export async function executeFetchHtmlTool(
   args: { url: string; extract_text?: boolean; max_length?: number },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   const { url, extract_text = true, max_length = 50000 } = args;
 
@@ -375,7 +385,7 @@ export async function executeFetchHtmlTool(
 
 export async function executeDownloadTool(
   args: { url: string; destination: string },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   const { url, destination } = args;
 
