@@ -249,7 +249,7 @@ export class ZaiReaderTool {
       {
         cwd: "",
         isPathSafe: () => false,
-      }
+      },
     );
 
     if (!result.success) {

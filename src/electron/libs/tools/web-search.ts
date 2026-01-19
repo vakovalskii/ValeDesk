@@ -82,7 +82,7 @@ class DuckDuckGoWebSearch {
         {
           cwd: "",
           isPathSafe: () => false,
-        }
+        },
       );
 
       if (!result.success) {

@@ -180,7 +180,7 @@ export class ExtractPageContentTool {
           {
             cwd: "",
             isPathSafe: () => false,
-          }
+          },
         );
 
         if (result.success && result.output) {
