@@ -324,9 +324,10 @@ function parseImageResults(html: string, maxResults: number): ImageResult[] {
 // ============================================================================
 
 export async function executeSearchTool(
+  args: { query: string; max_results?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { query, max_results = 10 } = context.args;
+  const { query, max_results = 10 } = args;
   const limit = Math.min(max_results, 50);
 
   try {
@@ -376,9 +377,10 @@ export async function executeSearchTool(
 }
 
 export async function executeSearchNewsTool(
+  args: { query: string; max_results?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { query, max_results = 10 } = context.args;
+  const { query, max_results = 10 } = args;
   const limit = Math.min(max_results, 50);
 
   try {
@@ -431,9 +433,10 @@ export async function executeSearchNewsTool(
 }
 
 export async function executeSearchImagesTool(
+  args: { query: string; max_results?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { query, max_results = 10 } = context.args;
+  const { query, max_results = 10 } = args;
   const limit = Math.min(max_results, 50);
 
   try {

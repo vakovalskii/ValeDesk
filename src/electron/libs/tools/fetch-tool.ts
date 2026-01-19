@@ -250,9 +250,10 @@ function extractTitle(html: string): string | null {
 // ============================================================================
 
 export async function executeFetchTool(
-  context: ToolExecutionContext,
+  args: { url: string; method?: string; headers?: Record<string, string>; body?: string },
+  context: ToolExecutionContext
 ): Promise<ToolResult> {
-  const { url, method = "GET", headers = {}, body } = context.args;
+  const { url, method = "GET", headers = {}, body } = args;
 
   try {
     const response = await fetch(url, {
@@ -289,9 +290,10 @@ export async function executeFetchTool(
 }
 
 export async function executeFetchJsonTool(
-  context: ToolExecutionContext,
+  args: { url: string; method?: string; headers?: Record<string, string>; body?: any },
+  context: ToolExecutionContext
 ): Promise<ToolResult> {
-  const { url, method = "GET", headers = {}, body } = context.args;
+  const { url, method = "GET", headers = {}, body } = args;
 
   try {
     const response = await fetch(url, {
@@ -327,9 +329,10 @@ export async function executeFetchJsonTool(
 }
 
 export async function executeFetchHtmlTool(
-  context: ToolExecutionContext,
+  args: { url: string; extract_text?: boolean; max_length?: number },
+  context: ToolExecutionContext
 ): Promise<ToolResult> {
-  const { url, extract_text = true, max_length = 50000 } = context.args;
+  const { url, extract_text = true, max_length = 50000 } = args;
 
   try {
     const response = await fetch(url, {
@@ -371,9 +374,10 @@ export async function executeFetchHtmlTool(
 }
 
 export async function executeDownloadTool(
-  context: ToolExecutionContext,
+  args: { url: string; destination: string },
+  context: ToolExecutionContext
 ): Promise<ToolResult> {
-  const { url, destination } = context.args;
+  const { url, destination } = args;
 
   try {
     const response = await fetch(url, {

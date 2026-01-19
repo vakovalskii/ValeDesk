@@ -270,6 +270,7 @@ export const BrowserWaitForToolDefinition: ToolDefinition = {
           description: "Timeout in milliseconds",
         },
       },
+      required: [],
     },
   },
 };
@@ -287,6 +288,7 @@ export const BrowserSnapshotToolDefinition: ToolDefinition = {
     parameters: {
       type: "object",
       properties: {},
+      required: [],
     },
   },
 };
@@ -387,9 +389,10 @@ async function closeBrowser() {
 // ============================================================================
 
 export async function executeBrowserNavigateTool(
+  args: { url: string; wait_for?: string },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { url, wait_for = "load" } = context.args;
+  const { url, wait_for = "load" } = args;
 
   try {
     const page = await ensureBrowser();
@@ -411,9 +414,10 @@ export async function executeBrowserNavigateTool(
 }
 
 export async function executeBrowserClickTool(
+  args: { selector: string; timeout?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { selector, timeout = 30000 } = context.args;
+  const { selector, timeout = 30000 } = args;
 
   try {
     const page = await ensureBrowser();
@@ -434,9 +438,10 @@ export async function executeBrowserClickTool(
 }
 
 export async function executeBrowserTypeTool(
+  args: { selector: string; text: string; delay?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { selector, text, delay = 0 } = context.args;
+  const { selector, text, delay = 0 } = args;
 
   try {
     const page = await ensureBrowser();
@@ -455,9 +460,10 @@ export async function executeBrowserTypeTool(
 }
 
 export async function executeBrowserSelectTool(
+  args: { selector: string; value: string },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { selector, value } = context.args;
+  const { selector, value } = args;
 
   try {
     const page = await ensureBrowser();
@@ -476,9 +482,10 @@ export async function executeBrowserSelectTool(
 }
 
 export async function executeBrowserHoverTool(
+  args: { selector: string },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { selector } = context.args;
+  const { selector } = args;
 
   try {
     const page = await ensureBrowser();
@@ -497,9 +504,10 @@ export async function executeBrowserHoverTool(
 }
 
 export async function executeBrowserScrollTool(
+  args: { direction: string; amount?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { direction, amount = 500 } = context.args;
+  const { direction, amount = 500 } = args;
 
   try {
     const page = await ensureBrowser();
@@ -539,9 +547,10 @@ export async function executeBrowserScrollTool(
 }
 
 export async function executeBrowserPressKeyTool(
+  args: { key: string },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { key } = context.args;
+  const { key } = args;
 
   try {
     const page = await ensureBrowser();
@@ -560,9 +569,10 @@ export async function executeBrowserPressKeyTool(
 }
 
 export async function executeBrowserWaitForTool(
+  args: { selector?: string; timeout?: number },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { selector, timeout } = context.args;
+  const { selector, timeout } = args;
 
   try {
     const page = await ensureBrowser();
@@ -594,6 +604,7 @@ export async function executeBrowserWaitForTool(
 }
 
 export async function executeBrowserSnapshotTool(
+  args: {},
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
   try {
@@ -613,9 +624,10 @@ export async function executeBrowserSnapshotTool(
 }
 
 export async function executeBrowserScreenshotTool(
+  args: { path: string; full_page?: boolean },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { path, full_page = false } = context.args;
+  const { path, full_page = false } = args;
 
   try {
     const page = await ensureBrowser();
@@ -634,9 +646,10 @@ export async function executeBrowserScreenshotTool(
 }
 
 export async function executeBrowserExecuteScriptTool(
+  args: { script: string },
   context: ToolExecutionContext,
 ): Promise<ToolResult> {
-  const { script } = context.args;
+  const { script } = args;
 
   try {
     const page = await ensureBrowser();
