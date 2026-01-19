@@ -12,7 +12,11 @@
  */
 
 import { execSync } from "child_process";
-import type { ToolDefinition, ToolResult, ToolExecutionContext } from './base-tool.js';
+import type {
+  ToolDefinition,
+  ToolResult,
+  ToolExecutionContext,
+} from "./base-tool.js";
 
 // ============================================================================
 // Tool Definitions
@@ -37,9 +41,9 @@ export const GitStatusToolDefinition: ToolDefinition = {
     parameters: {
       type: "object",
       properties: {},
-      required: []
-    }
-  }
+      required: [],
+    },
+  },
 };
 
 export const GitLogToolDefinition: ToolDefinition = {
@@ -66,12 +70,13 @@ export const GitLogToolDefinition: ToolDefinition = {
       properties: {
         limit: {
           type: "number",
-          description: "Maximum number of commits to return (default: 10, max: 100)"
-        }
+          description:
+            "Maximum number of commits to return (default: 10, max: 100)",
+        },
       },
-      required: []
-    }
-  }
+      required: [],
+    },
+  },
 };
 
 export const GitDiffToolDefinition: ToolDefinition = {
@@ -97,12 +102,12 @@ export const GitDiffToolDefinition: ToolDefinition = {
       properties: {
         file: {
           type: "string",
-          description: "Specific file to show diff for (optional)"
-        }
+          description: "Specific file to show diff for (optional)",
+        },
       },
-      required: []
-    }
-  }
+      required: [],
+    },
+  },
 };
 
 export const GitBranchToolDefinition: ToolDefinition = {
@@ -123,12 +128,12 @@ export const GitBranchToolDefinition: ToolDefinition = {
       properties: {
         list_all: {
           type: "boolean",
-          description: "List all branches (default: false, only shows current)"
-        }
+          description: "List all branches (default: false, only shows current)",
+        },
       },
-      required: []
-    }
-  }
+      required: [],
+    },
+  },
 };
 
 export const GitCheckoutToolDefinition: ToolDefinition = {
@@ -152,16 +157,16 @@ export const GitCheckoutToolDefinition: ToolDefinition = {
       properties: {
         branch: {
           type: "string",
-          description: "Branch name to switch to"
+          description: "Branch name to switch to",
         },
         file: {
           type: "string",
-          description: "File to restore to HEAD (reverts changes)"
-        }
+          description: "File to restore to HEAD (reverts changes)",
+        },
       },
-      required: []
-    }
-  }
+      required: [],
+    },
+  },
 };
 
 export const GitAddToolDefinition: ToolDefinition = {
@@ -184,16 +189,16 @@ export const GitAddToolDefinition: ToolDefinition = {
       properties: {
         all: {
           type: "boolean",
-          description: "Stage all changed files (default: true)"
+          description: "Stage all changed files (default: true)",
         },
         file: {
           type: "string",
-          description: "Specific file to stage (optional)"
-        }
+          description: "Specific file to stage (optional)",
+        },
       },
-      required: []
-    }
-  }
+      required: [],
+    },
+  },
 };
 
 export const GitCommitToolDefinition: ToolDefinition = {
@@ -215,12 +220,169 @@ export const GitCommitToolDefinition: ToolDefinition = {
       properties: {
         message: {
           type: "string",
-          description: "Commit message (required)"
-        }
+          description: "Commit message (required)",
+        },
       },
-      required: ["message"]
-    }
-  }
+      required: ["message"],
+    },
+  },
+};
+
+export const GitPushToolDefinition: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "git_push",
+    description: `Push commits to a remote repository.
+
+**Options:**
+- remote: Remote name (default: origin)
+- branch: Branch to push (default: current branch)
+- force: Force push (default: false, use with caution)
+
+**Use cases:**
+- Share commits with team
+- Backup work to remote repository
+- Deploy changes
+
+**Warning:** Force push can overwrite remote history. Use with extreme caution.`,
+    parameters: {
+      type: "object",
+      properties: {
+        remote: {
+          type: "string",
+          description: "Remote name (default: origin)",
+        },
+        branch: {
+          type: "string",
+          description: "Branch to push (default: current branch)",
+        },
+        force: {
+          type: "boolean",
+          description: "Force push (default: false)",
+        },
+      },
+      required: [],
+    },
+  },
+};
+
+export const GitPullToolDefinition: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "git_pull",
+    description: `Pull changes from a remote repository.
+
+**Options:**
+- remote: Remote name (default: origin)
+- branch: Branch to pull (default: current branch)
+- rebase: Use rebase instead of merge (default: false)
+
+**Use cases:**
+- Sync with team changes
+- Get latest updates from remote
+- Update local branch before pushing
+
+**Note:** May require resolving conflicts if there are divergent changes.`,
+    parameters: {
+      type: "object",
+      properties: {
+        remote: {
+          type: "string",
+          description: "Remote name (default: origin)",
+        },
+        branch: {
+          type: "string",
+          description: "Branch to pull (default: current branch)",
+        },
+        rebase: {
+          type: "boolean",
+          description: "Use rebase instead of merge (default: false)",
+        },
+      },
+      required: [],
+    },
+  },
+};
+
+export const GitResetToolDefinition: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "git_reset",
+    description: `Reset current HEAD to a specified state.
+
+**Modes:**
+- soft: Keep changes staged (default)
+- mixed: Keep changes unstaged
+- hard: Discard all changes (DANGEROUS)
+
+**Options:**
+- mode: Reset mode (soft/mixed/hard)
+- target: Target to reset to (default: HEAD~1 for one commit back)
+- file: Specific file to unstage (only works with mixed mode)
+
+**Use cases:**
+- Undo last commit but keep changes
+- Unstage files
+- Completely discard changes (careful!)
+
+**Warning:** Hard reset permanently deletes uncommitted changes.`,
+    parameters: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          description: "Reset mode: soft, mixed, or hard (default: soft)",
+          enum: ["soft", "mixed", "hard"],
+        },
+        target: {
+          type: "string",
+          description: "Target to reset to (default: HEAD~1)",
+        },
+        file: {
+          type: "string",
+          description: "Specific file to unstage (mixed mode only)",
+        },
+      },
+      required: [],
+    },
+  },
+};
+
+export const GitShowToolDefinition: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "git_show",
+    description: `Show detailed information about a specific commit.
+
+**Output includes:**
+- Commit hash, author, date
+- Full commit message
+- Files changed with diff
+
+**Options:**
+- commit: Commit hash or reference (default: HEAD)
+- stat_only: Show only stats without full diff (default: false)
+
+**Use cases:**
+- Review what was changed in a commit
+- Understand the context of changes
+- Verify commit contents before pushing`,
+    parameters: {
+      type: "object",
+      properties: {
+        commit: {
+          type: "string",
+          description: "Commit hash or reference (default: HEAD)",
+        },
+        stat_only: {
+          type: "boolean",
+          description:
+            "Show only file stats without full diff (default: false)",
+        },
+      },
+      required: [],
+    },
+  },
 };
 
 // ============================================================================
@@ -230,12 +392,15 @@ export const GitCommitToolDefinition: ToolDefinition = {
 /**
  * Run a git command and return the output
  */
-function runGit(args: string[], cwd: string): { output: string; error: string; exitCode: number } {
+function runGit(
+  args: string[],
+  cwd: string,
+): { output: string; error: string; exitCode: number } {
   try {
     const output = execSync(`git ${args.join(" ")}`, {
       cwd,
       encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
     });
     return { output: output.trim(), error: "", exitCode: 0 };
   } catch (error: any) {
@@ -278,7 +443,10 @@ function formatGitStatus(cwd: string): string {
       // Parse branch info
       const branchPart = line.substring(3);
       const dotsIndex = branchPart.indexOf("...");
-      branch = dotsIndex > -1 ? branchPart.substring(0, dotsIndex) : branchPart.split(" ")[0];
+      branch =
+        dotsIndex > -1
+          ? branchPart.substring(0, dotsIndex)
+          : branchPart.split(" ")[0];
     } else if (line.length >= 3) {
       const indexStatus = line[0];
       const worktreeStatus = line[1];
@@ -288,7 +456,8 @@ function formatGitStatus(cwd: string): string {
         untracked.push(file);
       } else {
         if (indexStatus !== " ") staged.push(file);
-        if (worktreeStatus !== " " && worktreeStatus !== "?") unstaged.push(file);
+        if (worktreeStatus !== " " && worktreeStatus !== "?")
+          unstaged.push(file);
       }
     }
   }
@@ -298,7 +467,8 @@ function formatGitStatus(cwd: string): string {
     staged,
     unstaged,
     untracked,
-    clean: staged.length === 0 && unstaged.length === 0 && untracked.length === 0
+    clean:
+      staged.length === 0 && unstaged.length === 0 && untracked.length === 0,
   });
 }
 
@@ -307,21 +477,24 @@ function formatGitStatus(cwd: string): string {
  */
 function formatGitLog(cwd: string, limit: number = 10): string {
   const safeLimit = Math.min(Math.max(1, limit), 100);
-  const result = runGit(["log", `--format=%H|%an|%ae|%at|%s`, "-n", String(safeLimit)], cwd);
+  const result = runGit(
+    ["log", `--format=%H|%an|%ae|%at|%s`, "-n", String(safeLimit)],
+    cwd,
+  );
 
   if (result.exitCode !== 0) {
     return JSON.stringify({ error: escapeForJson(result.error) });
   }
 
   const lines = result.output.split("\n").filter(Boolean);
-  const commits = lines.map(line => {
+  const commits = lines.map((line) => {
     const parts = line.split("|", 5);
     return {
       hash: parts[0],
       author: parts[1],
       email: parts[2],
       timestamp: parseInt(parts[3]) || 0,
-      message: parts[4] || ""
+      message: parts[4] || "",
     };
   });
 
@@ -351,7 +524,8 @@ function formatGitDiff(cwd: string, file?: string): string {
     working_tree: statsResult.output,
     staged: stagedResult.output,
     diff: diffResult.output.substring(0, 10000), // Limit output size
-    has_changes: statsResult.output.length > 0 || stagedResult.output.length > 0
+    has_changes:
+      statsResult.output.length > 0 || stagedResult.output.length > 0,
   });
 }
 
@@ -371,7 +545,10 @@ function formatGitBranch(cwd: string, listAll: boolean = false): string {
   }
 
   // List all branches
-  const branchResult = runGit(["branch", "-a", "--format=%(refname:short)"], cwd);
+  const branchResult = runGit(
+    ["branch", "-a", "--format=%(refname:short)"],
+    cwd,
+  );
   if (branchResult.exitCode !== 0) {
     return JSON.stringify({ error: escapeForJson(branchResult.error) });
   }
@@ -379,12 +556,12 @@ function formatGitBranch(cwd: string, listAll: boolean = false): string {
   const branches = branchResult.output
     .split("\n")
     .filter(Boolean)
-    .map(b => b.trim());
+    .map((b) => b.trim());
 
   return JSON.stringify({
     current: currentBranch,
     branches,
-    count: branches.length
+    count: branches.length,
   });
 }
 
@@ -397,10 +574,14 @@ function formatGitBranch(cwd: string, listAll: boolean = false): string {
  */
 export async function executeGitStatusTool(
   _args: Record<string, unknown>,
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   try {
@@ -419,21 +600,24 @@ export async function executeGitStatusTool(
     } else {
       if (parsed.staged.length > 0) {
         output += `**Staged (${parsed.staged.length}):**\n`;
-        parsed.staged.forEach((f: string) => output += `  + ${f}\n`);
+        parsed.staged.forEach((f: string) => (output += `  + ${f}\n`));
       }
       if (parsed.unstaged.length > 0) {
         output += `\n**Modified (${parsed.unstaged.length}):**\n`;
-        parsed.unstaged.forEach((f: string) => output += `  ~ ${f}\n`);
+        parsed.unstaged.forEach((f: string) => (output += `  ~ ${f}\n`));
       }
       if (parsed.untracked.length > 0) {
         output += `\n**Untracked (${parsed.untracked.length}):**\n`;
-        parsed.untracked.forEach((f: string) => output += `  ? ${f}\n`);
+        parsed.untracked.forEach((f: string) => (output += `  ? ${f}\n`));
       }
     }
 
     return { success: true, output };
   } catch (error: any) {
-    return { success: false, error: `Failed to get git status: ${error.message}` };
+    return {
+      success: false,
+      error: `Failed to get git status: ${error.message}`,
+    };
   }
 }
 
@@ -442,10 +626,14 @@ export async function executeGitStatusTool(
  */
 export async function executeGitLogTool(
   args: { limit?: number },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   try {
@@ -475,10 +663,14 @@ export async function executeGitLogTool(
  */
 export async function executeGitDiffTool(
   args: { file?: string },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   try {
@@ -510,7 +702,10 @@ export async function executeGitDiffTool(
 
     return { success: true, output };
   } catch (error: any) {
-    return { success: false, error: `Failed to get git diff: ${error.message}` };
+    return {
+      success: false,
+      error: `Failed to get git diff: ${error.message}`,
+    };
   }
 }
 
@@ -519,10 +714,14 @@ export async function executeGitDiffTool(
  */
 export async function executeGitBranchTool(
   args: { list_all?: boolean },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   try {
@@ -545,7 +744,10 @@ export async function executeGitBranchTool(
 
     return { success: true, output };
   } catch (error: any) {
-    return { success: false, error: `Failed to get git branch: ${error.message}` };
+    return {
+      success: false,
+      error: `Failed to get git branch: ${error.message}`,
+    };
   }
 }
 
@@ -554,14 +756,21 @@ export async function executeGitBranchTool(
  */
 export async function executeGitCheckoutTool(
   args: { branch?: string; file?: string },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   if (!args.branch && !args.file) {
-    return { success: false, error: "Either 'branch' or 'file' parameter required" };
+    return {
+      success: false,
+      error: "Either 'branch' or 'file' parameter required",
+    };
   }
 
   try {
@@ -570,14 +779,26 @@ export async function executeGitCheckoutTool(
       // Switch branch
       result = runGit(["checkout", args.branch], context.cwd);
       if (result.exitCode !== 0) {
-        return { success: false, error: `Failed to switch branch: ${result.error}` };
+        return {
+          success: false,
+          error: `Failed to switch branch: ${result.error}`,
+        };
       }
-      return { success: true, output: `✅ Switched to branch '${args.branch}'` };
+      return {
+        success: true,
+        output: `✅ Switched to branch '${args.branch}'`,
+      };
     } else {
       // Restore file
-      result = runGit(["checkout", "HEAD", "--", args.file as string], context.cwd);
+      result = runGit(
+        ["checkout", "HEAD", "--", args.file as string],
+        context.cwd,
+      );
       if (result.exitCode !== 0) {
-        return { success: false, error: `Failed to restore file: ${result.error}` };
+        return {
+          success: false,
+          error: `Failed to restore file: ${result.error}`,
+        };
       }
       return { success: true, output: `✅ Restored '${args.file}' to HEAD` };
     }
@@ -591,10 +812,14 @@ export async function executeGitCheckoutTool(
  */
 export async function executeGitAddTool(
   args: { all?: boolean; file?: string },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   try {
@@ -608,7 +833,10 @@ export async function executeGitAddTool(
     }
 
     if (result.exitCode !== 0) {
-      return { success: false, error: `Failed to stage changes: ${result.error}` };
+      return {
+        success: false,
+        error: `Failed to stage changes: ${result.error}`,
+      };
     }
 
     const target = args.file ? ` '${args.file}'` : " all changes";
@@ -623,10 +851,14 @@ export async function executeGitAddTool(
  */
 export async function executeGitCommitTool(
   args: { message: string },
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ): Promise<ToolResult> {
   if (!context.cwd) {
-    return { success: false, error: "No working directory set. Start a session with a workspace folder." };
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
   }
 
   if (!args.message) {
@@ -639,7 +871,10 @@ export async function executeGitCommitTool(
     if (result.exitCode !== 0) {
       // Check if nothing to commit
       if (result.error.includes("nothing to commit")) {
-        return { success: false, error: "Nothing to commit. Stage changes first with git_add." };
+        return {
+          success: false,
+          error: "Nothing to commit. Stage changes first with git_add.",
+        };
       }
       return { success: false, error: `Failed to commit: ${result.error}` };
     }
@@ -647,6 +882,226 @@ export async function executeGitCommitTool(
     return { success: true, output: `✅ Committed: ${args.message}` };
   } catch (error: any) {
     return { success: false, error: `Git commit failed: ${error.message}` };
+  }
+}
+
+/**
+ * Execute git_push tool
+ */
+export async function executeGitPushTool(
+  args: { remote?: string; branch?: string; force?: boolean },
+  context: ToolExecutionContext,
+): Promise<ToolResult> {
+  if (!context.cwd) {
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
+  }
+
+  try {
+    const remote = args.remote || "origin";
+    let branch = args.branch;
+
+    // If no branch specified, get current branch
+    if (!branch) {
+      const branchResult = runGit(
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        context.cwd,
+      );
+      if (branchResult.exitCode !== 0) {
+        return { success: false, error: "Failed to get current branch" };
+      }
+      branch = branchResult.output;
+    }
+
+    const pushArgs = ["push", remote, branch];
+    if (args.force) {
+      pushArgs.push("--force");
+    }
+
+    const result = runGit(pushArgs, context.cwd);
+
+    if (result.exitCode !== 0) {
+      return { success: false, error: `Failed to push: ${result.error}` };
+    }
+
+    const forceMsg = args.force ? " (force)" : "";
+    return {
+      success: true,
+      output: `✅ Pushed to ${remote}/${branch}${forceMsg}`,
+    };
+  } catch (error: any) {
+    return { success: false, error: `Git push failed: ${error.message}` };
+  }
+}
+
+/**
+ * Execute git_pull tool
+ */
+export async function executeGitPullTool(
+  args: { remote?: string; branch?: string; rebase?: boolean },
+  context: ToolExecutionContext,
+): Promise<ToolResult> {
+  if (!context.cwd) {
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
+  }
+
+  try {
+    const remote = args.remote || "origin";
+    let branch = args.branch;
+
+    // If no branch specified, get current branch
+    if (!branch) {
+      const branchResult = runGit(
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        context.cwd,
+      );
+      if (branchResult.exitCode !== 0) {
+        return { success: false, error: "Failed to get current branch" };
+      }
+      branch = branchResult.output;
+    }
+
+    const pullArgs = ["pull", remote, branch];
+    if (args.rebase) {
+      pullArgs.push("--rebase");
+    }
+
+    const result = runGit(pullArgs, context.cwd);
+
+    if (result.exitCode !== 0) {
+      return { success: false, error: `Failed to pull: ${result.error}` };
+    }
+
+    const rebaseMsg = args.rebase ? " with rebase" : "";
+    return {
+      success: true,
+      output: `✅ Pulled from ${remote}/${branch}${rebaseMsg}\n${result.output}`,
+    };
+  } catch (error: any) {
+    return { success: false, error: `Git pull failed: ${error.message}` };
+  }
+}
+
+/**
+ * Execute git_reset tool
+ */
+export async function executeGitResetTool(
+  args: { mode?: string; target?: string; file?: string },
+  context: ToolExecutionContext,
+): Promise<ToolResult> {
+  if (!context.cwd) {
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
+  }
+
+  try {
+    const mode = args.mode || "soft";
+    const target = args.target || "HEAD~1";
+
+    // Validate mode
+    if (!["soft", "mixed", "hard"].includes(mode)) {
+      return {
+        success: false,
+        error: "Mode must be 'soft', 'mixed', or 'hard'",
+      };
+    }
+
+    // Special case: unstage specific file (mixed mode only)
+    if (args.file) {
+      const result = runGit(["reset", "HEAD", "--", args.file], context.cwd);
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          error: `Failed to unstage file: ${result.error}`,
+        };
+      }
+      return { success: true, output: `✅ Unstaged '${args.file}'` };
+    }
+
+    // Warn about hard reset
+    if (mode === "hard") {
+      const result = runGit(["reset", "--hard", target], context.cwd);
+      if (result.exitCode !== 0) {
+        return { success: false, error: `Failed to reset: ${result.error}` };
+      }
+      return {
+        success: true,
+        output: `⚠️  Hard reset to ${target}\n${result.output}`,
+      };
+    }
+
+    // Soft or mixed reset
+    const resetArgs = ["reset", `--${mode}`, target];
+    const result = runGit(resetArgs, context.cwd);
+
+    if (result.exitCode !== 0) {
+      return { success: false, error: `Failed to reset: ${result.error}` };
+    }
+
+    return {
+      success: true,
+      output: `✅ Reset (${mode}) to ${target}\n${result.output}`,
+    };
+  } catch (error: any) {
+    return { success: false, error: `Git reset failed: ${error.message}` };
+  }
+}
+
+/**
+ * Execute git_show tool
+ */
+export async function executeGitShowTool(
+  args: { commit?: string; stat_only?: boolean },
+  context: ToolExecutionContext,
+): Promise<ToolResult> {
+  if (!context.cwd) {
+    return {
+      success: false,
+      error:
+        "No working directory set. Start a session with a workspace folder.",
+    };
+  }
+
+  try {
+    const commit = args.commit || "HEAD";
+    const showArgs = ["show", commit];
+
+    if (args.stat_only) {
+      showArgs.push("--stat");
+    } else {
+      showArgs.push("--stat", "--no-color");
+    }
+
+    const result = runGit(showArgs, context.cwd);
+
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        error: `Failed to show commit: ${result.error}`,
+      };
+    }
+
+    // Limit output to prevent overwhelming the context
+    const output = result.output.substring(0, 15000);
+    const truncated =
+      result.output.length > 15000 ? "\n\n... (output truncated)" : "";
+
+    return {
+      success: true,
+      output: `## 🔍 Commit Details: ${commit}\n\n\`\`\`\n${output}${truncated}\n\`\`\``,
+    };
+  } catch (error: any) {
+    return { success: false, error: `Git show failed: ${error.message}` };
   }
 }
 
@@ -661,5 +1116,9 @@ export const ALL_GIT_TOOL_DEFINITIONS = [
   GitBranchToolDefinition,
   GitCheckoutToolDefinition,
   GitAddToolDefinition,
-  GitCommitToolDefinition
+  GitCommitToolDefinition,
+  GitPushToolDefinition,
+  GitPullToolDefinition,
+  GitResetToolDefinition,
+  GitShowToolDefinition,
 ];
