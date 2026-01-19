@@ -214,32 +214,57 @@ function stripHtml(html: string): string {
 function parseSearchResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = [];
 
-  // DuckDuckGo uses data-result-index attribute for results
-  const resultPattern =
-    /data-result-index="(\d+)"[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/g;
+  // Try multiple patterns as DuckDuckGo's HTML structure varies
+  const patterns = [
+    // Pattern 1: Standard result with class="result"
+    /class="result[^"]*"[\s\S]*?<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/div>/g,
 
-  let match;
+    // Pattern 2: Links module format
+    /class="links_main[^"]*"[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<div[^>]*>([\s\S]*?)<\/div>/g,
+
+    // Pattern 3: Simple link + text format
+    /<a[^>]+href="\/\/duckduckgo\.com\/l\/\?uddg=([^"&]+)[^"]*"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<div[^>]*class="[^"]*snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/g,
+  ];
+
   let position = 1;
 
-  while (
-    (match = resultPattern.exec(html)) !== null &&
-    results.length < maxResults
-  ) {
-    const url = match[2];
-    const titleHtml = match[3];
-    const snippetHtml = match[4];
+  for (const pattern of patterns) {
+    let match;
+    while (
+      (match = pattern.exec(html)) !== null &&
+      results.length < maxResults
+    ) {
+      let url = match[1];
+      const titleHtml = match[2];
+      const snippetHtml = match[3];
 
-    // Skip ads and DuckDuckGo internal links
-    if (url.startsWith("/") || url.includes("duckduckgo.com")) {
-      continue;
+      // Decode URL if it's encoded
+      try {
+        url = decodeURIComponent(url);
+      } catch (e) {
+        // If decode fails, use as is
+      }
+
+      // Skip ads and DuckDuckGo internal links
+      if (!url || url.startsWith("/") || url.includes("duckduckgo.com/y.js")) {
+        continue;
+      }
+
+      // Ensure URL has protocol
+      if (!url.startsWith("http")) {
+        url = "https://" + url;
+      }
+
+      results.push({
+        title: stripHtml(titleHtml),
+        url: url,
+        snippet: stripHtml(snippetHtml),
+        position: position++,
+      });
     }
 
-    results.push({
-      title: stripHtml(titleHtml),
-      url: url,
-      snippet: stripHtml(snippetHtml),
-      position: position++,
-    });
+    // If we got results with this pattern, don't try others
+    if (results.length > 0) break;
   }
 
   return results;
@@ -359,9 +384,14 @@ export async function executeSearchTool(
     const results = parseSearchResults(html, limit);
 
     if (results.length === 0) {
+      // Log HTML snippet for debugging (first 500 chars)
+      console.log(
+        "[DuckDuckGo Search] No results parsed. HTML preview:",
+        html.substring(0, 500),
+      );
       return {
         success: false,
-        error: `No results found for: ${query}`,
+        error: `No results found for: ${query}. The search may be rate-limited or DuckDuckGo's HTML structure changed.`,
       };
     }
 
