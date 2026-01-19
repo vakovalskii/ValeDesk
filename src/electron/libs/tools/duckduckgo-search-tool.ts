@@ -280,10 +280,10 @@ function parseNewsResults(html: string, maxResults: number): NewsResult[] {
   const patterns = [
     // Pattern 1: Standard result with class="result"
     /class="result[^"]*"[\s\S]*?<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/div>/g,
-    
+
     // Pattern 2: Links module format
     /class="links_main[^"]*"[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<div[^>]*>([\s\S]*?)<\/div>/g,
-    
+
     // Pattern 3: Simple link + text format
     /<a[^>]+href="\/\/duckduckgo\.com\/l\/\?uddg=([^"&]+)[^"]*"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<div[^>]*class="[^"]*snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/g,
   ];
@@ -332,7 +332,7 @@ function parseNewsResults(html: string, maxResults: number): NewsResult[] {
 
       results.push(result);
     }
-    
+
     // If we got results with this pattern, don't try others
     if (results.length > 0) break;
   }
