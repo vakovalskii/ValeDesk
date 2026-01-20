@@ -42,6 +42,9 @@ function App() {
   const markHistoryRequested = useAppStore((s) => s.markHistoryRequested);
   const resolvePermissionRequest = useAppStore((s) => s.resolvePermissionRequest);
   const handleServerEvent = useAppStore((s) => s.handleServerEvent);
+  const setLLMProviders = useAppStore((s) => s.setLLMProviders);
+  const setLLMModels = useAppStore((s) => s.setLLMModels);
+  const setLLMProviderSettings = useAppStore((s) => s.setLLMProviderSettings);
   const prompt = useAppStore((s) => s.prompt);
   const setPrompt = useAppStore((s) => s.setPrompt);
   const cwd = useAppStore((s) => s.cwd);
@@ -107,8 +110,16 @@ function App() {
     
     // Handle settings loaded event
     if (event.type === "settings.loaded") {
-      setApiSettings(event.payload.settings);
+      const settings = event.payload.settings;
+      setApiSettings(settings);
       setSettingsLoaded(true);
+      
+      // Load LLM providers from settings into store
+      if (settings?.llmProviders) {
+        setLLMProviders(settings.llmProviders.providers);
+        setLLMModels(settings.llmProviders.models);
+        setLLMProviderSettings(settings.llmProviders);
+      }
     }
   }, [handleServerEvent, handlePartialMessages]);
 

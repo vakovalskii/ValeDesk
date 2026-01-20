@@ -1150,79 +1150,107 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
 }
 
 async function fetchModels(): Promise<Array<{ id: string; name: string; description?: string }>> {
+  const models: Array<{ id: string; name: string; description?: string }> = [];
   const settings = loadApiSettings();
 
-  if (!settings || !settings.baseUrl || !settings.apiKey) {
-    throw new Error('API settings not configured');
-  }
+  // Try to fetch models from legacy API if configured
+  if (settings && settings.baseUrl && settings.apiKey) {
+    try {
+      // Build the models URL
+      // For standard OpenAI-compatible APIs, add /v1/models
+      // For z.ai URLs that already contain /v4, extract the base URL and append /models
+      let modelsURL: string;
+      const baseURL = settings.baseUrl;
 
-  // Build the models URL
-  // For standard OpenAI-compatible APIs, add /v1/models
-  // For z.ai URLs that already contain /v4, extract the base URL and append /models
-  let modelsURL: string;
-  const baseURL = settings.baseUrl;
-
-  // Check if baseURL already ends with /v1 (standard OpenAI format)
-  if (baseURL.endsWith('/v1')) {
-    modelsURL = `${baseURL}/models`;
-  }
-  // Check if baseURL contains /v4 (z.ai format)
-  else if (baseURL.includes('/v4')) {
-    // Extract base URL up to /v4
-    const v4Index = baseURL.indexOf('/v4');
-    const baseURLUpToV4 = baseURL.substring(0, v4Index + 3); // Include /v4
-    modelsURL = `${baseURLUpToV4}/models`;
-  }
-  // Check if baseURL ends with / (trailing slash)
-  else if (baseURL.endsWith('/')) {
-    modelsURL = `${baseURL}v1/models`;
-  }
-  // Default: add /v1/models
-  else {
-    modelsURL = `${baseURL}/v1/models`;
-  }
-
-  console.log('[IPC] Fetching models from:', modelsURL);
-
-  try {
-    const response = await fetch(modelsURL, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${settings.apiKey}`,
-        'Content-Type': 'application/json'
+      // Check if baseURL already ends with /v1 (standard OpenAI format)
+      if (baseURL.endsWith('/v1')) {
+        modelsURL = `${baseURL}/models`;
       }
-    });
+      // Check if baseURL contains /v4 (z.ai format)
+      else if (baseURL.includes('/v4')) {
+        // Extract base URL up to /v4
+        const v4Index = baseURL.indexOf('/v4');
+        const baseURLUpToV4 = baseURL.substring(0, v4Index + 3); // Include /v4
+        modelsURL = `${baseURLUpToV4}/models`;
+      }
+      // Check if baseURL ends with / (trailing slash)
+      else if (baseURL.endsWith('/')) {
+        modelsURL = `${baseURL}v1/models`;
+      }
+      // Default: add /v1/models
+      else {
+        modelsURL = `${baseURL}/v1/models`;
+      }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API Error (${response.status}): ${errorText}`);
+      console.log('[IPC] Fetching models from legacy API:', modelsURL);
+
+      const response = await fetch(modelsURL, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${settings.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Handle different response formats
+        if (data.data && Array.isArray(data.data)) {
+          // OpenAI-style response: { data: [{ id, ... }] }
+          data.data.forEach((model: any) => {
+            models.push({
+              id: model.id,
+              name: model.name || model.id,
+              description: model.description
+            });
+          });
+        } else if (Array.isArray(data)) {
+          // Simple array response: [{ id, ... }]
+          data.forEach((model: any) => {
+            models.push({
+              id: model.id,
+              name: model.name || model.id,
+              description: model.description
+            });
+          });
+        }
+      } else {
+        console.warn('[IPC] Legacy API returned error:', response.status);
+      }
+    } catch (error) {
+      console.warn('[IPC] Error fetching models from legacy API:', error);
+      // Continue to try provider models
     }
+  }
 
-    const data = await response.json();
-    
-    // Handle different response formats
-    if (data.data && Array.isArray(data.data)) {
-      // OpenAI-style response: { data: [{ id, ... }] }
-      return data.data.map((model: any) => ({
-        id: model.id,
-        name: model.name || model.id,
-        description: model.description
-      }));
-    } else if (Array.isArray(data)) {
-      // Simple array response: [{ id, ... }]
-      return data.map((model: any) => ({
-        id: model.id,
-        name: model.name || model.id,
-        description: model.description
-      }));
-    } else {
-      console.warn('[IPC] Unexpected models response format:', data);
-      return [];
+  // Add models from LLM providers (only enabled ones)
+  try {
+    const providerSettings = loadLLMProviderSettings();
+    if (providerSettings && providerSettings.models) {
+      const enabledModels = providerSettings.models.filter(m => m.enabled);
+      enabledModels.forEach(model => {
+        // Avoid duplicates
+        if (!models.find(m => m.id === model.id)) {
+          models.push({
+            id: model.id,
+            name: model.name,
+            description: `${model.providerType} | ${model.description || ''}`
+          });
+        }
+      });
+      console.log(`[IPC] Added ${enabledModels.length} models from providers`);
     }
   } catch (error) {
-    console.error('[IPC] Error fetching models:', error);
-    throw error;
+    console.warn('[IPC] Error loading provider models:', error);
   }
+
+  // If no models found from any source, return empty array (don't throw error)
+  if (models.length === 0) {
+    console.log('[IPC] No models available from any source');
+  }
+
+  return models;
 }
 
 // Initialize scheduler service

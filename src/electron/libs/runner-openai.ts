@@ -8,11 +8,13 @@ import OpenAI from 'openai';
 import type { ServerEvent } from "../types.js";
 import type { Session } from "./session-store.js";
 import { loadApiSettings } from "./settings-store.js";
+import { loadLLMProviderSettings } from "./llm-providers-store.js";
 import { TOOLS, getTools } from "./tools-definitions.js";
 import { getInitialPrompt, getSystemPrompt } from "./prompt-loader.js";
 import { getTodosSummary, getTodos, setTodos, clearTodos } from "./tools/manage-todos-tool.js";
 import { ToolExecutor } from "./tools-executor.js";
 import type { FileChange } from "../types.js";
+import type { LLMProvider, LLMModel } from "../types.js";
 import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { isGitRepo, getRelativePath, getFileDiffStats } from "../git-utils.js";
 import { join } from "path";
@@ -112,27 +114,81 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
   // Store last error body for error handling
   let lastErrorBody: string | null = null;
 
+  // Helper function to find model in providers and get provider settings
+  function getProviderSettingsForModel(modelId: string): { baseUrl: string; apiKey: string; model: string } | null {
+    const providerSettings = loadLLMProviderSettings();
+    if (!providerSettings) return null;
+
+    // Find model in providers
+    const model = providerSettings.models.find(m => m.id === modelId && m.enabled);
+    if (!model) return null;
+
+    // Find provider for this model
+    const provider = providerSettings.providers.find(p => p.id === model.providerId && p.enabled);
+    if (!provider) return null;
+
+    if (!provider.baseUrl || !provider.apiKey || !model.name) {
+      return null;
+    }
+
+    return {
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+      model: model.name
+    };
+  }
+
   // Start the query in the background
   (async () => {
     try {
       // Load settings
       const guiSettings = loadApiSettings();
       
-      if (!guiSettings || !guiSettings.baseUrl || !guiSettings.model) {
-        throw new Error('API settings not configured. Please set API Key, Base URL and Model in Settings (⚙️).');
+      // Determine which model to use (from session or settings)
+      const modelId = session.model || guiSettings?.model;
+      if (!modelId) {
+        throw new Error('Model not selected. Please select a model in Settings (⚙️).');
       }
+
+      // Try to find model in providers first
+      let baseURL: string;
+      let apiKey: string;
+      let modelName: string;
+      const providerSettings = getProviderSettingsForModel(modelId);
       
-      if (!guiSettings.apiKey) {
+      if (providerSettings) {
+        // Use provider settings
+        baseURL = providerSettings.baseUrl;
+        apiKey = providerSettings.apiKey;
+        modelName = providerSettings.model;
+        console.log(`[OpenAI Runner] Using model from provider: ${modelName} (${modelId})`);
+        console.log(`[OpenAI Runner] Provider Base URL: ${baseURL}`);
+      } else if (guiSettings && guiSettings.baseUrl && guiSettings.apiKey) {
+        // Fall back to legacy API settings
+        baseURL = guiSettings.baseUrl;
+        apiKey = guiSettings.apiKey;
+        modelName = guiSettings.model;
+        console.log(`[OpenAI Runner] Using legacy API settings`);
+      } else {
+        throw new Error('API settings not configured. Please set API Key, Base URL and Model in Settings (⚙️), or configure LLM providers.');
+      }
+
+      if (!apiKey || apiKey.trim() === '' || apiKey === 'null' || apiKey === 'undefined') {
         throw new Error('API Key is missing. Please configure it in Settings (⚙️).');
       }
 
       // Ensure baseURL ends with /v1 for OpenAI compatibility
-      let baseURL = guiSettings.baseUrl;
+      if (!baseURL.endsWith('/v1') && !baseURL.includes('/v4')) {
+        if (baseURL.endsWith('/')) {
+          baseURL = baseURL + 'v1';
+        } else {
+          baseURL = baseURL + '/v1';
+        }
+      }
 
-
-      console.log(`[OpenAI Runner] Starting with model: ${guiSettings.model}`);
+      console.log(`[OpenAI Runner] Starting with model: ${modelName}`);
       console.log(`[OpenAI Runner] Base URL: ${baseURL}`);
-      console.log(`[OpenAI Runner] Temperature: ${guiSettings.temperature || 0.3}`);
+      console.log(`[OpenAI Runner] Temperature: ${guiSettings?.temperature || 0.3}`);
 
       // Custom fetch to capture error response bodies
       const originalFetch = global.fetch;
@@ -158,7 +214,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       // Initialize OpenAI client with custom fetch and timeout
       const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for long operations
       const client = new OpenAI({
-        apiKey: guiSettings.apiKey || 'dummy-key',
+        apiKey: apiKey,
         baseURL: baseURL,
         dangerouslyAllowBrowser: false,
         fetch: customFetch as any,
@@ -336,10 +392,10 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       const activeTools = getTools(guiSettings);
       
       logApiRequest(session.id, {
-        model: guiSettings.model,
+        model: modelName,
         messages,
         tools: activeTools,
-        temperature: guiSettings.temperature || 0.3
+        temperature: guiSettings?.temperature || 0.3
       });
 
       // Send system init message
@@ -348,9 +404,9 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         cwd: session.cwd || 'No workspace folder',
         session_id: session.id,
         tools: activeTools.map(t => t.function.name),
-        model: session.model || guiSettings.model,
-        permissionMode: guiSettings.permissionMode || 'ask',
-        memoryEnabled: guiSettings.enableMemory || false
+        model: modelName,
+        permissionMode: guiSettings?.permissionMode || 'ask',
+        memoryEnabled: guiSettings?.enableMemory || false
       });
 
       // Update session with ID for resume support
@@ -378,10 +434,10 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
         // Prepare request payload for logging
         const requestPayload = {
-          model: session.model || guiSettings.model,
+          model: modelName,
           messages: messages,
           tools: activeTools,
-          temperature: guiSettings.temperature || 0.3,
+          temperature: guiSettings?.temperature || 0.3,
           stream: true,
           parallel_tool_calls: true,  // Enable parallel tool calls
           stream_options: { include_usage: true }  // Include token usage in stream
@@ -394,10 +450,10 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
         // Call OpenAI API (with explicit typing)
         const stream = await client.chat.completions.create({
-          model: session.model || guiSettings.model,
+          model: modelName,
           messages: messages as any[],
           tools: activeTools as any[],
-          temperature: guiSettings.temperature || 0.3,
+          temperature: guiSettings?.temperature || 0.3,
           stream: true,
           parallel_tool_calls: true,
           stream_options: { include_usage: true }

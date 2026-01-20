@@ -2,6 +2,7 @@ import { app } from "electron";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import type { ApiSettings } from "../types.js";
+import { loadLLMProviderSettings, saveLLMProviderSettings } from "./llm-providers-store.js";
 
 const SETTINGS_FILE = "api-settings.json";
 
@@ -28,18 +29,37 @@ export function loadApiSettings(): ApiSettings | null {
     
     const settings = JSON.parse(raw) as ApiSettings;
     
-    // Return null if apiKey is missing or invalid
+    // Check if apiKey is missing or invalid (but still return settings)
     if (!settings.apiKey || 
         settings.apiKey.trim() === '' || 
         settings.apiKey === 'null' || 
         settings.apiKey === 'undefined') {
-      console.log('[Settings] API key is missing or invalid');
-      return null;
+      console.log('[Settings] API key is missing or invalid (but loading other settings)');
     }
     
     // Set default permissionMode to 'ask' if not specified
     if (!settings.permissionMode) {
       settings.permissionMode = 'ask';
+    }
+    
+    // Load LLM providers from separate file and merge them
+    // Priority: separate file > main file
+    try {
+      const providerSettings = loadLLMProviderSettings();
+      if (providerSettings && (providerSettings.providers.length > 0 || providerSettings.models.length > 0)) {
+        // Use provider settings from separate file if they exist (they are more up-to-date)
+        settings.llmProviders = providerSettings;
+      } else if (!settings.llmProviders) {
+        // If no providers in separate file and no providers in main file, initialize empty
+        settings.llmProviders = { providers: [], models: [] };
+      }
+    } catch (error) {
+      // Ignore errors loading provider settings
+      console.log('[Settings] Could not load provider settings from separate file:', error);
+      // If we couldn't load from separate file and main file doesn't have providers, initialize empty
+      if (!settings.llmProviders) {
+        settings.llmProviders = { providers: [], models: [] };
+      }
     }
     
     return settings;
@@ -57,6 +77,16 @@ export function saveApiSettings(settings: ApiSettings): void {
     // Ensure directory exists
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
+    }
+    
+    // Save LLM providers separately if they exist
+    if (settings.llmProviders) {
+      try {
+        saveLLMProviderSettings(settings.llmProviders);
+      } catch (error) {
+        console.error("[Settings] Failed to save LLM provider settings separately:", error);
+        // Continue with saving main settings even if provider save fails
+      }
     }
     
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
