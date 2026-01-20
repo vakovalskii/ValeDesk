@@ -81,30 +81,74 @@ export function Sidebar({
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
       <div className="flex gap-2">
-        <button
-          className="flex-1 rounded-xl border border-ink-900/10 bg-surface px-4 py-2.5 text-sm font-medium text-ink-700 hover:bg-surface-tertiary hover:border-ink-900/20 transition-colors"
-          onClick={onNewSession}
-        >
-          + New Task
-        </button>
-        <button
-          className="flex-1 rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm font-medium text-accent hover:bg-accent/20 transition-colors"
-          onClick={onOpenTaskDialog}
-          title="Create multi-thread task with multiple models"
-        >
-          🚀 Multi-Thread
-        </button>
+        <Tooltip.Provider>
+          <Tooltip.Root delayDuration={200}>
+            <Tooltip.Trigger asChild>
+              <button
+                className="flex shrink-0 items-center justify-center w-9 h-9 rounded-xl border border-ink-900/10 bg-surface text-ink-700 hover:bg-surface-tertiary hover:border-ink-900/20 transition-colors"
+                onClick={onNewSession}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" sideOffset={5}>
+                New Task
+                <Tooltip.Arrow className="fill-white" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
 
-        <button
-          className="flex shrink-0 items-center justify-center gap-2 w-10 h-10 rounded-xl border border-ink-900/10 bg-surface px-2 text-ink-700 hover:bg-surface-tertiary hover:border-ink-900/20 transition-colors"
-          onClick={onOpenSettings}
-          title="API Settings"
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
-          </svg>
-        </button>
+        <Tooltip.Provider>
+          <Tooltip.Root delayDuration={200}>
+            <Tooltip.Trigger asChild>
+              <button
+                className="flex shrink-0 items-center justify-center w-9 h-9 rounded-xl border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                onClick={onOpenTaskDialog}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+                  <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+                  <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+                  <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+                </svg>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" sideOffset={5}>
+                Multi-Thread
+                <Tooltip.Arrow className="fill-white" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+
+        <div className="flex-1" />
+
+        <Tooltip.Provider>
+          <Tooltip.Root delayDuration={200}>
+            <Tooltip.Trigger asChild>
+              <button
+                className="flex shrink-0 items-center justify-center w-9 h-9 rounded-xl border border-ink-900/10 bg-surface text-ink-700 hover:bg-surface-tertiary hover:border-ink-900/20 transition-colors"
+                onClick={onOpenSettings}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
+                </svg>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" sideOffset={5}>
+                API Settings
+                <Tooltip.Arrow className="fill-white" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
       </div>
 
       {/* Search input */}
