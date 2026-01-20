@@ -111,7 +111,7 @@ export function Sidebar({
               </button>
             </Tooltip.Trigger>
             <Tooltip.Portal>
-              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" sideOffset={5}>
+              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" side="top" sideOffset={5}>
                 New Task
                 <Tooltip.Arrow className="fill-white" />
               </Tooltip.Content>
@@ -135,7 +135,7 @@ export function Sidebar({
               </button>
             </Tooltip.Trigger>
             <Tooltip.Portal>
-              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" sideOffset={5}>
+              <Tooltip.Content className="z-50 rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg" side="top" sideOffset={5}>
                 Multi-Thread
                 <Tooltip.Arrow className="fill-white" />
               </Tooltip.Content>
