@@ -204,8 +204,66 @@ function stripHtml(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#039;/g, "'")
+    .replace(/&#x27;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * DuckDuckGo "lite" has a simpler HTML structure, often more stable for scraping.
+ * Example link: <a rel="nofollow" class="result-link" href="...">Title</a>
+ */
+function parseLiteSearchResults(html: string, maxResults: number): SearchResult[] {
+  const results: SearchResult[] = [];
+
+  // DuckDuckGo lite uses both single and double quotes and may place href before class.
+  const patterns = [
+    /<a[^>]*class=['"]result-link['"][^>]*href=['"]([^'"]+)['"][^>]*>([\s\S]*?)<\/a>/g,
+    /<a[^>]*href=['"]([^'"]+)['"][^>]*class=['"]result-link['"][^>]*>([\s\S]*?)<\/a>/g,
+  ];
+
+  let position = 1;
+
+  for (const re of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(html)) !== null && results.length < maxResults) {
+      let url = match[1] || "";
+      const titleHtml = match[2] || "";
+
+      // DuckDuckGo sometimes returns redirect URLs; keep them as-is.
+      // Ensure protocol for schemeless URLs.
+      if (url.startsWith("//")) url = "https:" + url;
+      if (url && !url.startsWith("http")) url = "https://" + url;
+
+      const title = stripHtml(titleHtml);
+      if (!url || !title) continue;
+
+      results.push({
+        title,
+        url,
+        snippet: "",
+        position: position++,
+      });
+    }
+
+    if (results.length > 0) break;
+  }
+
+  return results;
+}
+
+function detectDuckDuckGoBlock(html: string): string | null {
+  const text = stripHtml(html).toLowerCase();
+  if (text.includes("captcha") || text.includes("not a robot")) {
+    return "DuckDuckGo returned a CAPTCHA/anti-bot page";
+  }
+  if (text.includes("access denied") || text.includes("forbidden")) {
+    return "DuckDuckGo returned an access denied/forbidden page";
+  }
+  if (text.includes("enable javascript") && text.includes("continue")) {
+    return "DuckDuckGo returned a JS/consent interstitial page";
+  }
+  return null;
 }
 
 /**
@@ -389,47 +447,84 @@ export async function executeSearchTool(
   const limit = Math.min(max_results, 50);
 
   try {
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    // DuckDuckGo HTML endpoints can be blocked or change structure; try multiple.
+    const endpoints = [
+      `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    ];
 
-    const response = await fetch(searchUrl, {
-      headers: {
-        "User-Agent": getRandomUserAgent(),
-        Accept: "text/html",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
+    let lastError: string | null = null;
 
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Search failed: HTTP ${response.status}`,
-      };
+    for (const searchUrl of endpoints) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12_000);
+
+      try {
+        const response = await fetch(searchUrl, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": getRandomUserAgent(),
+            Accept: "text/html",
+            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+            Referer: "https://duckduckgo.com/",
+          },
+        });
+
+        if (!response.ok) {
+          lastError = `Search failed: HTTP ${response.status} (${searchUrl})`;
+          continue;
+        }
+
+        const html = await response.text();
+        const blocked = detectDuckDuckGoBlock(html);
+        if (blocked) {
+          lastError = `${blocked} (${searchUrl}). If this keeps happening, set a Tavily/Z.AI API key in Settings for reliable web search.`;
+          continue;
+        }
+
+        // Prefer lite parser for lite endpoint; otherwise use standard parser and fallback to lite parser.
+        const results =
+          searchUrl.includes("lite.duckduckgo.com")
+            ? parseLiteSearchResults(html, limit)
+            : (parseSearchResults(html, limit).length > 0
+                ? parseSearchResults(html, limit)
+                : parseLiteSearchResults(html, limit));
+
+        if (results.length === 0) {
+          // Log HTML snippet for debugging (first 500 chars)
+          console.log(
+            "[DuckDuckGo Search] No results parsed. HTML preview:",
+            html.substring(0, 500),
+          );
+          lastError =
+            `No results parsed for: ${query}. DuckDuckGo may be rate-limited or the HTML structure changed. (${searchUrl})`;
+          continue;
+        }
+
+        const output = `Search results for "${query}":\n\n${results
+          .map(
+            (r) => `${r.position}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet}\n`,
+          )
+          .join("\n")}`;
+
+        return {
+          success: true,
+          output,
+        };
+      } catch (e: any) {
+        lastError =
+          e?.name === "AbortError"
+            ? `Search failed: timeout (${searchUrl})`
+            : `Search failed: ${e?.message || String(e)} (${searchUrl})`;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
-
-    const html = await response.text();
-    const results = parseSearchResults(html, limit);
-
-    if (results.length === 0) {
-      // Log HTML snippet for debugging (first 500 chars)
-      console.log(
-        "[DuckDuckGo Search] No results parsed. HTML preview:",
-        html.substring(0, 500),
-      );
-      return {
-        success: false,
-        error: `No results found for: ${query}. The search may be rate-limited or DuckDuckGo's HTML structure changed.`,
-      };
-    }
-
-    const output = `Search results for "${query}":\n\n${results
-      .map(
-        (r) => `${r.position}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet}\n`,
-      )
-      .join("\n")}`;
 
     return {
-      success: true,
-      output,
+      success: false,
+      error: lastError || "Search failed",
     };
   } catch (error: any) {
     return {

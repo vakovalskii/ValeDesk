@@ -86,7 +86,8 @@ class DuckDuckGoWebSearch {
       );
 
       if (!result.success) {
-        throw new Error(result.output || "Search failed");
+        // executeSearchTool returns the error in `error` (not `output`)
+        throw new Error(result.error || result.output || "Search failed");
       }
 
       // Parse the output to extract results
