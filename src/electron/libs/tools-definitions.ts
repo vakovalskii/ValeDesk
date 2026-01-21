@@ -24,8 +24,8 @@ const WEB_SEARCH_TOOLS = ['search_web', 'extract_page'];
 export function getTools(settings: ApiSettings | null) {
   let tools = [...ALL_TOOL_DEFINITIONS];
   
-  // Filter out Memory tool if not enabled
-  if (!settings?.enableMemory) {
+  // Filter out Memory tool only when explicitly disabled
+  if (settings?.enableMemory === false) {
     tools = tools.filter(tool => tool.function.name !== 'manage_memory');
   }
   
@@ -54,9 +54,10 @@ export function getTools(settings: ApiSettings | null) {
     tools = tools.filter(tool => !FETCH_TOOLS.includes(tool.function.name));
   }
   
-  // Filter out web search tools if disabled or no API key configured
-  const tavilyEnabled = settings?.enableTavilySearch !== false && settings?.tavilyApiKey;
-  const zaiEnabled = settings?.zaiApiKey;
+  // Filter out web search tools only if explicitly disabled
+  // WebSearchTool supports DuckDuckGo fallback without API keys.
+  const tavilyEnabled = settings?.enableTavilySearch || false;
+  const zaiEnabled = !!settings?.zaiApiKey;
   const hasWebSearch = tavilyEnabled || zaiEnabled;
   
   if (!hasWebSearch) {

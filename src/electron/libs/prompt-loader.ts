@@ -105,7 +105,7 @@ export function getSystemPrompt(cwd: string, settings?: PromptSettings | null): 
   const readPageLine = settings?.enableZaiReader 
     ? '- `read_page` - Read web page (Z.AI Reader)' 
     : '';
-  const memoryLine = settings?.enableMemory
+  const memoryLine = settings?.enableMemory || false
     ? '- `manage_memory` - Store/read long-term memory'
     : '';
 

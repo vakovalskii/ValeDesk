@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { 
   ApiSettings, 
@@ -28,7 +28,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const [model, setModel] = useState(currentSettings?.model || "");
   const [temperature, setTemperature] = useState(currentSettings?.temperature?.toString() || "0.3");
   const [tavilyApiKey, setTavilyApiKey] = useState(currentSettings?.tavilyApiKey || "");
-  const [enableTavilySearch, setEnableTavilySearch] = useState(currentSettings?.enableTavilySearch !== false);
+  const [enableTavilySearch, setEnableTavilySearch] = useState(currentSettings?.enableTavilySearch || false);
   const [zaiApiKey, setZaiApiKey] = useState(currentSettings?.zaiApiKey || "");
   const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProvider>(currentSettings?.webSearchProvider || 'tavily');
   const [zaiApiUrl, setZaiApiUrl] = useState<ZaiApiUrl>(currentSettings?.zaiApiUrl || 'default');
@@ -37,6 +37,9 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const [enableZaiReader, setEnableZaiReader] = useState(currentSettings?.enableZaiReader || false);
   const [zaiReaderApiUrl, setZaiReaderApiUrl] = useState<ZaiReaderApiUrl>(currentSettings?.zaiReaderApiUrl || 'default');
   const [memoryContent, setMemoryContent] = useState("");
+  const [memoryLoaded, setMemoryLoaded] = useState(false);
+  const [memoryDirty, setMemoryDirty] = useState(false);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
   // New tool group toggles
   const [enableGitTools, setEnableGitTools] = useState(currentSettings?.enableGitTools || false);
   const [enableBrowserTools, setEnableBrowserTools] = useState(currentSettings?.enableBrowserTools || false);
@@ -52,6 +55,33 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmError, setLlmError] = useState<string | null>(null);
 
+  const loadMemoryContent = useCallback(async () => {
+    setMemoryLoading(true);
+    setMemoryError(null);
+    try {
+      const content = await window.electron.invoke('read-memory');
+      setMemoryContent(content || "");
+      setMemoryLoaded(true);
+      setMemoryDirty(false);
+    } catch (error) {
+      console.error('Failed to load memory:', error);
+      setMemoryContent("");
+      setMemoryLoaded(false);
+      setMemoryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryLoading(false);
+    }
+  }, []);
+
+  const saveMemoryContent = async () => {
+    try {
+      await window.electron.invoke('write-memory', memoryContent);
+    } catch (error) {
+      console.error('Failed to save memory:', error);
+      setMemoryError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   useEffect(() => {
     if (currentSettings) {
       setApiKey(currentSettings.apiKey || "");
@@ -59,7 +89,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
       setModel(currentSettings.model || "");
       setTemperature(currentSettings.temperature?.toString() || "0.3");
       setTavilyApiKey(currentSettings.tavilyApiKey || "");
-      setEnableTavilySearch(currentSettings.enableTavilySearch !== false);
+      setEnableTavilySearch(currentSettings.enableTavilySearch || false);
       setZaiApiKey(currentSettings.zaiApiKey || "");
       setWebSearchProvider(currentSettings.webSearchProvider || 'tavily');
       setZaiApiUrl(currentSettings.zaiApiUrl || 'default');
@@ -82,28 +112,20 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     if (currentSettings?.enableMemory) {
       loadMemoryContent();
     }
-  }, [currentSettings]);
+  }, [currentSettings, loadMemoryContent]);
 
-  const loadMemoryContent = async () => {
-    setMemoryLoading(true);
-    try {
-      const content = await window.electron.invoke('read-memory');
-      setMemoryContent(content || "");
-    } catch (error) {
-      console.error('Failed to load memory:', error);
-      setMemoryContent("");
-    } finally {
-      setMemoryLoading(false);
-    }
-  };
+  // Avoid overwriting memory.md with an empty string unless the user edited it.
+  const setMemoryContentUser = useCallback((value: string) => {
+    setMemoryContent(value);
+    setMemoryDirty(true);
+  }, []);
 
-  const saveMemoryContent = async () => {
-    try {
-      await window.electron.invoke('write-memory', memoryContent);
-    } catch (error) {
-      console.error('Failed to save memory:', error);
-    }
-  };
+  // Auto-load memory when enabled so Save won't truncate the file.
+  useEffect(() => {
+    if (!enableMemory) return;
+    if (memoryLoaded || memoryLoading) return;
+    void loadMemoryContent();
+  }, [enableMemory, memoryLoaded, memoryLoading, loadMemoryContent]);
 
   const loadLlmProviders = () => {
     setLlmLoading(true);
@@ -167,7 +189,13 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     const tempValue = parseFloat(temperature);
     
     if (enableMemory) {
-      await saveMemoryContent();
+      if (memoryLoading) {
+        setMemoryError("Memory is still loading. Please try again in a moment.");
+        return;
+      }
+      if (memoryDirty) {
+        await saveMemoryContent();
+      }
     }
 
     // Prepare LLM provider settings
@@ -357,9 +385,10 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
                 enableMemory={enableMemory}
                 setEnableMemory={setEnableMemory}
                 memoryContent={memoryContent}
-                setMemoryContent={setMemoryContent}
+                setMemoryContent={setMemoryContentUser}
                 memoryLoading={memoryLoading}
                 loadMemoryContent={loadMemoryContent}
+                memoryError={memoryError}
                 permissionMode={permissionMode}
                 setPermissionMode={setPermissionMode}
               />
@@ -1314,6 +1343,7 @@ function MemoryModeTab({
   setMemoryContent,
   memoryLoading,
   loadMemoryContent,
+  memoryError,
   permissionMode,
   setPermissionMode
 }: any) {
@@ -1333,7 +1363,7 @@ function MemoryModeTab({
               checked={enableMemory}
               onChange={(e) => {
                 setEnableMemory(e.target.checked);
-                if (e.target.checked) {
+                if (e.target.checked && !memoryLoading) {
                   loadMemoryContent();
                 }
               }}
@@ -1356,6 +1386,11 @@ function MemoryModeTab({
                 {memoryLoading ? "Loading..." : "Reload"}
               </button>
             </div>
+            {memoryError && (
+              <p className="mb-2 text-xs text-error">
+                Failed to read/save memory: {memoryError}
+              </p>
+            )}
             <textarea
               value={memoryContent}
               onChange={(e) => setMemoryContent(e.target.value)}

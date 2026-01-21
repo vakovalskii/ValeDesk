@@ -391,6 +391,17 @@ const UserMessageCard = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(message.prompt);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   const handleSave = () => {
     if (editedText.trim() && onEdit) {
@@ -436,14 +447,30 @@ const UserMessageCard = ({
       ) : (
         <>
           <MDContent text={message.prompt} />
-          {onEdit && (
+          <div className="mt-2 flex items-center gap-2 self-start">
+            {onEdit && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200"
+              >
+                Edit
+              </button>
+            )}
             <button
-              onClick={() => setIsEditing(true)}
-              className="mt-2 self-start text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200"
+              onClick={handleCopy}
+              className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1.5"
+              title="Copy user message"
             >
-              Edit
+              <svg className={`w-4 h-4 ${copied ? 'text-success' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {copied ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                )}
+              </svg>
+              {copied ? 'Copied!' : 'Copy'}
             </button>
-          )}
+          </div>
         </>
       )}
     </div>

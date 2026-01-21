@@ -229,7 +229,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       
       // Function to load memory
       const loadMemory = async (): Promise<string | undefined> => {
-        if (!guiSettings?.enableMemory) return undefined;
+        if (guiSettings?.enableMemory === false) return undefined;
         
         try {
           const { readFile, access } = await import('fs/promises');
