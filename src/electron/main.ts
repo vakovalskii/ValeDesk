@@ -7,6 +7,82 @@ import { sessionManager } from "./session-manager.js";
 import { generateSessionTitle } from "./libs/util.js";
 import type { ClientEvent } from "./types.js";
 import "./libs/claude-settings.js";
+import { promises as fs } from "fs";
+import { join, resolve } from "path";
+
+function loadURLWithRetry(
+  win: BrowserWindow,
+  url: string,
+  {
+    maxAttempts = 60,
+    delayMs = 250,
+  }: { maxAttempts?: number; delayMs?: number } = {},
+) {
+  let attempt = 0;
+
+  const tryLoad = async () => {
+    attempt++;
+    try {
+      await win.loadURL(url);
+    } catch (err) {
+      if (attempt >= maxAttempts) {
+        console.error(
+          `[Main] Failed to load dev URL after ${attempt} attempts: ${url}`,
+          err,
+        );
+        return;
+      }
+      console.log(
+        `[Main] Dev server not ready yet. Retrying (${attempt}/${maxAttempts})...`,
+      );
+      setTimeout(tryLoad, delayMs);
+    }
+  };
+
+  void tryLoad();
+}
+
+app.on("ready", () => {
+  // Start the scheduler service
+  startScheduler();
+
+  const mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 900,
+    minWidth: 900,
+    minHeight: 700,
+    webPreferences: {
+      preload: getPreloadPath(),
+      spellcheck: true, // Enable spell checking
+    },
+    icon: getIconPath(),
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#FAF9F6",
+    trafficLightPosition: { x: 15, y: 18 },
+  });
+
+  if (isDev()) loadURLWithRetry(mainWindow, `http://localhost:${DEV_PORT}`);
+  else mainWindow.loadFile(getUIPath());
+
+  // Register window with SessionManager for event routing
+  sessionManager.registerWindow(mainWindow);
+
+  // Set spell checker languages (English and Russian)
+  mainWindow.webContents.session.setSpellCheckerLanguages(["en-US", "ru"]);
+
+  // Enable context menu (right-click) with copy/paste/cut and spell check suggestions
+  mainWindow.webContents.on("context-menu", (_, params) => {
+    const menuTemplate: any[] = [];
+
+    // Add spelling suggestions if there's a misspelled word
+    if (params.misspelledWord) {
+      // Add suggestions
+      params.dictionarySuggestions.slice(0, 5).forEach((suggestion) => {
+        menuTemplate.push({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+        });
+      });
 import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
 
@@ -132,6 +208,85 @@ app.on("ready", () => {
         shell.openPath(filePath);
     });
 
+    const menu = Menu.buildFromTemplate(menuTemplate);
+    menu.popup();
+  });
+
+  pollResources(mainWindow);
+
+  ipcMainHandle("getStaticData", () => {
+    return getStaticData();
+  });
+
+  // Handle client events
+  ipcMain.on("client-event", (event, data: ClientEvent) => {
+    // Get window ID from sender's webContents
+    const windowId = BrowserWindow.fromWebContents(event.sender)?.id;
+    if (windowId === undefined) {
+      console.error("[Main] Unable to determine window ID for client event");
+      return;
+    }
+    handleClientEvent(data, windowId);
+  });
+
+  // Handle open directory in Finder/Explorer
+  ipcMain.on("open-directory", (_, dirPath: string) => {
+    shell.openPath(dirPath);
+  });
+
+  // Handle open file in system default app
+  ipcMain.on("open-file", (_, filePath: string) => {
+    shell.openPath(filePath);
+  });
+
+  // Handle list directory contents
+  ipcMainHandle("list-directory", async (_, dirPath: string) => {
+    try {
+      console.log("[FileBrowser] Listing directory:", dirPath);
+
+      // Security: Only allow listing directories within the current session's cwd
+      // Get all sessions and find one with matching cwd
+      const allSessions = sessions.listSessions();
+
+      // Normalize paths for comparison (handles Cyrillic usernames and case differences on Windows)
+      const normalizedDirPath = resolve(dirPath).toLowerCase().normalize("NFC");
+
+      const sessionCwd = allSessions.find((s) => {
+        if (!s.cwd) return false;
+        const normalizedSessionCwd = resolve(s.cwd)
+          .toLowerCase()
+          .normalize("NFC");
+        return normalizedDirPath.startsWith(normalizedSessionCwd);
+      })?.cwd;
+
+      if (!sessionCwd) {
+        console.error("[FileBrowser] No active session cwd found");
+        return [];
+      }
+
+      // Normalize paths and check if dirPath is within sessionCwd
+      const normalizedCwd = resolve(sessionCwd).toLowerCase().normalize("NFC");
+
+      if (!normalizedDirPath.startsWith(normalizedCwd)) {
+        console.error(
+          "[FileBrowser] Access denied: Path is outside session cwd",
+          {
+            requested: normalizedDirPath,
+            allowed: normalizedCwd,
+          },
+        );
+        return [];
+      }
+
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      console.log(`[FileBrowser] Found ${entries.length} entries`);
+
+      const files = await Promise.all(
+        entries.map(async (entry: any) => {
+          const fullPath = join(dirPath, entry.name);
+          let size = undefined;
+
+          if (!entry.isDirectory()) {
     // Handle list directory contents
     ipcMainHandle("list-directory", async (_, dirPath: string) => {
         try {
@@ -289,6 +444,18 @@ app.on("ready", () => {
         }
     });
 
+  // Handle opening external URLs in default browser
+  ipcMainHandle("open-external-url", async (_, url: string) => {
+    try {
+      console.log("[Main] Opening external URL:", url);
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error: any) {
+      console.error("[Main] Error opening URL:", error);
+      return { success: false, error: error.message };
+    }
+  });
+});
     // Handle get build info
     ipcMainHandle("get-build-info", async () => {
         try {
