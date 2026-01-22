@@ -214,9 +214,9 @@ export class ToolExecutor {
         }
       }
 
-      // Normalize the real path
-      const normalizedRealPath = normalize(realPath);
-      const normalizedCwd = normalize(this.cwd);
+      // Normalize the real path (handles Cyrillic usernames and case differences on Windows)
+      const normalizedRealPath = normalize(realPath).toLowerCase().normalize('NFC');
+      const normalizedCwd = normalize(this.cwd).toLowerCase().normalize('NFC');
 
       // Check if the path is within cwd using string comparison
       // Add separator to prevent partial matches (e.g., /app vs /app-data)

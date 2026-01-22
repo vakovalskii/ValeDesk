@@ -140,7 +140,15 @@ app.on("ready", () => {
             // Security: Only allow listing directories within the current session's cwd
             // Get all sessions and find one with matching cwd
             const allSessions = sessions.listSessions();
-            const sessionCwd = allSessions.find(s => dirPath.startsWith(s.cwd || ''))?.cwd;
+            
+            // Normalize paths for comparison (handles Cyrillic usernames and case differences on Windows)
+            const normalizedDirPath = resolve(dirPath).toLowerCase().normalize('NFC');
+            
+            const sessionCwd = allSessions.find(s => {
+                if (!s.cwd) return false;
+                const normalizedSessionCwd = resolve(s.cwd).toLowerCase().normalize('NFC');
+                return normalizedDirPath.startsWith(normalizedSessionCwd);
+            })?.cwd;
             
             if (!sessionCwd) {
                 console.error('[FileBrowser] No active session cwd found');
@@ -148,8 +156,7 @@ app.on("ready", () => {
             }
             
             // Normalize paths and check if dirPath is within sessionCwd
-            const normalizedDirPath = resolve(dirPath);
-            const normalizedCwd = resolve(sessionCwd);
+            const normalizedCwd = resolve(sessionCwd).toLowerCase().normalize('NFC');
             
             if (!normalizedDirPath.startsWith(normalizedCwd)) {
                 console.error('[FileBrowser] Access denied: Path is outside session cwd', {
