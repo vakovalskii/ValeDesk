@@ -24,5 +24,12 @@ export function ipcWebContentsSend<Key extends keyof EventPayloadMapping>(key: K
 export function validateEventFrame(frame: WebFrameMain) {
     if (isDev() && new URL(frame.url).host === `localhost:${DEV_PORT}`) return;
 
-    if (frame.url !== pathToFileURL(getUIPath()).toString()) throw new Error("Malicious event");
+    // Normalize URLs for comparison (Windows paths may have different case for drive letter)
+    const expectedUrl = pathToFileURL(getUIPath()).toString().toLowerCase();
+    const actualUrl = frame.url.toLowerCase();
+    
+    if (actualUrl !== expectedUrl) {
+        console.error('[Security] Frame URL mismatch:', { actual: frame.url, expected: pathToFileURL(getUIPath()).toString() });
+        throw new Error("Malicious event");
+    }
 }
