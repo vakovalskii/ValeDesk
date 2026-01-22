@@ -158,7 +158,8 @@ const ToolResult = ({ messageContent }: { messageContent: ToolResultContent }) =
   const isFirstRender = useRef(true);
   let lines: string[] = [];
   
-  if (messageContent.type !== "tool_result") return null;
+  // Type guard: messageContent must be an object with type property
+  if (typeof messageContent === "string" || !messageContent || messageContent.type !== "tool_result") return null;
   
   const toolUseId = messageContent.tool_use_id;
   const status: ToolStatus = messageContent.is_error ? "error" : "success";
@@ -596,13 +597,14 @@ export function MessageCard({
 
   if (sdkMessage.type === "user") {
     const contents = sdkMessage.message.content;
+    // Guard: contents must be an array
+    if (typeof contents === "string" || !Array.isArray(contents)) return null;
     return (
       <>
         {contents.map((content: ToolResultContent, idx: number) => {
-          if (content.type === "tool_result") {
-            return <ToolResult key={idx} messageContent={content} />;
-          }
-          return null;
+          // Guard: content must be an object with type property
+          if (typeof content === "string" || !content || content.type !== "tool_result") return null;
+          return <ToolResult key={idx} messageContent={content} />;
         })}
       </>
     );
