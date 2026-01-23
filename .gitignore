@@ -19,6 +19,7 @@ dist-sidecar/
 
 # Tauri / Rust build artifacts
 src-tauri/target/
+src-tauri/bin/
 *.rs.bk
 
 # Build info (generated at build time)
