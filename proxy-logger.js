@@ -5,6 +5,7 @@
  * Usage:
  * 1. Run: node proxy-logger.js
  * 2. Change Base URL in Agent Cowork settings to: http://localhost:8888
+ * 2. Change Base URL in LocalDesk settings to: http://localhost:8888
  * 3. All requests will be logged to ./logs/proxy-requests.log
  */
 
@@ -103,6 +104,7 @@ server.listen(PROXY_PORT, () => {
 
 📝 Next steps:
   1. Open Agent Cowork Settings
+  1. Open LocalDesk Settings
   2. Change Base URL to: http://localhost:${PROXY_PORT}
   3. Make a request
   4. Check logs in: ${logFile}
