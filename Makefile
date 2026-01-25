@@ -12,6 +12,9 @@ else
 endif
 
 ensure-node-deps: check-tools
+ifdef OS
+	@powershell -ExecutionPolicy ByPass -File ./scripts/ensure_node_deps.ps1
+else
 	@test -f package-lock.json || { echo "level=error event=missing_file file=package-lock.json msg=\"package-lock.json is required for npm ci\"" >&2; exit 1; }
 	@if [ ! -d node_modules ]; then \
 		echo "level=info event=install deps=npm msg=\"node_modules not found; running npm ci\""; \
@@ -19,8 +22,12 @@ ensure-node-deps: check-tools
 		echo "level=info event=rebuild module=better-sqlite3 msg=\"rebuilding native module for current Node.js\""; \
 		npm rebuild better-sqlite3; \
 	fi
+endif
 
 ensure-rust:
+ifdef OS
+	@powershell -ExecutionPolicy ByPass -File ./scripts/ensure_rust.ps1 -MinRustVersion "$(MIN_RUST_VERSION)"
+else
 	@echo "Checking Rust version..."
 	@if ! command -v rustc >/dev/null 2>&1; then \
 		echo ""; \
@@ -49,8 +56,12 @@ ensure-rust:
 		exit 1; \
 	fi
 	@echo "✓ Rust $$(rustc --version | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/') (minimum: $(MIN_RUST_VERSION))"
+endif
 
 ensure-tauri-cli: ensure-rust
+ifdef OS
+	@powershell -ExecutionPolicy ByPass -File ./scripts/ensure_tauri_cli.ps1
+else
 	@if ! command -v cargo-tauri >/dev/null 2>&1; then \
 		echo "level=info event=install tool=cargo-tauri cmd=\"cargo install tauri-cli --locked\" msg=\"cargo-tauri not found; installing tauri-cli\""; \
 		cargo install tauri-cli --locked; \
@@ -59,6 +70,7 @@ ensure-tauri-cli: ensure-rust
 		echo "level=error event=install_failed tool=cargo-tauri msg=\"cargo-tauri still not found after install; ensure $$CARGO_HOME/bin (or $$HOME/.cargo/bin) is in PATH\"" >&2; \
 		exit 1; \
 	}
+endif
 
 ensure-tools:
 	@$(MAKE) --no-print-directory check-tools
@@ -97,7 +109,11 @@ bundle: ensure-tools
 	@echo "Building UI..."
 	@npm run build
 	@echo "Building sidecar binary..."
+ifdef OS
+	@powershell -Command "if (-not (Test-Path src-tauri\bin)) { New-Item -ItemType Directory -Path src-tauri\bin | Out-Null }"
+else
 	@mkdir -p src-tauri/bin
+endif
 	@npm run build:sidecar
 	@echo "Building Tauri bundle..."
 	@cd src-tauri && cargo tauri build
