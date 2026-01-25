@@ -46,6 +46,45 @@ https://github.com/user-attachments/assets/a8c54ce0-2fe0-40c3-8018-026cab9d7483
 - ✅ **Request Timeouts** — 5-minute timeout with auto-retry for LLM requests
 - ✅ **Session Logging** — full request/response JSON logs per iteration in `~/.localdesk/logs/sessions/`
 
+## 🤔 Why LocalDesk?
+
+### Open Architecture & Full Control
+LocalDesk isn't just another AI assistant — **it's a framework you own**. Built with TypeScript and Electron, every component is transparent and modifiable:
+
+- **Readable codebase** — well-structured, documented code you can understand
+- **Easy customization** — add new tools, modify prompts, change UI without black boxes
+- **Your rules** — adjust behavior, safety limits, and workflows to match your needs
+- **No vendor lock-in** — works with any OpenAI-compatible API (vLLM, Ollama, LM Studio)
+
+### 100% Local & Private
+Everything runs **on your machine**:
+
+- **Local inference** — use Ollama, vLLM, or LM Studio for complete privacy
+- **No data collection** — your conversations never leave your computer
+- **Offline capable** — works without internet (except web search tools)
+- **Sandboxed execution** — secure JavaScript sandbox and file operation restrictions
+
+### Experiment & Iterate
+Perfect for developers, researchers, and AI enthusiasts:
+
+- **Test local models** — compare Qwen, Llama, DeepSeek, and others
+- **Debug API calls** — full request/response logs for every interaction
+- **Prototype tools** — add custom functions in minutes
+- **Monitor performance** — track tokens, timing, and resource usage
+
+### Real Use Cases
+```bash
+# Run Ollama locally (free, 100% private)
+ollama serve
+# Configure LocalDesk: http://localhost:11434/v1
+
+# Or use vLLM for faster inference
+vllm serve Qwen/Qwen2.5-14B-Instruct --port 8000
+# Configure LocalDesk: http://localhost:8000/v1
+```
+
+**TL;DR:** LocalDesk gives you the **power of ChatGPT/Claude** with the **freedom of open source** and **privacy of local execution**.
+
 ## 🚀 Quick Start
 
 ### Tauri edition 
@@ -189,12 +228,6 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 |------|-------------|
 | `execute_js` | Run JavaScript in secure WASM sandbox (QuickJS) |
 
-**execute_js** features:
-- Available globals: `fs`, `path`, `console`, `JSON`, `Math`, `Date`, `__dirname`
-- No imports needed — use globals directly
-- No TypeScript, no async/await, no npm packages
-- Use `return` statement to output results
-
 ### Web Tools
 | Tool | Description |
 |------|-------------|
@@ -202,12 +235,6 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 | `extract_page` | Extract full page content (Tavily only) |
 | `read_page` | Read web page content (Z.AI Reader) |
 | `render_page` | Render JS-heavy pages via Chromium (Telegram, SPAs) |
-
-**render_page** features:
-- Auto-converts `t.me/channel` → `t.me/s/channel` (web preview)
-- Extracts reactions, views, dates from Telegram posts
-- Auto-scrolls to load older posts (`max_posts` parameter)
-- Works with any JavaScript-rendered page
 
 ### Task Management
 
@@ -218,58 +245,12 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 |------|-------------|
 | `manage_todos` | Create/update task plans with visual progress tracking |
 
-**manage_todos** features:
-- Actions: `create`, `update`, `clear`
-- Statuses: `pending`, `in_progress`, `completed`, `cancelled`
-- Persisted per session in SQLite database
-- Visual TodoPanel with progress bar
-
 ### Memory
 | Tool | Description |
 |------|-------------|
 | `manage_memory` | Store/read persistent user preferences |
 
 > **Security:** All file operations are sandboxed to the workspace folder only.
-
-## 🏗️ Project Structure
-
-```
-src/
-├── electron/                    # Electron main process
-│   ├── main.ts                 # Entry point
-│   ├── ipc-handlers.ts         # IPC communication
-│   └── libs/
-│       ├── runner-openai.ts    # OpenAI API runner
-│       ├── tools-executor.ts   # Tool execution logic  
-│       ├── session-store.ts    # SQLite session persistence
-│       ├── container/
-│       │   └── quickjs-sandbox.ts  # WASM sandbox
-│       ├── prompts/
-│       │   └── system.txt      # System prompt template
-│       └── tools/              # Tool definitions (snake_case)
-│           ├── bash-tool.ts        # run_command
-│           ├── read-tool.ts        # read_file
-│           ├── write-tool.ts       # write_file
-│           ├── edit-tool.ts        # edit_file
-│           ├── glob-tool.ts        # search_files
-│           ├── grep-tool.ts        # search_text
-│           ├── execute-js-tool.ts  # execute_js
-│           ├── read-document-tool.ts # read_document
-│           ├── web-search.ts       # search_web
-│           ├── extract-page-content.ts # extract_page
-│           ├── render-page-tool.ts # render_page (Telegram/SPA)
-│           ├── zai-reader.ts       # read_page
-│           ├── manage-todos-tool.ts # manage_todos
-│           └── memory-tool.ts      # manage_memory
-└── ui/                         # React frontend
-    ├── App.tsx                 # Main component
-    ├── components/
-    │   ├── TodoPanel.tsx       # Task planning UI
-    │   ├── PromptInput.tsx     # Message input
-    │   └── ...
-    └── store/
-        └── useAppStore.ts      # Zustand state management
-```
 
 ## 📦 Building
 
@@ -312,6 +293,14 @@ Files:
 - `~/.localdesk/logs/sessions/{session-id}/` — per-session API logs:
   - `turn-001-request.json` — full request (model, messages, tools, temperature)
   - `turn-001-response.json` — full response (usage, content, tool_calls)
+
+## 🛠️ Contributing
+
+See [CURSOR.md](CURSOR.md) for development guidelines and project architecture.
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vakovalskii/LocalDesk&type=Date)](https://star-history.com/#vakovalskii/LocalDesk&Date)
 
 ## 📄 License
 

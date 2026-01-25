@@ -4,7 +4,7 @@
  * 
  * Usage:
  * 1. Run: node proxy-logger.js
- * 2. Change Base URL in Agent Cowork settings to: http://localhost:8888
+ * 2. Change Base URL in LocalDesk settings to: http://localhost:8888
  * 3. All requests will be logged to ./logs/proxy-requests.log
  */
 
@@ -16,7 +16,7 @@ const { URL } = require('url');
 
 // Configuration
 const PROXY_PORT = 8888;
-const TARGET_BASE_URL = 'https://4090-2-48.neuraldeep.tech'; // Change this to your vLLM URL
+const TARGET_BASE_URL = process.env.VLLM_URL || 'http://localhost:8000/v1'; // Set VLLM_URL env var or change this to your vLLM URL
 const LOGS_DIR = path.join(__dirname, 'logs');
 
 // Ensure logs directory exists
@@ -102,7 +102,7 @@ server.listen(PROXY_PORT, () => {
 ✓ Log file: ${path.basename(logFile)}
 
 📝 Next steps:
-  1. Open Agent Cowork Settings
+  1. Open LocalDesk Settings
   2. Change Base URL to: http://localhost:${PROXY_PORT}
   3. Make a request
   4. Check logs in: ${logFile}

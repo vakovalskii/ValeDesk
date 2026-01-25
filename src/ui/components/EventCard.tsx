@@ -267,6 +267,7 @@ const ToolUseCard = ({
   const statusVariant = toolStatus === "error" ? "error" : "success";
   const isPending = !toolStatus || toolStatus === "pending";
   const shouldShowDot = toolStatus === "success" || toolStatus === "error" || showIndicator;
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     if (messageContent?.id && !toolStatusMap.has(messageContent.id)) setToolStatus(messageContent.id, "pending");
@@ -275,12 +276,36 @@ const ToolUseCard = ({
   const getToolInfo = (): string | null => {
     const input = messageContent.input as Record<string, any>;
     switch (messageContent.name) {
-      case "Bash": return input?.command || null;
-      case "Read": case "Write": case "Edit": return input?.file_path || null;
-      case "Glob": case "Grep": return input?.pattern || null;
-      case "Task": return input?.description || null;
-      case "WebFetch": return input?.url || null;
+      case "Bash": case "run_command":
+        return input?.command || input?.cmd || null;
+      case "Read": case "read_file":
+      case "Write": case "write_file":
+      case "Edit": case "edit_file":
+        return input?.file_path || null;
+      case "Glob": case "search_files":
+      case "Grep": case "search_text":
+        return input?.pattern || null;
+      case "Task":
+        return input?.description || null;
+      case "WebFetch": case "fetch": case "fetch_html": case "fetch_json":
+        return input?.url || null;
       default: return null;
+    }
+  };
+
+  const input = messageContent.input as Record<string, any>;
+  const isCommandTool = messageContent.name === "run_command" || messageContent.name === "Bash";
+  const commandText = isCommandTool ? (input?.command || input?.cmd || input?.args || "") : "";
+  const canExpand = Boolean(isCommandTool && commandText);
+  const toggleExpand = () => {
+    if (!canExpand) return;
+    setIsExpanded((prev) => !prev);
+  };
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!canExpand) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleExpand();
     }
   };
 
@@ -299,14 +324,29 @@ const ToolUseCard = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-[1rem] bg-surface-tertiary px-3 py-2 mt-4 overflow-hidden">
+    <div
+      className={`flex flex-col gap-2 rounded-[1rem] bg-surface-tertiary px-3 py-2 mt-4 overflow-hidden ${canExpand ? "cursor-pointer" : ""}`}
+      onClick={toggleExpand}
+      onKeyDown={handleKeyDown}
+      role={canExpand ? "button" : undefined}
+      tabIndex={canExpand ? 0 : -1}
+      aria-expanded={canExpand ? isExpanded : undefined}
+    >
       <div className="flex flex-row items-center gap-2 min-w-0">
         <StatusDot variant={statusVariant} isActive={isPending && showIndicator} isVisible={shouldShowDot} />
         <div className="flex flex-row items-center gap-2 tool-use-item min-w-0 flex-1">
           <span className="inline-flex items-center rounded-md text-accent py-0.5 text-sm font-medium shrink-0">{messageContent.name}</span>
           <span className="text-sm text-muted truncate">{getToolInfo()}</span>
         </div>
+        {canExpand && (
+          <span className="text-xs text-muted shrink-0">{isExpanded ? "▲" : "▼"}</span>
+        )}
       </div>
+      {canExpand && isExpanded && (
+        <pre className="mt-2 rounded-lg bg-ink-900/5 px-3 py-2 text-xs text-ink-700 whitespace-pre-wrap break-words overflow-auto">
+          {String(commandText)}
+        </pre>
+      )}
     </div>
   );
 };
