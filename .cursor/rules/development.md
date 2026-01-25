@@ -69,26 +69,61 @@ security: replace hardcoded URLs with environment variables
 
 ## Development Commands
 
+### Tauri (Recommended)
+
 ```bash
-# Start development (macOS/Linux)
-npm run dev
+# Start development (uses Makefile)
+make dev
 
-# Start development (Windows)
-npm run dev:win
+# Or run components separately:
+make dev-sidecar   # Transpile sidecar only
+make dev-ui        # Start Vite dev server only
+make dev-tauri     # Start Tauri only
 
+# Build production bundle
+make bundle
+```
+
+### Legacy Electron (deprecated)
+
+```bash
+npm run dev        # macOS/Linux
+npm run dev:win    # Windows
+```
+
+### Common Commands
+
+```bash
 # Type check without building
 npm run type-check
 
 # Lint code
 npm run lint
 
-# Build for production
-npm run build
+# Rebuild native modules (if Node.js version changed)
+npm rebuild better-sqlite3
+```
 
-# Build distributables
-npm run dist:mac    # macOS
-npm run dist:win    # Windows
-npm run dist:linux  # Linux
+## Rust Commands
+
+```bash
+# Update Rust toolchain
+rustup update stable
+
+# Check Rust version (need 1.74+)
+rustc --version
+
+# Install Tauri CLI
+cargo install tauri-cli --locked
+
+# Run Tauri dev directly
+cd src-tauri && cargo tauri dev
+
+# Build Tauri release
+cd src-tauri && cargo tauri build
+
+# Fix Rust warnings
+cargo fix --bin "localdesk" -p localdesk
 ```
 
 ## Environment Variables

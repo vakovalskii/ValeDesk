@@ -3,6 +3,7 @@
 ## Overview
 
 The system prompt is built dynamically from a template with variable substitution.
+**Tools are NOT hardcoded** - they are generated dynamically from active tool definitions.
 
 ## Template Location
 
@@ -22,9 +23,10 @@ The system prompt is built dynamically from a template with variable substitutio
   <current_working_directory>{cwd}</current_working_directory>
 </SYSTEM_ENVIRONMENT>
 
-<AVAILABLE_TOOLS>
-  Tool descriptions with conditional lines
-</AVAILABLE_TOOLS>
+<TOOL_USAGE_GUIDELINES>
+  {tools_summary}  <!-- Generated dynamically from active tools -->
+  Usage principles and common patterns
+</TOOL_USAGE_GUIDELINES>
 
 <OS_SPECIFIC_COMMANDS os="{osName}">
   Platform-specific command references
@@ -39,58 +41,78 @@ The system prompt is built dynamically from a template with variable substitutio
 </IMPORTANT_RULES>
 ```
 
+## Dynamic Tools Summary
+
+The `{tools_summary}` is generated from actual tool definitions:
+
+```typescript
+// In tools-definitions.ts
+export function generateToolsSummary(tools: ToolDefinition[]): string {
+  // Groups tools by category (File, Code, System, Web, Browser, Git, etc.)
+  // Returns concise list like:
+  // **Available Tools** (use via function calling):
+  // - File: `read_file`, `write_file`, `edit_file`
+  // - Git: `git_*` (11 tools)
+  // - Browser: `browser_*` (11 tools)
+}
+```
+
+This ensures:
+1. ✅ No hardcoded tool lists
+2. ✅ Always matches actual available tools
+3. ✅ Respects user settings (disabled tools not shown)
+
 ## Variable Substitution
 
 Variables are replaced at runtime in `prompt-loader.ts`:
 
 | Variable | Source | Example |
 |----------|--------|---------|
-| `{osName}` | `os.platform()` | `darwin`, `win32`, `linux` |
-| `{platform}` | `os.arch()` | `x64`, `arm64` |
-| `{shell}` | OS-dependent | `zsh`, `PowerShell`, `bash` |
+| `{osName}` | `os.platform()` | `macOS`, `Windows`, `Linux` |
+| `{platform}` | `os.arch()` | `darwin`, `win32`, `linux` |
+| `{shell}` | OS-dependent | `bash`, `PowerShell` |
 | `{cwd}` | Session workspace | `/Users/john/project` |
-
-### Conditional Lines
-
-Some lines are conditionally included based on settings:
-
-```
-{attach_image_line}
-- `attach_image` - Load a local image file...
-
-{read_page_line}
-- `read_page` - Read web page content (Z.AI Reader)
-
-{memory_line}
-- `manage_memory` - Store/read persistent preferences
-```
+| `{tools_summary}` | `generateToolsSummary()` | Dynamic tool list |
+| `{skills_section}` | Loaded skills | Skill instructions |
 
 ## Building the Prompt
 
 `src/electron/libs/prompt-loader.ts`:
 
 ```typescript
-export function getSystemPrompt(cwd: string, settings: ApiSettings | null): string {
+export function getSystemPrompt(cwd: string, toolsSummary: string = ''): string {
   // 1. Load template from system.txt
   const template = loadTemplate();
   
   // 2. Detect OS and shell
-  const osName = os.platform();
-  const shell = getShell(osName);
+  const osName = getOSName();
+  const cmds = getShellCommands();
   
-  // 3. Build conditional lines based on settings
-  const memoryLine = settings?.enableMemory !== false 
-    ? '- `manage_memory` - ...' 
-    : '';
+  // 3. Build skills section
+  const skillsSection = generateSkillsPromptSection();
   
   // 4. Replace all variables
   return template
     .replace(/{osName}/g, osName)
-    .replace(/{shell}/g, shell)
+    .replace(/{shell}/g, isWindows ? 'PowerShell' : 'bash')
     .replace(/{cwd}/g, cwd)
-    .replace(/{memory_line}/g, memoryLine)
+    .replace(/{tools_summary}/g, toolsSummary)
+    .replace(/{skills_section}/g, skillsSection)
     // ... more replacements
 }
+```
+
+Usage in `runner-openai.ts`:
+
+```typescript
+// Get filtered tools based on user settings
+const activeTools = getTools(settings);
+
+// Generate summary for system prompt
+const toolsSummary = generateToolsSummary(activeTools);
+
+// Build complete system prompt
+const systemContent = getSystemPrompt(cwd, toolsSummary);
 ```
 
 ## OS-Specific Commands
@@ -98,17 +120,17 @@ export function getSystemPrompt(cwd: string, settings: ApiSettings | null): stri
 The prompt includes platform-specific command hints:
 
 **macOS/Linux:**
-```
-<list_files>ls -la</list_files>
+```xml
+<list_files>ls</list_files>
 <view_file>cat filename</view_file>
 <find_files>find . -name "pattern"</find_files>
 ```
 
 **Windows:**
-```
-<list_files>Get-ChildItem -Force</list_files>
+```xml
+<list_files>Get-ChildItem</list_files>
 <view_file>Get-Content filename</view_file>
-<find_files>Get-ChildItem -Recurse -Filter "pattern"</find_files>
+<find_files>Get-ChildItem -Recurse -Name</find_files>
 ```
 
 ## Todos Integration
@@ -164,8 +186,8 @@ Loaded skills add their instructions to the prompt:
 
 ## Best Practices
 
-1. **Keep template readable** - Use XML-like tags for structure
-2. **Minimize tokens** - Remove unnecessary words
-3. **Be specific** - Clear instructions reduce hallucinations
-4. **Test changes** - Prompt changes affect all conversations
-5. **Version control** - Track prompt changes in git
+1. **Dynamic over static** - Generate tool lists from definitions
+2. **Keep template readable** - Use XML-like tags for structure
+3. **Minimize tokens** - Remove unnecessary words
+4. **Be specific** - Clear instructions reduce hallucinations
+5. **Test changes** - Prompt changes affect all conversations

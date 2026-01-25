@@ -15,7 +15,7 @@ const BROWSER_TOOLS = ['browser_navigate', 'browser_click', 'browser_type', 'bro
 const DUCKDUCKGO_TOOLS = ['search', 'search_news', 'search_images'];
 
 // Fetch/HTTP tool names
-const FETCH_TOOLS = ['fetch', 'fetch_json', 'download', 'fetch_html'];
+const FETCH_TOOLS = ['fetch', 'fetch_json', 'download_file', 'fetch_html'];
 
 // Image attachment tool names
 const IMAGE_TOOLS = ['attach_image'];
@@ -77,3 +77,77 @@ export function getTools(settings: ApiSettings | null) {
 
 // Export all tools (for backward compatibility)
 export const TOOLS = ALL_TOOL_DEFINITIONS;
+
+/**
+ * Generate a summary of available tools for system prompt
+ * Groups tools by category and returns concise list
+ */
+export function generateToolsSummary(tools: typeof ALL_TOOL_DEFINITIONS): string {
+  if (tools.length === 0) return '';
+  
+  // Group tools by prefix/category
+  const categories: Record<string, string[]> = {
+    'File': [],
+    'Code': [],
+    'System': [],
+    'Web': [],
+    'Browser': [],
+    'Git': [],
+    'Memory': [],
+    'Tasks': [],
+    'Scheduler': [],
+    'Other': []
+  };
+  
+  for (const tool of tools) {
+    const name = tool.function.name;
+    
+    if (name.startsWith('git_')) {
+      categories['Git'].push(name);
+    } else if (name.startsWith('browser_')) {
+      categories['Browser'].push(name);
+    } else if (['read_file', 'write_file', 'edit_file', 'search_files', 'search_text', 'read_document', 'attach_image'].includes(name)) {
+      categories['File'].push(name);
+    } else if (name === 'execute_js') {
+      categories['Code'].push(name);
+    } else if (name === 'run_command') {
+      categories['System'].push(name);
+    } else if (['search_web', 'extract_page', 'read_page', 'fetch_html', 'fetch_json', 'download_file', 'search', 'search_news', 'search_images'].includes(name)) {
+      categories['Web'].push(name);
+    } else if (name === 'manage_memory') {
+      categories['Memory'].push(name);
+    } else if (name === 'manage_todos') {
+      categories['Tasks'].push(name);
+    } else if (name === 'schedule_task') {
+      categories['Scheduler'].push(name);
+    } else {
+      categories['Other'].push(name);
+    }
+  }
+  
+  // Build summary string
+  const lines: string[] = ['**Available Tools** (use via function calling):'];
+  
+  for (const [category, toolNames] of Object.entries(categories)) {
+    if (toolNames.length === 0) continue;
+    
+    // Check if all tools share the same prefix (like git_*, browser_*)
+    const prefixes = new Set(toolNames.map(t => t.split('_')[0]));
+    const hasUniformPrefix = prefixes.size === 1 && toolNames.length > 3;
+    
+    if (hasUniformPrefix) {
+      // Compact form for uniform prefix groups (git_*, browser_*)
+      const prefix = toolNames[0].split('_')[0];
+      lines.push(`- ${category}: \`${prefix}_*\` (${toolNames.length} tools)`);
+    } else if (toolNames.length <= 5) {
+      // Show all tools if 5 or fewer
+      lines.push(`- ${category}: ${toolNames.map(t => '`' + t + '`').join(', ')}`);
+    } else {
+      // Show first few + count for large mixed groups
+      const shown = toolNames.slice(0, 3).map(t => '`' + t + '`').join(', ');
+      lines.push(`- ${category}: ${shown} (+${toolNames.length - 3} more)`);
+    }
+  }
+  
+  return lines.join('\n');
+}

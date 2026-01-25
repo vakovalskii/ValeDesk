@@ -4,28 +4,38 @@
 
 ## Project Overview
 
-LocalDesk is a desktop AI assistant built with Electron + React + TypeScript.
+LocalDesk is a desktop AI assistant built with **Tauri (Rust)** + **Node.js sidecar** + **React**.
 It supports local LLM inference via OpenAI-compatible APIs (vLLM, Ollama, LM Studio).
 
 ## Quick Reference
 
 | What | Where |
 |------|-------|
-| Main process | `src/electron/` |
+| Rust backend | `src-tauri/src/main.rs` |
+| Node sidecar | `src/sidecar/` |
+| Shared libs | `src/electron/libs/` |
 | React UI | `src/ui/` |
 | Tools | `src/electron/libs/tools/` |
 | System prompt | `src/electron/libs/prompts/system.txt` |
 | LLM runner | `src/electron/libs/runner-openai.ts` |
 | State store | `src/ui/store/useAppStore.ts` |
+| Build config | `Makefile` |
 
 ## Development Commands
 
 ```bash
-npm run dev          # Start dev mode (macOS/Linux)
-npm run dev:win      # Start dev mode (Windows)
+# Tauri development (recommended)
+make dev             # Start Tauri + Vite + Sidecar
+
+# Individual components
+make dev-ui          # Vite dev server only
+make dev-sidecar     # Transpile sidecar only
+make bundle          # Production build
+
+# Utilities
 npm run type-check   # TypeScript validation
 npm run lint         # ESLint check
-npm run build        # Production build
+rustc --version      # Check Rust (need 1.74+)
 ```
 
 ## Detailed Documentation
@@ -68,8 +78,9 @@ security: remove hardcoded credentials
 
 ## Tech Stack
 
-- **Desktop**: Electron 32+
+- **Desktop**: Tauri 2.x (Rust backend)
+- **Sidecar**: Node.js (LLM logic, tools, SQLite)
 - **Frontend**: React 19, Zustand, Tailwind CSS
-- **Database**: better-sqlite3
+- **Database**: better-sqlite3 (via sidecar)
 - **JS Sandbox**: quickjs-emscripten (WASM)
-- **Build**: Vite + electron-builder
+- **Build**: Vite + cargo tauri build

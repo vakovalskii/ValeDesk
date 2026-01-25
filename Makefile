@@ -1,7 +1,8 @@
-.PHONY: dev dev-sidecar dev-ui dev-tauri check-tools ensure-tools ensure-node-deps ensure-tauri-cli bundle
+.PHONY: dev dev-sidecar dev-ui dev-tauri check-tools ensure-tools ensure-node-deps ensure-tauri-cli ensure-rust bundle
 
 LOCALDESK_ROOT := $(CURDIR)
 SIDECAR_ENTRY := $(LOCALDESK_ROOT)/dist-sidecar/sidecar/main.js
+MIN_RUST_VERSION := 1.74.0
 
 check-tools:
 ifdef OS
@@ -19,7 +20,29 @@ ensure-node-deps: check-tools
 		npm rebuild better-sqlite3; \
 	fi
 
-ensure-tauri-cli: check-tools
+ensure-rust:
+	@echo "Checking Rust version..."
+	@if ! command -v rustc >/dev/null 2>&1; then \
+		echo ""; \
+		echo "❌ ERROR: Rust is not installed"; \
+		echo ""; \
+		echo "Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@RUST_VERSION=$$(rustc --version | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'); \
+	MIN_VERSION="$(MIN_RUST_VERSION)"; \
+	if [ "$$(printf '%s\n' "$$MIN_VERSION" "$$RUST_VERSION" | sort -V | head -n1)" != "$$MIN_VERSION" ]; then \
+		echo ""; \
+		echo "❌ ERROR: Rust version $$RUST_VERSION is too old (minimum: $$MIN_VERSION)"; \
+		echo ""; \
+		echo "Update Rust: rustup update stable"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "✓ Rust $$(rustc --version | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/') (minimum: $(MIN_RUST_VERSION))"
+
+ensure-tauri-cli: ensure-rust
 	@if ! command -v cargo-tauri >/dev/null 2>&1; then \
 		echo "level=info event=install tool=cargo-tauri cmd=\"cargo install tauri-cli --locked\" msg=\"cargo-tauri not found; installing tauri-cli\""; \
 		cargo install tauri-cli --locked; \
@@ -31,6 +54,7 @@ ensure-tauri-cli: check-tools
 
 ensure-tools:
 	@$(MAKE) --no-print-directory check-tools
+	@$(MAKE) --no-print-directory ensure-rust
 	@$(MAKE) --no-print-directory ensure-node-deps
 	@$(MAKE) --no-print-directory ensure-tauri-cli
 

@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(dead_code)] // TODO: remove after migration complete
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -315,7 +316,6 @@ fn start_sidecar(app: tauri::AppHandle, sidecar_state: &SidecarState) -> Result<
     return Err(format!("[sidecar] entry does not exist: {}", entry.display()));
   }
 
-  let node_bin = resolve_node_bin()?;
   let user_data_dir = app_data_dir()?;
   fs::create_dir_all(&user_data_dir).map_err(|error| format!("[sidecar] Failed to create user data dir: {error}"))?;
 

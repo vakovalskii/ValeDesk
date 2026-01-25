@@ -9,7 +9,7 @@ import type { ServerEvent } from "../types.js";
 import type { Session } from "./session-store.js";
 import { loadApiSettings } from "./settings-store.js";
 import { loadLLMProviderSettings } from "./llm-providers-store.js";
-import { TOOLS, getTools } from "./tools-definitions.js";
+import { TOOLS, getTools, generateToolsSummary } from "./tools-definitions.js";
 import { getInitialPrompt, getSystemPrompt } from "./prompt-loader.js";
 import { getTodosSummary, getTodos, setTodos, clearTodos } from "./tools/manage-todos-tool.js";
 import { ToolExecutor } from "./tools-executor.js";
@@ -313,8 +313,12 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       // Load memory initially
       let memoryContent = await loadMemory();
       
-      // Build system prompt with optional todos
-      let systemContent = getSystemPrompt(currentCwd, guiSettings);
+      // Get initial tools for system prompt
+      const initialTools = getTools(guiSettings);
+      const initialToolsSummary = generateToolsSummary(initialTools);
+      
+      // Build system prompt with tools summary and optional todos
+      let systemContent = getSystemPrompt(currentCwd, initialToolsSummary);
       const todosSummary = getTodosSummary(session.id);
       if (todosSummary) {
         systemContent += todosSummary;
@@ -473,8 +477,8 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       totalOutputTokens = 0;
       sessionStartTime = Date.now();
 
-      // Get initial tools (will be refreshed each iteration)
-      let activeTools = getTools(guiSettings);
+      // Use initial tools (will be refreshed each iteration)
+      let activeTools = initialTools;
       let currentGuiSettings = guiSettings;
       
       console.log(`\n[OpenAI Runner] ══════════════════════════════════════`);
@@ -521,14 +525,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       while (!aborted && iterationCount < MAX_ITERATIONS) {
         iterationCount++;
         
-        // Update system prompt with current todos (they may have changed via manage_todos)
-        const updatedTodosSummary = getTodosSummary(session.id);
-        let updatedSystemContent = getSystemPrompt(currentCwd, currentGuiSettings);
-        if (updatedTodosSummary) {
-          updatedSystemContent += updatedTodosSummary;
-        }
-        messages[0] = { role: 'system', content: updatedSystemContent };
-        
         // Reload settings to pick up any changes (e.g. Tavily API key, memory enabled)
         const freshSettings = loadApiSettings();
         if (freshSettings) {
@@ -544,6 +540,15 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
             toolExecutor.updateSettings(freshSettings);
           }
         }
+        
+        // Update system prompt with current tools summary and todos
+        const currentToolsSummary = generateToolsSummary(activeTools);
+        const updatedTodosSummary = getTodosSummary(session.id);
+        let updatedSystemContent = getSystemPrompt(currentCwd, currentToolsSummary);
+        if (updatedTodosSummary) {
+          updatedSystemContent += updatedTodosSummary;
+        }
+        messages[0] = { role: 'system', content: updatedSystemContent };
         
         console.log(`\n[OpenAI Runner] ▶ Iteration ${iterationCount} | Messages: ${messages.length} | Tools: ${activeTools.length}`);
 

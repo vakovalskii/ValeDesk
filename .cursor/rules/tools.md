@@ -17,15 +17,21 @@ LocalDesk uses OpenAI-compatible function calling. Each tool is defined with:
 | **File** | `search_files` | Find files by glob pattern |
 | **File** | `search_text` | Grep-like text search |
 | **File** | `read_document` | Extract text from PDF/DOCX |
+| **File** | `attach_image` | Attach local image for model input |
 | **Code** | `execute_js` | Run JS in WASM sandbox (QuickJS) |
 | **System** | `run_command` | Execute shell commands |
 | **Web** | `search_web` | Internet search (Tavily/Z.AI) |
-| **Web** | `extract_page` | Extract page content |
-| **Web** | `read_page` | Z.AI Reader |
-| **Web** | `render_page` | Chromium rendering for SPAs |
+| **Web** | `fetch_html` | Fetch URL content |
+| **Web** | `fetch_json` | Fetch and parse JSON |
+| **Web** | `download_file` | Download files from URL |
+| **Browser** | `browser_*` | Full browser automation (navigate, click, type, etc.) |
+| **Git** | `git_*` | Git operations (status, log, diff, commit, etc.) |
 | **Memory** | `manage_memory` | Persistent user preferences |
 | **Tasks** | `manage_todos` | Task planning with UI |
 | **Skills** | `load_skill` | Load specialized instructions |
+| **Scheduler** | `schedule_task` | Create recurring/delayed tasks |
+
+**Note**: Tools are passed dynamically via function calling - not hardcoded in system prompt.
 
 ## Creating a New Tool
 

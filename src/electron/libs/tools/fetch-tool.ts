@@ -142,7 +142,7 @@ export const FetchJsonToolDefinition: ToolDefinition = {
 export const DownloadToolDefinition: ToolDefinition = {
   type: "function",
   function: {
-    name: "download",
+    name: "download_file",
     description: `Download files from URLs to the local filesystem.
 
 **Use this for:**
