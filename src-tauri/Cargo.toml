@@ -1,0 +1,26 @@
+[package]
+name = "localdesk"
+version = "0.0.7"
+description = "LocalDesk - Desktop AI Assistant"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+rfd = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2.3.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+
+# Code Sandbox - pure Rust interpreters (no external deps needed)
+boa_engine = "0.21"           # JavaScript engine
+# Note: rustpython has sqlite3 conflict with rusqlite, using subprocess for Python
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+

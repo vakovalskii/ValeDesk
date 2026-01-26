@@ -12,6 +12,8 @@ import type {
   Skill
 } from "../types";
 import { SkillsTab } from "./SkillsTab";
+import { getPlatform } from "../platform";
+import { useAppStore } from "../store/useAppStore";
 
 type SettingsModalProps = {
   onClose: () => void;
@@ -52,11 +54,28 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const [showTavilyPassword, setShowTavilyPassword] = useState(false);
   const [showZaiPassword, setShowZaiPassword] = useState(false);
 
-  // LLM Provider settings state
-  const [llmProviders, setLlmProviders] = useState<LLMProvider[]>([]);
-  const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
+  // LLM Provider settings - get from global store
+  const globalLlmProviders = useAppStore((s) => s.llmProviders);
+  const globalLlmModels = useAppStore((s) => s.llmModels);
+  
+  // Local state for editing (initialized from store)
+  const [llmProviders, setLlmProviders] = useState<LLMProvider[]>(globalLlmProviders);
+  const [llmModels, setLlmModels] = useState<LLMModel[]>(globalLlmModels);
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmError, setLlmError] = useState<string | null>(null);
+  
+  // Sync local state when global store updates
+  useEffect(() => {
+    if (globalLlmProviders.length > 0) {
+      setLlmProviders(globalLlmProviders);
+    }
+  }, [globalLlmProviders]);
+  
+  useEffect(() => {
+    if (globalLlmModels.length > 0) {
+      setLlmModels(globalLlmModels);
+    }
+  }, [globalLlmModels]);
 
   // Skills state
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -69,7 +88,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     setMemoryLoading(true);
     setMemoryError(null);
     try {
-      const content = await window.electron.invoke('read-memory');
+      const content = await getPlatform().invoke<string>('read-memory');
       setMemoryContent(content || "");
       setMemoryLoaded(true);
       setMemoryDirty(false);
@@ -85,7 +104,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
 
   const saveMemoryContent = async () => {
     try {
-      await window.electron.invoke('write-memory', memoryContent);
+      await getPlatform().invoke('write-memory', memoryContent);
     } catch (error) {
       console.error('Failed to save memory:', error);
       setMemoryError(error instanceof Error ? error.message : String(error));
@@ -139,30 +158,22 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   }, [enableMemory, memoryLoaded, memoryLoading, loadMemoryContent]);
 
   const loadLlmProviders = () => {
+    // Data comes from global store, just trigger refresh
     setLlmLoading(true);
     setLlmError(null);
-    window.electron.sendClientEvent({ type: "llm.providers.get" });
+    getPlatform().sendClientEvent({ type: "llm.providers.get" });
     
-    const unsubscribe = window.electron.onServerEvent((event) => {
-      if (event.type === "llm.providers.loaded") {
-        const { settings } = event.payload;
-        setLlmProviders(settings.providers);
-        setLlmModels(settings.models);
-        setLlmLoading(false);
-        unsubscribe();
-      }
-    });
-
-    (window as any).__llmProvidersUnsubscribe = unsubscribe;
+    // Loading state will be cleared when global store updates
+    setTimeout(() => setLlmLoading(false), 500);
   };
 
   const fetchProviderModels = async (providerId: string) => {
     setLlmLoading(true);
     setLlmError(null);
     
-    window.electron.sendClientEvent({ type: "llm.models.fetch", payload: { providerId } });
+    getPlatform().sendClientEvent({ type: "llm.models.fetch", payload: { providerId } });
     
-    const unsubscribe = window.electron.onServerEvent((event) => {
+    const unsubscribe = getPlatform().onServerEvent((event) => {
       if (event.type === "llm.models.fetched") {
         const { models } = event.payload;
         setLlmModels(models);
@@ -200,22 +211,22 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const loadSkills = useCallback(() => {
     setSkillsLoading(true);
     setSkillsError(null);
-    window.electron.sendClientEvent({ type: "skills.get" });
+    getPlatform().sendClientEvent({ type: "skills.get" });
   }, []);
 
   const refreshSkills = useCallback(() => {
     setSkillsLoading(true);
     setSkillsError(null);
-    window.electron.sendClientEvent({ type: "skills.refresh" });
+    getPlatform().sendClientEvent({ type: "skills.refresh" });
   }, []);
 
   const toggleSkill = useCallback((skillId: string, enabled: boolean) => {
-    window.electron.sendClientEvent({ type: "skills.toggle", payload: { skillId, enabled } });
+    getPlatform().sendClientEvent({ type: "skills.toggle", payload: { skillId, enabled } });
     setSkills(prev => prev.map(s => s.id === skillId ? { ...s, enabled } : s));
   }, []);
 
   const setMarketplaceUrl = useCallback((url: string) => {
-    window.electron.sendClientEvent({ type: "skills.set-marketplace", payload: { url } });
+    getPlatform().sendClientEvent({ type: "skills.set-marketplace", payload: { url } });
     setSkillsMarketplaceUrl(url);
   }, []);
 
@@ -223,7 +234,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   useEffect(() => {
     loadSkills();
     
-    const unsubscribe = window.electron.onServerEvent((event) => {
+    const unsubscribe = getPlatform().onServerEvent((event) => {
       if (event.type === "skills.loaded") {
         setSkills(event.payload.skills);
         setSkillsMarketplaceUrl(event.payload.marketplaceUrl);
@@ -292,7 +303,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     
     // Also save LLM providers separately
     console.log('[SettingsModal] Saving LLM providers separately...');
-    window.electron.sendClientEvent({
+    getPlatform().sendClientEvent({
       type: "llm.providers.save",
       payload: { settings: llmProviderSettings }
     });
@@ -821,13 +832,13 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
     };
 
     // Send test request
-    window.electron.sendClientEvent({
+    getPlatform().sendClientEvent({
       type: "llm.models.test",
       payload: { provider: tempProvider }
     });
 
     // Listen for response
-    const removeListener = window.electron.onServerEvent((event) => {
+    const removeListener = getPlatform().onServerEvent((event) => {
       if (event.type === "llm.models.fetched" && event.payload.providerId === tempProvider.id) {
         setTesting(false);
         setTestSuccess(true);
@@ -912,7 +923,7 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
     console.log('[AddProvider] Local state updated');
     console.log('[AddProvider] Sending llm.providers.save event...');
 
-    window.electron.sendClientEvent({
+    getPlatform().sendClientEvent({
       type: "llm.providers.save",
       payload: { settings: updatedSettings }
     });

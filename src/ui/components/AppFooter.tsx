@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getPlatform } from "../platform";
 
 export function AppFooter() {
   const [buildInfo, setBuildInfo] = useState<{
@@ -9,13 +10,22 @@ export function AppFooter() {
 
   useEffect(() => {
     // Get build info from Electron main process
-    window.electron.invoke('get-build-info').then(setBuildInfo);
+    getPlatform()
+      .invoke('get-build-info')
+      .then((info) => setBuildInfo(info as any))
+      .catch((error) => {
+        console.error('[AppFooter] get-build-info failed', { error });
+      });
   }, []);
 
   const handleCommitClick = async () => {
     if (!buildInfo || buildInfo.commit === 'unknown') return;
     const url = `https://github.com/vakovalskii/LocalDesk/commit/${buildInfo.commit}`;
-    await window.electron.invoke('open-external-url', url);
+    try {
+      await getPlatform().invoke('open-external-url', url);
+    } catch (error) {
+      console.error('[AppFooter] open-external-url failed', { error, url });
+    }
   };
 
   if (!buildInfo) return null;

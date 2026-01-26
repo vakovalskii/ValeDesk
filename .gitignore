@@ -8,16 +8,41 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
-dist-react
-dist-electron
+
+# Build outputs
+dist/
+dist-react/
+dist-electron/
+dist-sidecar/
+dist-agent/
 *.local
 .build
+
 # Sandbox directory for ExecuteJS
 .localdesk-sandbox
 
+# Tauri / Rust build artifacts
+src-tauri/target/
+src-tauri/bin/
+target/
+*.rs.bk
+debug/
+release/
+
 # Build info (generated at build time)
-src/electron/build-info.json
+src/agent/build-info.json
+
+# DMG, installers, build artifacts
+*.dmg
+*.dmg.blockmap
+*.exe
+*.msi
+*.AppImage
+*.deb
+*.rpm
+builder-debug.yml
+builder-effective-config.yaml
+latest*.yml
 
 # Editor directories and files
 .vscode/*
@@ -30,6 +55,17 @@ src/electron/build-info.json
 *.sln
 *.sw?
 
+# Environment and secrets
 .env
-.gitignore
+.env.*
+
+# Database files (local user data)
 sessions.db
+sessions.db-wal
+sessions.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# LocalDesk workspace data
+.localdesk/

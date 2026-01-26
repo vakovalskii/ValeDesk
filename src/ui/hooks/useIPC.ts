@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ServerEvent, ClientEvent } from "../types";
+import { getPlatform } from "../platform";
 
 export function useIPC(onEvent: (event: ServerEvent) => void) {
   const [connected, setConnected] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    const platform = getPlatform();
     // Subscribe to server events
-    const unsubscribe = window.electron.onServerEvent((event: ServerEvent) => {
+    const unsubscribe = platform.onServerEvent((event: ServerEvent) => {
       onEvent(event);
     });
     
@@ -24,7 +26,7 @@ export function useIPC(onEvent: (event: ServerEvent) => void) {
   }, [onEvent]);
 
   const sendEvent = useCallback((event: ClientEvent) => {
-    window.electron.sendClientEvent(event);
+    getPlatform().sendClientEvent(event);
   }, []);
 
   return { connected, sendEvent };

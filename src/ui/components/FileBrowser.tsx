@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { getPlatform } from "../platform";
+import { dirnameFsPath, isPathWithin, normalizeFsPath } from "../platform/fs-path";
 
 type FileItem = {
   name: string;
@@ -26,7 +28,7 @@ export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
     setLoading(true);
     try {
       // Request file list from electron
-      const fileList = await window.electron.invoke('list-directory', path);
+      const fileList = await getPlatform().invoke<FileItem[]>('list-directory', path);
       setFiles(fileList || []);
     } catch (error) {
       console.error('Failed to load files:', error);
@@ -44,23 +46,26 @@ export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
   const handleFileClick = (file: FileItem) => {
     if (file.isDirectory) {
       // Only navigate to directories within cwd
-      if (file.path.startsWith(cwd)) {
+      if (isPathWithin(file.path, cwd)) {
         setCurrentPath(file.path);
       }
     } else {
       // Open file in system default app
-      window.electron.send('open-file', file.path);
+      getPlatform().send('open-file', file.path);
     }
   };
 
   const goUp = () => {
     // Don't allow going above the initial cwd
-    if (currentPath === cwd || !currentPath.startsWith(cwd)) {
+    const normalizedCurrent = normalizeFsPath(currentPath);
+    const normalizedCwd = normalizeFsPath(cwd);
+    if (normalizedCurrent === normalizedCwd || !isPathWithin(currentPath, cwd)) {
       return;
     }
-    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/';
+
+    const parentPath = dirnameFsPath(currentPath);
     // Only navigate if parent is still within cwd
-    if (parentPath.startsWith(cwd)) {
+    if (isPathWithin(parentPath, cwd)) {
       setCurrentPath(parentPath);
     }
   };

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "NodeNext",
+    "outDir": "../../dist-sidecar",
+    "rootDir": "..",
+    "skipLibCheck": true,
+    "types": [
+      "../../types"
+    ]
+  },
+  "include": [
+    "./**/*",
+    "../agent/types.ts",
+    "../ui/types.ts",
+    "../agent/git-utils.ts",
+    "../agent/libs/**/*"
+  ],
+  "exclude": [
+    "../agent/main.ts",
+    "../agent/preload.cts",
+    "../agent/ipc-handlers.ts",
+    "../agent/session-manager.ts",
+    "../agent/test.ts",
+    "../agent/util.ts"
+  ]
+}
+

@@ -2,7 +2,7 @@
 
 # LocalDesk
 
-[![Version](https://img.shields.io/badge/version-0.0.6-blue.svg)](https://github.com/vakovalskii/LocalDesk/releases)
+[![Version](https://img.shields.io/badge/version-0.0.7-blue.svg)](https://github.com/vakovalskii/LocalDesk/releases)
 [![Platform](https://img.shields.io/badge/platform-%20Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/vakovalskii/LocalDesk)
 [![License](https://img.shields.io/badge/license-Community-blue.svg)](LICENSE)
 
@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/a8c54ce0-2fe0-40c3-8018-026cab9d7483
 - ✅ **Task Planning** — visual todo panel with progress tracking, persisted per session
 - ✅ **OpenAI SDK** — full API control, compatible with any OpenAI-compatible endpoint
 - ✅ **Local Models** — vLLM, Ollama, LM Studio support
-- ✅ **WASM Sandbox** — secure JavaScript execution via QuickJS (no Node.js required)
+- ✅ **Code Sandboxes** — JavaScript (Node.js vm) and Python (system subprocess) execution
 - ✅ **Document Support** — PDF and DOCX text extraction (bundled, works out of the box)
 - ✅ **Web Search** — Tavily and Z.AI integration for internet search
 - ✅ **Telegram Parsing** — render t.me channels with reactions, views, auto-scroll for older posts
@@ -30,8 +30,9 @@ https://github.com/user-attachments/assets/a8c54ce0-2fe0-40c3-8018-026cab9d7483
 - ✅ **Cross-platform** — Windows, macOS, Linux with proper shell commands
 
 ### UI/UX Features
-- ✅ **Modern Interface** — React + Electron with smooth auto-scroll and streaming
+- ✅ **Modern Interface** — React + Tauri with smooth auto-scroll and streaming
 - ✅ **Message Editing** — edit and resend messages with history truncation
+- ✅ **Session Persistence** — sessions survive app restart (SQLite backed)
 - ✅ **Session Management** — pin important sessions, search through chat history
 - ✅ **Keyboard Shortcuts** — Cmd+Enter/Ctrl+Enter to send messages
 - ✅ **Spell Check** — built-in spell checking with context menu suggestions
@@ -87,78 +88,53 @@ vllm serve Qwen/Qwen2.5-14B-Instruct --port 8000
 
 ## 🚀 Quick Start
 
-### Installation (Windows)
+### Prerequisites
 
-```powershell
-# Clone the repository
+- **Rust** 1.74+ ([install](https://rustup.rs/))
+- **Node.js** 20+ 
+- **Python 3** (for `execute_python` tool)
+
+### Development (macOS/Linux)
+
+```bash
+# Clone and enter
 git clone https://github.com/vakovalskii/LocalDesk.git
 cd LocalDesk
 
 # Install dependencies
 npm install
 
-# Run in development mode (single terminal)
-npm run dev:win
+# Run in development mode
+make dev
 ```
 
-> **Notes:**
-> - First run may take 10-15 seconds while dependencies compile. Subsequent runs will be faster.
-> - **To stop:** Press `Ctrl+C` twice to fully terminate both processes (first Ctrl+C sends graceful shutdown, second forces termination).
-
-**Alternative: Manual mode (2 terminals)**
-
-Terminal 1 - Start Vite dev server:
-```powershell
-npm run dev:react
-```
-
-Terminal 2 - Start Electron (wait 5-10 seconds):
-```powershell
-npm run transpile:electron
-cross-env NODE_ENV=development npx electron .
-```
-
-**Production mode:**
-```powershell
-npm run build
-npx electron .
-```
-
-### Installation (macOS/Linux - npm)
+### Build Standalone App
 
 ```bash
-# Clone the repository
-git clone https://github.com/vakovalskii/LocalDesk.git
-cd LocalDesk
+# Build DMG (macOS)
+make bundle
 
-# Install dependencies
-npm install
-
-# Rebuild native modules for Electron
-npx electron-rebuild -f -w better-sqlite3
-
-# Run in development mode
-npm run dev
+# Output: LocalDesk-0.0.7.dmg
 ```
 
-### Installation (macOS/Linux - bun) ⚡
+### Manual Build Steps
 
 ```bash
-# Clone the repository
-git clone https://github.com/vakovalskii/LocalDesk.git
-cd LocalDesk
+# 1. Build sidecar binary
+npm run build:sidecar
 
-# Install dependencies (faster)
-bun install
+# 2. Build Tauri app
+cd src-tauri && cargo build --release
 
-# Rebuild native modules for Electron
-bunx electron-rebuild -f -w better-sqlite3
-
-# Run in development mode
-bun run dev
+# 3. Create DMG
+hdiutil create -volname "LocalDesk" \
+  -srcfolder src-tauri/target/release/bundle/macos/LocalDesk.app \
+  -ov -format UDZO LocalDesk-0.0.7.dmg
 ```
 
-> **Note:** Bun is significantly faster for dependency installation (~3x speedup)
+### Windows (coming soon)
+
+Windows build requires cross-compilation setup. Check `.github/workflows/` for CI builds.
 
 ### Configuration
 
@@ -215,7 +191,8 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 ### Code Execution
 | Tool | Description |
 |------|-------------|
-| `execute_js` | Run JavaScript in secure WASM sandbox (QuickJS) |
+| `execute_js` | Run JavaScript in secure Node.js vm sandbox |
+| `execute_python` | Run Python code (system Python with pip packages) |
 
 ### Web Tools
 | Tool | Description |
@@ -248,7 +225,7 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 # Build executable and installer
 npm run dist:win
 
-# Output: dist/LocalDesk Setup 0.0.6.exe
+# Output: dist/LocalDesk Setup 0.0.7.exe
 ```
 
 ### macOS

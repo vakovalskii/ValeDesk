@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ApiSettings, LLMModel } from "../types";
+import { getPlatform } from "../platform";
+import { useAppStore } from "../store/useAppStore";
 
 interface StartSessionModalProps {
   cwd: string;
@@ -39,11 +41,17 @@ export function StartSessionModal({
   sendTemperature = true,
   onSendTemperatureChange
 }: StartSessionModalProps) {
+  const llmProviders = useAppStore((s) => s.llmProviders);
   const [recentCwds, setRecentCwds] = useState<string[]>([]);
   const [modelSearch, setModelSearch] = useState('');
 
   useEffect(() => {
-    window.electron.getRecentCwds().then(setRecentCwds).catch(console.error);
+    getPlatform()
+      .getRecentCwds()
+      .then(setRecentCwds)
+      .catch((error) => {
+        console.error("[StartSessionModal] getRecentCwds failed", { error });
+      });
   }, []);
 
   // Show only enabled models from settings.
@@ -51,11 +59,16 @@ export function StartSessionModal({
   const allAvailableModels = (() => {
     const enabledLlmModels = llmModels.filter(m => m.enabled);
     if (enabledLlmModels.length > 0) {
-      return enabledLlmModels.map(model => ({
-        id: model.id,
-        name: model.name,
-        description: `${model.providerType} | ${model.description || ''}`
-      }));
+      return enabledLlmModels.map(model => {
+        // Find provider name by providerId
+        const provider = llmProviders.find(p => p.id === model.providerId);
+        const providerLabel = provider?.name || model.providerType;
+        return {
+          id: model.id,
+          name: model.name,
+          description: `${providerLabel} | ${model.description || ''}`
+        };
+      });
     }
 
     return availableModels.map(model => ({
@@ -81,7 +94,7 @@ export function StartSessionModal({
   }, [apiSettings, selectedModel, onModelChange]);
 
   const handleSelectDirectory = async () => {
-    const result = await window.electron.selectDirectory();
+    const result = await getPlatform().selectDirectory();
     if (result) onCwdChange(result);
   };
 

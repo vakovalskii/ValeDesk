@@ -2,6 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.7] - 2026-01-26
+
+### 🚀 Major Changes
+
+#### Tauri Migration
+- **Complete rewrite** from Electron to Tauri (Rust backend)
+- **SQLite in Rust** — sessions, messages, todos persisted via `rusqlite`
+- **Node.js Sidecar** — LLM logic runs as standalone binary (bundled with `pkg`)
+- **~10x smaller** — app size reduced from ~150MB to ~15MB
+
+#### Session Persistence
+- ✅ **Sessions survive restart** — full history restored from SQLite
+- ✅ **Reset stale sessions** — running sessions reset to idle on startup
+- ✅ **Edit & continue** — message editing works after app restart
+
+### ✨ New Features
+
+#### Python Sandbox (execute_python)
+- ✅ **System Python** — uses Python 3 installed on user's machine
+- ✅ **pip packages** — can use numpy, pandas, requests, etc.
+- ✅ **Full stdlib** — json, os, sys, re, math, datetime...
+- ✅ **File I/O** — read/write within workspace
+
+#### Improved JS Sandbox (execute_js)
+- ✅ **Node.js vm** — replaced QuickJS WASM with native vm module
+- ✅ **Better globals** — fs, path, console, JSON, Math, Date
+- ✅ **Clear limitations** — no require, no npm, no async
+
+#### Skills Improvements
+- ✅ **Local download** — skills saved to `{cwd}/skills/` not `.localdesk`
+- ✅ **Clearer UX** — explicit instructions for reading skill files
+
+### 🐛 Bug Fixes
+
+- 🔧 **Stop button** — now properly interrupts agent with AbortController
+- 🔧 **Dynamic import** — fixed pkg binary crash in Python executor
+- 🔧 **Log noise** — silenced non-JSON debug lines from sidecar
+
+### 📁 Code Reorganization
+
+- Renamed `src/electron/` → `src/agent/`
+- New `src-tauri/src/db.rs` — SQLite database operations
+- New `src-tauri/src/sandbox.rs` — code execution (unused)
+- New `src/sidecar/session-store-memory.ts` — runtime session state
+- Updated `.cursor/rules/` — architecture, tools, system-prompt docs
+
+### 📝 Documentation
+
+- ✅ Updated README with Tauri build instructions
+- ✅ Updated CURSOR.md with new architecture diagram
+- ✅ Updated tool descriptions with sandbox limitations
+
+---
+
 ## [0.0.5] - 2026-01-18
 
 ### ⚠️ Breaking Changes

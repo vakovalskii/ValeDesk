@@ -2,80 +2,105 @@
 
 ## Overview
 
-LocalDesk is an Electron app with React frontend and Node.js backend.
+LocalDesk uses **Tauri** with a **Rust** backend and **Node.js sidecar** for LLM/tool logic.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Electron                          │
-│  ┌─────────────────┐      ┌─────────────────────┐  │
-│  │   Main Process  │ IPC  │  Renderer Process   │  │
-│  │   (Node.js)     │◄────►│  (React + Vite)     │  │
-│  │                 │      │                     │  │
-│  │  - LLM Runner   │      │  - Chat UI          │  │
-│  │  - Tool Exec    │      │  - Settings Modal   │  │
-│  │  - SQLite DB    │      │  - Todo Panel       │  │
-│  │  - File I/O     │      │  - Zustand Store    │  │
-│  └─────────────────┘      └─────────────────────┘  │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                         Tauri App                           │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐   │
+│  │ Rust Backend │    │ Node Sidecar │    │   WebView    │   │
+│  │  (main.rs)   │◄──►│  (sidecar/)  │    │  (React UI)  │   │
+│  │              │    │              │    │              │   │
+│  │ - Window mgmt│    │ - LLM Runner │    │ - Chat UI    │   │
+│  │ - SQLite DB  │    │ - Tool Exec  │    │ - Settings   │   │
+│  │ - IPC bridge │    │ - Streaming  │    │ - Todo Panel │   │
+│  │ - Native API │    │ - Memory     │    │ - Zustand    │   │
+│  └──────────────┘    └──────────────┘    └──────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+## Why Tauri + Sidecar?
+
+- **Tauri**: Lightweight (~10MB vs Electron ~150MB), native WebView
+- **Rust backend**: Fast, safe, handles native OS operations
+- **Node sidecar**: Reuses existing LLM/tool logic, npm ecosystem
 
 ## Directory Structure
 
 ```
-src/
-├── electron/                    # Main process
-│   ├── main.ts                 # Entry point, window creation
-│   ├── ipc-handlers.ts         # IPC message handlers
-│   ├── preload.cts             # Preload script (contextBridge)
-│   ├── types.ts                # Shared types
-│   └── libs/
-│       ├── runner-openai.ts    # LLM agent loop
-│       ├── tools-executor.ts   # Tool dispatch & execution
-│       ├── tools-definitions.ts # Tool filtering by settings
-│       ├── session-store.ts    # SQLite persistence
-│       ├── settings-store.ts   # API settings
-│       ├── prompt-loader.ts    # System prompt builder
-│       ├── container/
-│       │   └── quickjs-sandbox.ts  # WASM JS sandbox
-│       ├── prompts/
-│       │   ├── system.txt      # System prompt template
-│       │   └── initial_prompt.txt
-│       └── tools/              # Individual tool implementations
-│           ├── index.ts        # Tool registry
-│           ├── bash-tool.ts    # run_command
-│           ├── read-tool.ts    # read_file
-│           ├── write-tool.ts   # write_file
-│           ├── edit-tool.ts    # edit_file
-│           └── ...
+├── src-tauri/                   # Rust backend (Tauri)
+│   ├── src/
+│   │   ├── main.rs             # Entry point, IPC commands, sidecar mgmt
+│   │   ├── db.rs               # SQLite database (sessions, messages, todos)
+│   │   └── sandbox.rs          # Code execution (JS/Python)
+│   ├── Cargo.toml              # Rust dependencies
+│   ├── tauri.conf.json         # Tauri configuration
+│   └── capabilities/           # Security permissions
 │
-└── ui/                         # Renderer process
-    ├── main.tsx               # React entry
-    ├── App.tsx                # Root component
-    ├── components/
-    │   ├── ChatArea.tsx       # Message display
-    │   ├── PromptInput.tsx    # User input
-    │   ├── TodoPanel.tsx      # Task planning UI
-    │   ├── SettingsModal.tsx  # Configuration
-    │   ├── Sidebar.tsx        # Session list
-    │   └── EventCard.tsx      # Tool result display
-    └── store/
-        └── useAppStore.ts     # Zustand state
+├── src/
+│   ├── sidecar/                # Node.js sidecar process
+│   │   ├── main.ts             # Sidecar entry point
+│   │   ├── protocol.ts         # Event types for Rust ↔ Node
+│   │   └── session-store-memory.ts  # In-memory session state
+│   │
+│   ├── agent/                  # Agent logic (used by sidecar)
+│   │   └── libs/
+│   │       ├── runner-openai.ts    # LLM agent loop with streaming
+│   │       ├── tools-executor.ts   # Tool dispatch
+│   │       ├── session-store.ts    # Session state management
+│   │       ├── prompt-loader.ts    # System prompt builder
+│   │       ├── container/
+│   │       │   └── quickjs-sandbox.ts  # JS/Python sandboxes
+│   │       ├── prompts/
+│   │       │   └── system.txt      # System prompt template
+│   │       └── tools/              # Tool implementations
+│   │
+│   └── ui/                     # React frontend (WebView)
+│       ├── main.tsx            # React entry
+│       ├── App.tsx             # Root component
+│       ├── components/
+│       │   ├── ChatArea.tsx    # Message display
+│       │   ├── PromptInput.tsx # User input
+│       │   ├── TodoPanel.tsx   # Task planning UI
+│       │   └── ...
+│       └── store/
+│           └── useAppStore.ts  # Zustand state
+│
+├── Makefile                    # Build commands
+└── scripts/                    # Setup scripts
 ```
 
 ## Key Files
 
-### Main Process
+### Rust Backend (src-tauri/)
 
 | File | Purpose |
 |------|---------|
-| `main.ts` | App lifecycle, window creation, menu |
-| `ipc-handlers.ts` | Handle messages from renderer |
-| `runner-openai.ts` | LLM agent loop with streaming |
-| `tools-executor.ts` | Execute tools, handle permissions |
-| `session-store.ts` | SQLite CRUD for sessions |
-| `prompt-loader.ts` | Build system prompt from template |
+| `main.rs` | Entry point, Tauri commands, sidecar management |
+| `db.rs` | SQLite database - sessions, messages, todos, settings |
+| `sandbox.rs` | Code execution sandboxes (unused, logic in sidecar) |
+| `tauri.conf.json` | Window config, bundle settings, permissions |
+| `Cargo.toml` | Rust dependencies |
 
-### Renderer Process
+### Node Sidecar (src/sidecar/)
+
+| File | Purpose |
+|------|---------|
+| `main.ts` | Sidecar entry, event routing, session handlers |
+| `protocol.ts` | Event types for Rust ↔ Node communication |
+| `session-store-memory.ts` | In-memory session state (restored from DB on continue) |
+
+### Agent Logic (src/agent/libs/)
+
+| File | Purpose |
+|------|---------|
+| `runner-openai.ts` | LLM agent loop with streaming, tool calls |
+| `tools-executor.ts` | Execute tools, handle permissions |
+| `session-store.ts` | Session state management |
+| `prompt-loader.ts` | Build system prompt from template |
+| `container/quickjs-sandbox.ts` | JS (vm) and Python (subprocess) sandboxes |
+
+### React UI (src/ui/)
 
 | File | Purpose |
 |------|---------|
@@ -89,86 +114,79 @@ src/
 ### User Message → LLM Response
 
 ```
-1. User types message in PromptInput
-2. PromptInput calls window.electronAPI.sendPrompt()
-3. IPC sends to main process → ipc-handlers.ts
-4. ipc-handlers starts runner-openai.ts
-5. runner builds messages array with system prompt
-6. runner calls OpenAI API with streaming
-7. Stream chunks sent via IPC to renderer
-8. ChatArea updates UI with requestAnimationFrame
-9. If tool_calls in response:
-   a. tools-executor.ts runs tool
-   b. Result added to messages
-   c. Loop back to step 5
+1. User types message in React UI
+2. UI calls Tauri invoke('client_event', {...})
+3. Rust main.rs receives event
+4. Rust writes JSON to sidecar stdin
+5. Sidecar (Node.js) processes with runner-openai.ts
+6. Sidecar streams responses to stdout as JSON
+7. Rust reads stdout, emits 'server-event' to WebView
+8. React UI updates via Tauri event listener
+9. If tool_calls: sidecar executes, continues loop
 10. Final response displayed
 ```
 
-### Tool Execution
+### IPC Protocol (Rust ↔ Sidecar)
 
 ```
-1. LLM returns tool_calls in response
-2. runner-openai.ts extracts tool name & args
-3. Check permission mode (ask/default)
-4. If ask: send permission.request event, wait
-5. tools-executor.ts dispatches to specific tool
-6. Tool returns { success, output } or { success: false, error }
-7. Result added to messages as tool role
-8. Continue agent loop
+Rust → Sidecar (stdin):
+  { "type": "client-event", "event": {...} }
+
+Sidecar → Rust (stdout):
+  { "type": "server-event", "event": {...} }
+  { "type": "log", "level": "info", "message": "..." }
 ```
 
-## IPC Events
+## Tauri Commands
 
-### Renderer → Main
-- `send-prompt` - Start new message
-- `abort-session` - Stop current generation
-- `permission-response` - Approve/deny tool
-- `load-settings` / `save-settings`
+Defined in `main.rs`:
 
-### Main → Renderer
-- `stream.message` - Streaming content chunks
-- `permission.request` - Ask user to approve tool
-- `session.status` - Session state changes
-- `todos.updated` - Task list changed
+```rust
+#[tauri::command]
+fn client_event(event: Value) -> Result<(), String>
+fn list_directory(path: String) -> Result<Vec<FileItem>, String>
+fn read_memory() -> Result<String, String>
+fn write_memory(content: String) -> Result<(), String>
+fn select_directory() -> Result<Option<String>, String>
+fn get_build_info() -> Result<BuildInfo, String>
+```
 
 ## Database Schema (SQLite)
 
+Managed by Rust via `rusqlite` in `db.rs`:
+
 ```sql
-sessions (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  cwd TEXT,
-  model TEXT,
-  created_at INTEGER,
-  updated_at INTEGER,
-  pinned INTEGER DEFAULT 0
-)
-
-messages (
-  id INTEGER PRIMARY KEY,
-  session_id TEXT,
-  type TEXT,  -- 'user_prompt', 'text', 'tool_use', 'tool_result'
-  data TEXT,  -- JSON
-  created_at INTEGER
-)
-
-todos (
-  id INTEGER PRIMARY KEY,
-  session_id TEXT,
-  todos TEXT  -- JSON array
-)
+sessions (id, title, cwd, model, status, allowed_tools, temperature, 
+          input_tokens, output_tokens, is_pinned, created_at, updated_at)
+messages (id, session_id, data, created_at)
+todos (session_id, todos)
+file_changes (session_id, file_changes)
+settings (key, value)
+llm_providers (id, name, type, base_url, api_key, enabled, config, ...)
+llm_models (id, provider_id, name, enabled, config)
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Desktop | Electron 32+ |
+| Desktop | **Tauri 2.x** (Rust) |
+| Database | **rusqlite** (SQLite in Rust) |
 | Frontend | React 19, TypeScript |
 | State | Zustand |
 | Styling | Tailwind CSS |
-| Database | better-sqlite3 |
-| JS Sandbox | quickjs-emscripten (WASM) |
+| Sidecar | Node.js bundled with `pkg` |
+| JS Sandbox | Node.js `vm` module |
+| Python Sandbox | System subprocess |
 | PDF | pdf-parse |
 | DOCX | mammoth |
-| Build | Vite + electron-builder |
+| Build | **Vite + cargo tauri build** |
+
+## Build Artifacts (gitignored)
+
+| Path | Size | Description |
+|------|------|-------------|
+| `src-tauri/target/` | ~1.6 GB | Rust compilation cache |
+| `src-tauri/bin/` | - | Sidecar binary for bundle |
+| `dist-sidecar/` | - | Transpiled sidecar JS |
+| `dist-react/` | - | Built React app |

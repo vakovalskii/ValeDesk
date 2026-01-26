@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ServerEvent, SessionStatus, StreamMessage, TodoItem, FileChange, MultiThreadTask, LLMModel, LLMProvider, LLMProviderSettings } from "../types";
+import { getPlatform } from "../platform";
 
 export type PermissionRequest = {
   toolUseId: string;
@@ -135,7 +136,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   sendEvent: (event) => {
-    window.electron.sendClientEvent(event);
+    getPlatform().sendClientEvent(event);
   },
 
   markHistoryRequested: (sessionId) => {

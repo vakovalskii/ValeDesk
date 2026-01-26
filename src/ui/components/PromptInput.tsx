@@ -35,21 +35,13 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
 
     if (!activeSessionId) {
       // Starting new session - can be empty for chat-only mode
-      let title = "";
-      try {
-        setPendingStart(true);
-        // Generate title from prompt, or use default for empty sessions
-        if (trimmedPrompt) {
-          title = await window.electron.generateSessionTitle(trimmedPrompt);
-        } else {
-          // Empty session - just chatting
-          title = "New Chat";
-        }
-      } catch (error) {
-        console.error(error);
-        setPendingStart(false);
-        setGlobalError("Failed to generate session title. Check your API settings.");
-        return;
+      setPendingStart(true);
+      
+      // Generate title from first 3 words of prompt
+      let title = "New Chat";
+      if (trimmedPrompt) {
+        const words = trimmedPrompt.split(/\s+/).slice(0, 3);
+        title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
       }
       sendEvent({
         type: "session.start",

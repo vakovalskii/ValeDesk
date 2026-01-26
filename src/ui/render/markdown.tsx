@@ -4,6 +4,7 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { useEffect, useState, useRef, memo } from "react";
 import mermaid from "mermaid";
+import { getPlatform } from "../platform";
 
 // Initialize Mermaid once with theme matching the app color scheme
 let mermaidInitialized = false;
@@ -162,7 +163,7 @@ const MermaidDiagram = ({ code }: { code: string }) => {
 const MDContentInternal = ({ text }: { text: string }) => {
   const handleLinkClick = (href: string) => {
     if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
-      window.electron.sendClientEvent({ type: "open.external", payload: { url: href } });
+      getPlatform().sendClientEvent({ type: "open.external", payload: { url: href } });
     }
   };
 

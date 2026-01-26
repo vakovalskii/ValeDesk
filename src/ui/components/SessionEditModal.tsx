@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { LLMModel } from "../types";
+import { useAppStore } from "../store/useAppStore";
 
 interface SessionEditModalProps {
   currentModel?: string;
@@ -19,19 +20,28 @@ export function SessionEditModal({
   onSave,
   onClose
 }: SessionEditModalProps) {
+  const llmProviders = useAppStore((s) => s.llmProviders);
   const [model, setModel] = useState(currentModel || '');
   const [temperature, setTemperature] = useState(currentTemperature ?? 0.3);
   const [sendTemperature, setSendTemperature] = useState(currentTemperature !== undefined);
   const [title, setTitle] = useState(currentTitle || '');
   const [modelSearch, setModelSearch] = useState('');
 
-  // Filter models that are enabled
-  const enabledModels = llmModels.filter(m => m.enabled !== false);
+  // Filter models that are enabled and add provider label
+  const enabledModels = llmModels.filter(m => m.enabled !== false).map(m => {
+    const provider = llmProviders.find(p => p.id === m.providerId);
+    const providerLabel = provider?.name || m.providerType;
+    return {
+      ...m,
+      providerLabel
+    };
+  });
   
   // Filter by search
   const filteredModels = enabledModels.filter(m => 
     m.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
-    m.id.toLowerCase().includes(modelSearch.toLowerCase())
+    m.id.toLowerCase().includes(modelSearch.toLowerCase()) ||
+    m.providerLabel.toLowerCase().includes(modelSearch.toLowerCase())
   );
 
   // Get display name for current model
@@ -136,9 +146,9 @@ export function SessionEditModal({
                           }}
                         >
                           <span className="font-medium truncate">{m.name}</span>
-                          {m.description && (
-                            <span className="text-xs text-muted truncate">{m.description}</span>
-                          )}
+                          <span className="text-xs text-muted truncate">
+                            {m.providerLabel}{m.description ? ` | ${m.description}` : ''}
+                          </span>
                         </DropdownMenu.Item>
                       ))
                     )}
