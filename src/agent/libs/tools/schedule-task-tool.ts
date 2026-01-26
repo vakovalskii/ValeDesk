@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   BaseTool,
   ToolDefinition,

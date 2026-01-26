@@ -4,6 +4,7 @@
  * This store only keeps runtime state
  */
 
+import crypto from "crypto";
 import type { SessionStatus, StreamMessage, FileChange } from "../agent/types.js";
 
 export type PendingPermission = {
