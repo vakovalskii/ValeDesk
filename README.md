@@ -2,7 +2,7 @@
 
 # LocalDesk
 
-[![Version](https://img.shields.io/badge/version-0.0.7-blue.svg)](https://github.com/vakovalskii/LocalDesk/releases)
+[![Version](https://img.shields.io/badge/version-0.0.8-blue.svg)](https://github.com/vakovalskii/LocalDesk/releases)
 [![Platform](https://img.shields.io/badge/platform-%20Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/vakovalskii/LocalDesk)
 [![License](https://img.shields.io/badge/license-Community-blue.svg)](LICENSE)
 
@@ -20,6 +20,7 @@ https://github.com/user-attachments/assets/a8c54ce0-2fe0-40c3-8018-026cab9d7483
 
 ### Core Capabilities
 - ✅ **Task Planning** — visual todo panel with progress tracking, persisted per session
+- ✅ **Scheduled Tasks** — create reminders and recurring tasks with auto-execution
 - ✅ **OpenAI SDK** — full API control, compatible with any OpenAI-compatible endpoint
 - ✅ **Local Models** — vLLM, Ollama, LM Studio support
 - ✅ **Code Sandboxes** — JavaScript (Node.js vm) and Python (system subprocess) execution
@@ -114,7 +115,7 @@ make dev
 # Build DMG (macOS)
 make bundle
 
-# Output: LocalDesk-0.0.7.dmg
+# Output: LocalDesk-0.0.8.dmg
 ```
 
 ### Manual Build Steps
@@ -129,7 +130,7 @@ cd src-tauri && cargo build --release
 # 3. Create DMG
 hdiutil create -volname "LocalDesk" \
   -srcfolder src-tauri/target/release/bundle/macos/LocalDesk.app \
-  -ov -format UDZO LocalDesk-0.0.7.dmg
+  -ov -format UDZO LocalDesk-0.0.8.dmg
 ```
 
 ### Windows (coming soon)
@@ -211,6 +212,18 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 |------|-------------|
 | `manage_todos` | Create/update task plans with visual progress tracking |
 
+### Scheduler
+| Tool | Description |
+|------|-------------|
+| `schedule_task` | Create, list, update, delete scheduled tasks |
+
+Features:
+- **One-time reminders** — "remind me in 30 minutes"
+- **Recurring tasks** — every minute, hour, day, week, month
+- **Auto-execution** — tasks with prompts automatically start new chat sessions
+- **Native notifications** — macOS system notifications
+- **Default model** — set preferred model for scheduled tasks
+
 ### Memory
 | Tool | Description |
 |------|-------------|
@@ -225,7 +238,7 @@ All tools follow `snake_case` naming convention (`verb_noun` pattern):
 # Build executable and installer
 npm run dist:win
 
-# Output: dist/LocalDesk Setup 0.0.7.exe
+# Output: dist/LocalDesk Setup 0.0.8.exe
 ```
 
 ### macOS
@@ -251,8 +264,9 @@ npm run dist:linux
 - **Linux:** `~/.config/localdesk/`
 
 Files:
-- `sessions.db` — SQLite database with chat history and todos
+- `sessions.db` — SQLite database with chat history, todos, scheduled tasks, and settings
 - `api-settings.json` — API configuration
+- `skills-settings.json` — Skills marketplace configuration
 
 ### Global Data
 - `~/.localdesk/memory.md` — persistent memory storage

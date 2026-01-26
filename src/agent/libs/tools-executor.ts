@@ -23,7 +23,7 @@ import { executeJSTool } from "./tools/execute-js-tool.js";
 import { executePythonTool } from "./tools/execute-python-tool.js";
 import { executeReadDocumentTool } from "./tools/read-document-tool.js";
 import { executeManageTodosTool } from "./tools/manage-todos-tool.js";
-import { ScheduleTaskTool } from "./tools/schedule-task-tool.js";
+import { ScheduleTaskTool, SchedulerIPCCallback } from "./tools/schedule-task-tool.js";
 import {
   executeGitStatusTool,
   executeGitLogTool,
@@ -61,7 +61,6 @@ import {
   executeSearchImagesTool,
 } from "./tools/duckduckgo-search-tool.js";
 import { SkillsTool } from "./tools/skills-tool.js";
-import type { SchedulerStore } from "./scheduler-store.js";
 
 export { ToolResult };
 
@@ -77,7 +76,7 @@ export class ToolExecutor {
   constructor(
     cwd: string,
     apiSettings: ApiSettings | null = null,
-    schedulerStore?: SchedulerStore,
+    schedulerIPCCallback?: SchedulerIPCCallback,
   ) {
     // Normalize and resolve the working directory to absolute path
     // If cwd is empty or undefined, keep it empty (no workspace mode)
@@ -134,10 +133,8 @@ export class ToolExecutor {
       this.zaiReaderTool = null;
     }
 
-    // Initialize scheduler tool
-    if (schedulerStore) {
-      this.scheduleTaskTool = new ScheduleTaskTool(schedulerStore);
-    }
+    // Initialize scheduler tool (uses IPC callback to communicate with Rust backend)
+    this.scheduleTaskTool = new ScheduleTaskTool(schedulerIPCCallback);
 
     // Initialize skills tool
     this.skillsTool = new SkillsTool();
@@ -546,7 +543,7 @@ export class ToolExecutor {
     if (!this.scheduleTaskTool) {
       return {
         success: false,
-        error: "Scheduler is not available. Database not initialized.",
+        error: "Scheduler tool is not initialized.",
       };
     }
 

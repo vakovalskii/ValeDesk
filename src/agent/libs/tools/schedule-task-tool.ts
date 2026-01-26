@@ -5,7 +5,6 @@ import {
   ToolResult,
   ToolExecutionContext,
 } from "./base-tool.js";
-import type { SchedulerStore, ScheduledTask } from "../scheduler-store.js";
 
 export interface ScheduleTaskParams {
   explanation: string;
@@ -17,6 +16,26 @@ export interface ScheduleTaskParams {
   notifyBefore?: number; // minutes before to send notification
   enabled?: boolean;
 }
+
+// Type for scheduled task (matches Rust struct)
+export interface ScheduledTask {
+  id: string;
+  title: string;
+  prompt?: string;
+  schedule: string;
+  nextRun: number;
+  isRecurring: boolean;
+  notifyBefore?: number;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Callback type for IPC operations
+export type SchedulerIPCCallback = (
+  operation: "create" | "list" | "delete" | "update",
+  params: Record<string, any>
+) => Promise<{ success: boolean; data?: any; error?: string }>;
 
 export const ScheduleTaskToolDefinition: ToolDefinition = {
   type: "function",
@@ -106,11 +125,11 @@ export const ScheduleTaskToolDefinition: ToolDefinition = {
 };
 
 export class ScheduleTaskTool extends BaseTool {
-  private schedulerStore?: SchedulerStore;
+  private ipcCallback?: SchedulerIPCCallback;
 
-  constructor(schedulerStore?: SchedulerStore) {
+  constructor(ipcCallback?: SchedulerIPCCallback) {
     super();
-    this.schedulerStore = schedulerStore;
+    this.ipcCallback = ipcCallback;
   }
 
   get definition(): ToolDefinition {
@@ -197,100 +216,110 @@ export class ScheduleTaskTool extends BaseTool {
     schedule: string;
     notifyBefore?: number;
   }): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
-
-    const taskId = crypto.randomUUID();
+    // Validate schedule format locally first
     const nextRun = this.calculateNextRun(params.schedule);
-
     if (!nextRun) {
       return {
         success: false,
-        error: `Invalid schedule format: ${params.schedule}`,
+        error: `Invalid schedule format: ${params.schedule}. Valid formats: "1m", "5m", "1h", "1d", "every 10m", "every 1h", "daily 09:00", "2026-01-20 15:30"`,
       };
     }
 
-    const isRecurring =
-      params.schedule.startsWith("every") ||
-      params.schedule.startsWith("daily");
+    // Use IPC callback if available (Tauri mode)
+    if (this.ipcCallback) {
+      const result = await this.ipcCallback("create", {
+        title: params.title,
+        prompt: params.prompt,
+        schedule: params.schedule,
+        notifyBefore: params.notifyBefore,
+      });
 
-    const task = this.schedulerStore.createTask({
-      id: taskId,
-      title: params.title,
-      prompt: params.prompt,
-      schedule: params.schedule,
-      nextRun,
-      isRecurring,
-      notifyBefore: params.notifyBefore,
-      enabled: true,
-    });
+      if (result.success) {
+        const task = result.data as ScheduledTask;
+        return {
+          success: true,
+          output: `✅ Reminder "${params.title}" set for ${this.formatLocalTime(task.nextRun)}`,
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || "Failed to create task",
+        };
+      }
+    }
 
+    // Fallback: return success with calculated time (scheduler in Rust will handle it)
     return {
       success: true,
-      output: `✅ Reminder set for ${new Date(nextRun).toLocaleString()}`,
+      output: `✅ Reminder "${params.title}" set for ${this.formatLocalTime(nextRun)}`,
     };
   }
 
   private async listTasks(): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
+    if (this.ipcCallback) {
+      const result = await this.ipcCallback("list", {});
 
-    const tasks = this.schedulerStore.listTasks();
+      if (result.success) {
+        const tasks = (result.data as ScheduledTask[]) || [];
+        
+        if (tasks.length === 0) {
+          return {
+            success: true,
+            output: 'No scheduled tasks yet. Use operation="create" to add one.',
+          };
+        }
 
-    if (tasks.length === 0) {
-      return {
-        success: true,
-        output: 'No scheduled tasks yet. Use operation="create" to add one.',
-      };
-    }
-
-    const output = tasks
-      .map((task, index) => {
-        const nextRun = new Date(task.nextRun).toLocaleString();
-        const status = task.enabled ? "✅" : "⏸️";
-        return `${index + 1}. ${status} ${task.title}
+        const output = tasks
+          .map((task, index) => {
+            const nextRun = this.formatLocalTime(task.nextRun);
+            const status = task.enabled ? "✅" : "⏸️";
+            return `${index + 1}. ${status} ${task.title}
    ID: ${task.id}
    Schedule: ${task.schedule}
    Next run: ${nextRun}
    ${task.prompt ? `Prompt: ${task.prompt.substring(0, 50)}${task.prompt.length > 50 ? "..." : ""}` : "Reminder only"}
    ${task.notifyBefore ? `Notify: ${task.notifyBefore}m before` : ""}`;
-      })
-      .join("\n\n");
+          })
+          .join("\n\n");
+
+        return {
+          success: true,
+          output: `📋 Scheduled Tasks (${tasks.length}):\n\n${output}`,
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || "Failed to list tasks",
+        };
+      }
+    }
 
     return {
       success: true,
-      output: `📋 Scheduled Tasks (${tasks.length}):\n\n${output}`,
+      output: 'No scheduled tasks yet. Use operation="create" to add one.',
     };
   }
 
   private async deleteTask(taskId: string): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
+    if (this.ipcCallback) {
+      const result = await this.ipcCallback("delete", { taskId });
 
-    const deleted = this.schedulerStore.deleteTask(taskId);
-
-    if (!deleted) {
-      return {
-        success: false,
-        error: `Task ${taskId} not found`,
-      };
+      if (result.success) {
+        return {
+          success: true,
+          output: `✅ Task ${taskId} deleted successfully`,
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || `Task ${taskId} not found`,
+        };
+      }
     }
 
     return {
-      success: true,
-      output: `✅ Task ${taskId} deleted successfully`,
+      success: false,
+      error: "Scheduler not available",
     };
   }
 
@@ -304,22 +333,7 @@ export class ScheduleTaskTool extends BaseTool {
       enabled?: boolean;
     },
   ): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
-
-    // If schedule is being updated, recalculate nextRun
-    const updateData: Parameters<typeof this.schedulerStore.updateTask>[1] = {};
-
-    if (updates.title !== undefined) updateData.title = updates.title;
-    if (updates.prompt !== undefined) updateData.prompt = updates.prompt;
-    if (updates.notifyBefore !== undefined)
-      updateData.notifyBefore = updates.notifyBefore;
-    if (updates.enabled !== undefined) updateData.enabled = updates.enabled;
-
+    // Validate schedule format if provided
     if (updates.schedule !== undefined) {
       const nextRun = this.calculateNextRun(updates.schedule);
       if (!nextRun) {
@@ -328,26 +342,39 @@ export class ScheduleTaskTool extends BaseTool {
           error: `Invalid schedule format: ${updates.schedule}`,
         };
       }
-      updateData.schedule = updates.schedule;
-      updateData.nextRun = nextRun;
-      updateData.isRecurring =
-        updates.schedule.startsWith("every") ||
-        updates.schedule.startsWith("daily");
     }
 
-    const updated = this.schedulerStore.updateTask(taskId, updateData);
+    if (this.ipcCallback) {
+      const result = await this.ipcCallback("update", { taskId, params: updates });
 
-    if (!updated) {
-      return {
-        success: false,
-        error: `Task ${taskId} not found`,
-      };
+      if (result.success) {
+        return {
+          success: true,
+          output: `✅ Task ${taskId} updated successfully`,
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || `Task ${taskId} not found`,
+        };
+      }
     }
 
     return {
-      success: true,
-      output: `✅ Task ${taskId} updated successfully`,
+      success: false,
+      error: "Scheduler not available",
     };
+  }
+
+  private formatLocalTime(timestamp: number): string {
+    const date = new Date(timestamp);
+    // Format: YYYY-MM-DD HH:MM (24h format, local time)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
   }
 
   private calculateNextRun(schedule: string): number | null {

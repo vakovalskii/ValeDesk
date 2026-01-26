@@ -3,8 +3,10 @@
 
 mod db;
 mod sandbox;
+mod scheduler;
 
-use db::{Database, CreateSessionParams, UpdateSessionParams, Session, SessionHistory, TodoItem, FileChange, LLMProvider, LLMModel, LLMProviderSettings, ApiSettings};
+use db::{Database, CreateSessionParams, UpdateSessionParams, Session, SessionHistory, TodoItem, FileChange, LLMProvider, LLMModel, LLMProviderSettings, ApiSettings, ScheduledTask, CreateScheduledTaskParams, UpdateScheduledTaskParams};
+use scheduler::SchedulerService;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::fs;
@@ -190,6 +192,123 @@ fn memory_path() -> Result<PathBuf, String> {
   Ok(home_dir()?.join(".localdesk").join("memory.md"))
 }
 
+/// Handle scheduler.request events from sidecar - execute scheduler operations
+fn handle_scheduler_request(_app: &tauri::AppHandle, db: &Arc<Database>, sidecar_state: &SidecarState, payload: &Value) {
+  let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("");
+  let operation = payload.get("operation").and_then(|v| v.as_str()).unwrap_or("");
+  let params = payload.get("params").cloned().unwrap_or(Value::Null);
+  
+  eprintln!("[scheduler] {} request", operation);
+  
+  let result = match operation {
+    "create" => {
+      let create_params: Result<db::CreateScheduledTaskParams, _> = serde_json::from_value(params.clone());
+      match create_params {
+        Ok(p) => {
+          let now = chrono::Utc::now().timestamp_millis();
+          match scheduler::calculate_next_run(&p.schedule, now) {
+            Some(next_run) => {
+              let is_recurring = scheduler::is_recurring_schedule(&p.schedule);
+              match db.create_scheduled_task(&p, next_run, is_recurring) {
+                Ok(task) => json!({ "success": true, "data": task }),
+                Err(e) => json!({ "success": false, "error": format!("{}", e) })
+              }
+            }
+            None => json!({ "success": false, "error": format!("Invalid schedule format: {}", p.schedule) })
+          }
+        }
+        Err(e) => json!({ "success": false, "error": format!("Invalid params: {}", e) })
+      }
+    }
+    "list" => {
+      match db.list_scheduled_tasks(true) {
+        Ok(tasks) => json!({ "success": true, "data": tasks }),
+        Err(e) => json!({ "success": false, "error": format!("{}", e) })
+      }
+    }
+    "delete" => {
+      let task_id = params.get("taskId").and_then(|v| v.as_str()).unwrap_or("");
+      match db.delete_scheduled_task(task_id) {
+        Ok(deleted) => {
+          if deleted {
+            json!({ "success": true })
+          } else {
+            json!({ "success": false, "error": format!("Task {} not found", task_id) })
+          }
+        }
+        Err(e) => json!({ "success": false, "error": format!("{}", e) })
+      }
+    }
+    "update" => {
+      let task_id = params.get("taskId").and_then(|v| v.as_str()).unwrap_or("");
+      let update_params: Result<db::UpdateScheduledTaskParams, _> = 
+        serde_json::from_value(params.get("params").cloned().unwrap_or(Value::Object(Default::default())));
+      
+      match update_params {
+        Ok(mut p) => {
+          // If schedule is being updated, recalculate next_run
+          if let Some(ref schedule) = p.schedule {
+            let now = chrono::Utc::now().timestamp_millis();
+            if let Some(next_run) = scheduler::calculate_next_run(schedule, now) {
+              p.next_run = Some(next_run);
+              p.is_recurring = Some(scheduler::is_recurring_schedule(schedule));
+            }
+          }
+          
+          match db.update_scheduled_task(task_id, &p) {
+            Ok(updated) => {
+              if updated {
+                json!({ "success": true })
+              } else {
+                json!({ "success": false, "error": format!("Task {} not found", task_id) })
+              }
+            }
+            Err(e) => json!({ "success": false, "error": format!("{}", e) })
+          }
+        }
+        Err(e) => json!({ "success": false, "error": format!("Invalid params: {}", e) })
+      }
+    }
+    _ => json!({ "success": false, "error": format!("Unknown operation: {}", operation) })
+  };
+  
+  // Log result
+  let success = result.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+  if success {
+    eprintln!("[scheduler] ✓ {}", operation);
+  } else {
+    let err = result.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
+    eprintln!("[scheduler] ✗ {}: {}", operation, err);
+  }
+  
+  // Send response back to sidecar through stdin
+  let response_msg = json!({
+    "type": "scheduler-response",
+    "payload": {
+      "requestId": request_id,
+      "result": result
+    }
+  });
+  
+  if let Err(e) = send_to_sidecar_raw(sidecar_state, &response_msg) {
+    eprintln!("[scheduler] ✗ send response: {}", e);
+  }
+}
+
+fn send_to_sidecar_raw(sidecar_state: &SidecarState, msg: &Value) -> Result<(), String> {
+  let mut guard = sidecar_state.child.lock().map_err(|_| "[sidecar] state lock poisoned".to_string())?;
+  let child = guard.as_mut().ok_or_else(|| "[sidecar] sidecar is not running".to_string())?;
+
+  let raw = serde_json::to_string(msg).map_err(|error| format!("[sidecar] Failed to serialize message: {error}"))?;
+
+  child
+    .stdin
+    .write_all(format!("{raw}\n").as_bytes())
+    .map_err(|error| format!("[sidecar] Failed to write to stdin: {error}"))?;
+  child.stdin.flush().map_err(|error| format!("[sidecar] Failed to flush stdin: {error}"))?;
+  Ok(())
+}
+
 /// Handle session.sync events from sidecar - save to DB
 fn handle_session_sync(db: &Arc<Database>, payload: &Value) {
   let sync_type = payload.get("syncType").and_then(|v| v.as_str()).unwrap_or("");
@@ -312,6 +431,7 @@ fn open_target(target: &str) -> Result<(), String> {
 struct AppState {
   db: Arc<Database>,
   sidecar: SidecarState,
+  scheduler: SchedulerService,
 }
 
 #[derive(Default)]
@@ -459,9 +579,21 @@ fn start_sidecar(app: tauri::AppHandle, sidecar_state: &SidecarState) -> Result<
                   continue; // Don't emit to frontend
                 }
                 
-                eprintln!("[sidecar] Emitting server-event: {}", event_type);
+                // Handle scheduler.request events from sidecar
+                if event_type == "scheduler.request" {
+                  if let Some(payload) = event.get("payload") {
+                    let state: tauri::State<'_, AppState> = app_handle.state();
+                    handle_scheduler_request(&app_handle, &state.db, &state.sidecar, payload);
+                  }
+                  continue; // Don't emit to frontend
+                }
+                
+                // Only log non-streaming events to reduce noise
+                if event_type != "stream.message" {
+                  eprintln!("[sidecar] → {}", event_type);
+                }
                 if let Err(error) = emit_server_event_app(&app_handle, event) {
-                  eprintln!("[sidecar] Failed to emit server-event: {error}");
+                  eprintln!("[sidecar] ✗ emit failed: {error}");
                 }
               }
               continue;
@@ -788,12 +920,65 @@ fn db_save_models(state: tauri::State<'_, AppState>, models: Vec<LLMModel>) -> R
     .map_err(|e| format!("[db_save_models] {}", e))
 }
 
+// ============ Scheduled Tasks Commands ============
+
+#[tauri::command]
+fn db_scheduled_task_create(state: tauri::State<'_, AppState>, params: CreateScheduledTaskParams) -> Result<ScheduledTask, String> {
+  let now = chrono::Utc::now().timestamp_millis();
+  let next_run = scheduler::calculate_next_run(&params.schedule, now)
+    .ok_or_else(|| format!("[db_scheduled_task_create] Invalid schedule format: {}", params.schedule))?;
+  let is_recurring = scheduler::is_recurring_schedule(&params.schedule);
+  
+  state.db.create_scheduled_task(&params, next_run, is_recurring)
+    .map_err(|e| format!("[db_scheduled_task_create] {}", e))
+}
+
+#[tauri::command]
+fn db_scheduled_task_list(state: tauri::State<'_, AppState>, include_disabled: Option<bool>) -> Result<Vec<ScheduledTask>, String> {
+  state.db.list_scheduled_tasks(include_disabled.unwrap_or(true))
+    .map_err(|e| format!("[db_scheduled_task_list] {}", e))
+}
+
+#[tauri::command]
+fn db_scheduled_task_get(state: tauri::State<'_, AppState>, id: String) -> Result<Option<ScheduledTask>, String> {
+  state.db.get_scheduled_task(&id)
+    .map_err(|e| format!("[db_scheduled_task_get] {}", e))
+}
+
+#[tauri::command]
+fn db_scheduled_task_update(state: tauri::State<'_, AppState>, id: String, params: UpdateScheduledTaskParams) -> Result<bool, String> {
+  // If schedule is being updated, recalculate next_run
+  let mut final_params = params.clone();
+  if let Some(ref schedule) = params.schedule {
+    let now = chrono::Utc::now().timestamp_millis();
+    let next_run = scheduler::calculate_next_run(schedule, now)
+      .ok_or_else(|| format!("[db_scheduled_task_update] Invalid schedule format: {}", schedule))?;
+    final_params.next_run = Some(next_run);
+    final_params.is_recurring = Some(scheduler::is_recurring_schedule(schedule));
+  }
+  
+  state.db.update_scheduled_task(&id, &final_params)
+    .map_err(|e| format!("[db_scheduled_task_update] {}", e))
+}
+
+#[tauri::command]
+fn db_scheduled_task_delete(state: tauri::State<'_, AppState>, id: String) -> Result<bool, String> {
+  state.db.delete_scheduled_task(&id)
+    .map_err(|e| format!("[db_scheduled_task_delete] {}", e))
+}
+
 #[tauri::command]
 fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event: Value) -> Result<(), String> {
   let event_type = event
     .get("type")
     .and_then(|v| v.as_str())
     .ok_or_else(|| "[client_event] Missing event.type".to_string())?;
+
+  // Log user actions (skip noisy events)
+  let noisy = ["session.list", "session.history", "settings.get", "models.get", "llm.providers.get", "skills.get"];
+  if !noisy.contains(&event_type) {
+    eprintln!("[event] {}", event_type);
+  }
 
   match event_type {
     "open.external" => {
@@ -1089,15 +1274,12 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
       let settings = state.db.get_llm_provider_settings()
         .map_err(|e| format!("[llm.providers.get] {}", e))?;
       
-      eprintln!("[llm.providers.get] providers={}, models={}", settings.providers.len(), settings.models.len());
+      eprintln!("[providers] {} providers, {} models", settings.providers.len(), settings.models.len());
       
-      // Always return from Rust DB (even if empty)
-      let payload = json!({
+      emit_server_event_app(&app, &json!({
         "type": "llm.providers.loaded",
         "payload": { "settings": settings }
-      });
-      eprintln!("[llm.providers.get] sending: {}", serde_json::to_string(&payload).unwrap_or_default());
-      emit_server_event_app(&app, &payload)?;
+      }))?;
       Ok(())
     }
 
@@ -1121,9 +1303,149 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
 
     // Forward other LLM-related events to sidecar
     "models.get" | "llm.models.test" | "llm.models.fetch" | "llm.models.check" |
-    "skills.get" | "skills.refresh" | "skills.toggle" | "skills.set-marketplace" |
-    "task.create" | "task.start" | "task.stop" | "task.delete" => {
+    "skills.get" | "skills.refresh" | "skills.toggle" | "skills.set-marketplace" => {
       send_to_sidecar(app, state.inner(), &event)
+    }
+
+    // Scheduler default model
+    "scheduler.default_model.get" => {
+      let model = state.db.get_scheduler_default_model()
+        .map_err(|e| format!("[scheduler.default_model.get] {}", e))?;
+      
+      emit_server_event_app(&app, &json!({
+        "type": "scheduler.default_model.loaded",
+        "payload": { "modelId": model }
+      }))?;
+      Ok(())
+    }
+
+    "scheduler.default_model.set" => {
+      let payload = event.get("payload")
+        .ok_or_else(|| "[scheduler.default_model.set] missing payload".to_string())?;
+      let model_id = payload.get("modelId").and_then(|v| v.as_str())
+        .ok_or_else(|| "[scheduler.default_model.set] missing modelId".to_string())?;
+      
+      state.db.set_scheduler_default_model(model_id)
+        .map_err(|e| format!("[scheduler.default_model.set] {}", e))?;
+      
+      eprintln!("[scheduler] Default model set: {}", model_id);
+      
+      emit_server_event_app(&app, &json!({
+        "type": "scheduler.default_model.loaded",
+        "payload": { "modelId": model_id }
+      }))?;
+      Ok(())
+    }
+
+    // Scheduled Tasks - handled in Rust
+    "task.create" => {
+      let payload = event.get("payload")
+        .ok_or_else(|| "[task.create] missing payload".to_string())?;
+      let params: CreateScheduledTaskParams = serde_json::from_value(payload.clone())
+        .map_err(|e| format!("[task.create] invalid params: {}", e))?;
+      
+      let now = chrono::Utc::now().timestamp_millis();
+      let next_run = scheduler::calculate_next_run(&params.schedule, now)
+        .ok_or_else(|| format!("[task.create] Invalid schedule format: {}", params.schedule))?;
+      let is_recurring = scheduler::is_recurring_schedule(&params.schedule);
+      
+      match state.db.create_scheduled_task(&params, next_run, is_recurring) {
+        Ok(task) => {
+          emit_server_event_app(&app, &json!({
+            "type": "task.created",
+            "payload": { "task": task }
+          }))?;
+        }
+        Err(e) => {
+          emit_server_event_app(&app, &json!({
+            "type": "runner.error",
+            "payload": { "message": format!("Failed to create task: {}", e) }
+          }))?;
+        }
+      }
+      Ok(())
+    }
+
+    "task.list" => {
+      match state.db.list_scheduled_tasks(true) {
+        Ok(tasks) => {
+          emit_server_event_app(&app, &json!({
+            "type": "task.list",
+            "payload": { "tasks": tasks }
+          }))?;
+        }
+        Err(e) => {
+          emit_server_event_app(&app, &json!({
+            "type": "runner.error",
+            "payload": { "message": format!("Failed to list tasks: {}", e) }
+          }))?;
+        }
+      }
+      Ok(())
+    }
+
+    "task.update" => {
+      let payload = event.get("payload")
+        .ok_or_else(|| "[task.update] missing payload".to_string())?;
+      let task_id = payload.get("taskId").and_then(|v| v.as_str())
+        .ok_or_else(|| "[task.update] missing taskId".to_string())?;
+      let params: UpdateScheduledTaskParams = serde_json::from_value(
+        payload.get("params").cloned().unwrap_or(serde_json::Value::Object(Default::default()))
+      ).map_err(|e| format!("[task.update] invalid params: {}", e))?;
+      
+      // If schedule is being updated, recalculate next_run
+      let mut final_params = params.clone();
+      if let Some(ref schedule) = params.schedule {
+        let now = chrono::Utc::now().timestamp_millis();
+        if let Some(next_run) = scheduler::calculate_next_run(schedule, now) {
+          final_params.next_run = Some(next_run);
+          final_params.is_recurring = Some(scheduler::is_recurring_schedule(schedule));
+        }
+      }
+      
+      match state.db.update_scheduled_task(task_id, &final_params) {
+        Ok(updated) => {
+          emit_server_event_app(&app, &json!({
+            "type": "task.updated",
+            "payload": { "taskId": task_id, "updated": updated }
+          }))?;
+        }
+        Err(e) => {
+          emit_server_event_app(&app, &json!({
+            "type": "runner.error",
+            "payload": { "message": format!("Failed to update task: {}", e) }
+          }))?;
+        }
+      }
+      Ok(())
+    }
+
+    "task.delete" => {
+      let payload = event.get("payload")
+        .ok_or_else(|| "[task.delete] missing payload".to_string())?;
+      let task_id = payload.get("taskId").and_then(|v| v.as_str())
+        .ok_or_else(|| "[task.delete] missing taskId".to_string())?;
+      
+      match state.db.delete_scheduled_task(task_id) {
+        Ok(deleted) => {
+          emit_server_event_app(&app, &json!({
+            "type": "task.deleted",
+            "payload": { "taskId": task_id, "deleted": deleted }
+          }))?;
+        }
+        Err(e) => {
+          emit_server_event_app(&app, &json!({
+            "type": "runner.error",
+            "payload": { "message": format!("Failed to delete task: {}", e) }
+          }))?;
+        }
+      }
+      Ok(())
+    }
+
+    "task.start" | "task.stop" => {
+      // These are handled by scheduler service automatically
+      Ok(())
     }
 
     _ => {
@@ -1230,13 +1552,24 @@ fn main() {
   // Migrate JSON settings to DB on first run
   migrate_json_to_db(&db, &user_data_dir);
 
+  let db_arc = Arc::new(db);
+  let scheduler = SchedulerService::new(db_arc.clone());
+
   let app_state = AppState {
-    db: Arc::new(db),
+    db: db_arc,
     sidecar: SidecarState::default(),
+    scheduler,
   };
 
   tauri::Builder::default()
+    .plugin(tauri_plugin_notification::init())
     .manage(app_state)
+    .setup(|app| {
+      // Start scheduler service
+      let state: tauri::State<'_, AppState> = app.state();
+      state.scheduler.start(app.handle().clone());
+      Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
       client_event,
       list_directory,
@@ -1272,7 +1605,13 @@ fn main() {
       db_save_llm_providers,
       db_save_provider,
       db_delete_provider,
-      db_save_models
+      db_save_models,
+      // Database commands - Scheduled Tasks
+      db_scheduled_task_create,
+      db_scheduled_task_list,
+      db_scheduled_task_get,
+      db_scheduled_task_update,
+      db_scheduled_task_delete
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

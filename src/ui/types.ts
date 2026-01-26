@@ -211,7 +211,11 @@ export type ServerEvent =
   | { type: "llm.models.checked"; payload: { unavailableModels: string[] } }
   // Skills events
   | { type: "skills.loaded"; payload: { skills: Skill[]; marketplaceUrl: string; lastFetched?: number } }
-  | { type: "skills.error"; payload: { message: string } };
+  | { type: "skills.error"; payload: { message: string } }
+  // Scheduler events
+  | { type: "scheduler.notification"; payload: { title: string; body: string } }
+  | { type: "scheduler.task_execute"; payload: { taskId: string; title: string; prompt?: string } }
+  | { type: "scheduler.default_model.loaded"; payload: { modelId: string | null } };
 
 // Client -> Server events
 export type ClientEvent =
@@ -246,4 +250,7 @@ export type ClientEvent =
   | { type: "skills.get" }
   | { type: "skills.refresh" }
   | { type: "skills.toggle"; payload: { skillId: string; enabled: boolean } }
-  | { type: "skills.set-marketplace"; payload: { url: string } };
+  | { type: "skills.set-marketplace"; payload: { url: string } }
+  // Scheduler events
+  | { type: "scheduler.default_model.get" }
+  | { type: "scheduler.default_model.set"; payload: { modelId: string } };

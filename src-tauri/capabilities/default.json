@@ -10,6 +10,7 @@
         "core:event:allow-unlisten",
         "core:event:allow-emit",
         "core:window:allow-show",
-        "core:webview:allow-internal-toggle-devtools"
+        "core:webview:allow-internal-toggle-devtools",
+        "notification:default"
     ]
 }

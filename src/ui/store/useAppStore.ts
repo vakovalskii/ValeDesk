@@ -53,6 +53,7 @@ interface AppState {
   llmProviders: LLMProvider[];
   llmModels: LLMModel[];
   llmProviderSettings: LLMProviderSettings | null;
+  schedulerDefaultModel: string | null;
 
   setPrompt: (prompt: string) => void;
   setCwd: (cwd: string) => void;
@@ -99,6 +100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   llmProviders: [],
   llmModels: [],
   llmProviderSettings: null,
+  schedulerDefaultModel: null,
 
   setPrompt: (prompt) => set({ prompt }),
   setCwd: (cwd) => set({ cwd }),
@@ -557,6 +559,45 @@ export const useAppStore = create<AppState>((set, get) => ({
       case "llm.models.checked": {
         const { unavailableModels } = event.payload;
         console.log('[AppStore] LLM models checked, unavailable:', unavailableModels);
+        break;
+      }
+
+      // Scheduler default model loaded
+      case "scheduler.default_model.loaded": {
+        const { modelId } = event.payload;
+        set({ schedulerDefaultModel: modelId });
+        break;
+      }
+
+      // Scheduler task execution - auto-start session with prompt
+      case "scheduler.task_execute": {
+        const { title, prompt } = event.payload as any;
+        if (prompt) {
+          // Use scheduler default model, or fallback to first enabled model
+          const { schedulerDefaultModel, llmModels } = get();
+          let model = schedulerDefaultModel;
+          
+          if (!model) {
+            const enabledModels = llmModels.filter(m => m.enabled);
+            model = enabledModels.length > 0 ? enabledModels[0].id : null;
+          }
+          
+          if (!model) {
+            console.warn(`[scheduler] ✗ No model configured for task: ${title}`);
+            break;
+          }
+          
+          console.log(`[scheduler] ▶ Executing task: ${title} (model: ${model})`);
+          getPlatform().sendClientEvent({
+            type: "session.start",
+            payload: {
+              title: `Scheduled: ${title}`,
+              prompt: prompt,
+              model: model,
+              cwd: undefined,
+            }
+          });
+        }
         break;
       }
     }
