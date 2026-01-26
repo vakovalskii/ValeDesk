@@ -48,8 +48,13 @@ export function createTauriPlatform(): PlatformAdapter {
 
   return {
     sendClientEvent: (event) => {
+      const eventType = (event as any)?.type;
+      // Log user actions (skip noisy events)
+      if (!["session.list", "session.history", "settings.get", "models.get", "llm.providers.get", "skills.get"].includes(eventType)) {
+        console.log(`[ui] → ${eventType}`, (event as any)?.payload || "");
+      }
       void tauriInvoke("client_event", { event }).catch((error) => {
-        console.error("[platform/tauri] sendClientEvent failed", { error, eventType: (event as any)?.type });
+        console.error("[ui] ✗ ${eventType}", { error });
       });
     },
 
@@ -60,16 +65,20 @@ export function createTauriPlatform(): PlatformAdapter {
       void tauriListen("server-event", (event) => {
         try {
           const payload = (event as any)?.payload;
+          let parsed: any;
           if (typeof payload === "string") {
-            const parsed = JSON.parse(payload);
-            console.log("[platform/tauri] Received server-event:", parsed.type);
-            callback(parsed);
-            return;
+            parsed = JSON.parse(payload);
+          } else {
+            parsed = payload;
           }
-          console.log("[platform/tauri] Received server-event (obj):", (payload as any)?.type);
-          callback(payload as any);
+          // Log non-streaming events
+          const eventType = parsed?.type;
+          if (eventType && !["stream.message"].includes(eventType)) {
+            console.log(`[ui] ← ${eventType}`);
+          }
+          callback(parsed);
         } catch (error) {
-          console.error("[platform/tauri] Failed to handle server-event payload", { error, payload: (event as any)?.payload });
+          console.error("[ui] ✗ parse server-event", error);
         }
       })
         .then((fn) => {

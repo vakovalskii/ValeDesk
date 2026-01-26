@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import type { ApiSettings, LLMModel } from "../types";
+import type { ApiSettings, LLMModel, ClientEvent } from "../types";
 import { getPlatform } from "../platform";
 import { useAppStore } from "../store/useAppStore";
 
@@ -42,6 +42,7 @@ export function StartSessionModal({
   onSendTemperatureChange
 }: StartSessionModalProps) {
   const llmProviders = useAppStore((s) => s.llmProviders);
+  const schedulerDefaultModel = useAppStore((s) => s.schedulerDefaultModel);
   const [recentCwds, setRecentCwds] = useState<string[]>([]);
   const [modelSearch, setModelSearch] = useState('');
 
@@ -86,12 +87,17 @@ export function StartSessionModal({
         model.description?.toLowerCase().includes(modelSearch.toLowerCase())
       );
 
-  // Set default model to apiSettings.model if no model is selected
+  // Set default model: schedulerDefaultModel > apiSettings.model
   useEffect(() => {
-    if (!selectedModel && apiSettings?.model) {
-      onModelChange(apiSettings.model);
+    if (!selectedModel) {
+      // Prioritize scheduler default model if set
+      if (schedulerDefaultModel) {
+        onModelChange(schedulerDefaultModel);
+      } else if (apiSettings?.model) {
+        onModelChange(apiSettings.model);
+      }
     }
-  }, [apiSettings, selectedModel, onModelChange]);
+  }, [apiSettings, selectedModel, onModelChange, schedulerDefaultModel]);
 
   const handleSelectDirectory = async () => {
     const result = await getPlatform().selectDirectory();
@@ -113,7 +119,7 @@ export function StartSessionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/20 px-4 py-8 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-ink-900/5 bg-surface p-6 shadow-elevated">
+      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-ink-900/5 bg-surface p-6 shadow-elevated">
         <div className="flex items-center justify-between">
           <div className="text-base font-semibold text-ink-800">Start Task</div>
           <button className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" onClick={onClose} aria-label="Close">
@@ -177,6 +183,30 @@ export function StartSessionModal({
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
+            {/* Set as default for scheduled tasks */}
+            {selectedModel && (
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] text-muted">
+                  {schedulerDefaultModel === selectedModel 
+                    ? "✓ Default for scheduled tasks" 
+                    : ""}
+                </span>
+                {schedulerDefaultModel !== selectedModel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      getPlatform().sendClientEvent({
+                        type: "scheduler.default_model.set",
+                        payload: { modelId: selectedModel }
+                      } as ClientEvent);
+                    }}
+                    className="text-[10px] text-accent hover:text-accent-hover transition-colors"
+                  >
+                    Set as default for tasks
+                  </button>
+                )}
+              </div>
+            )}
           </label>
 
           {/* Temperature */}
@@ -244,7 +274,7 @@ export function StartSessionModal({
             {recentCwds.length > 0 && (
               <div className="mt-2 grid gap-2 w-full">
                 <div className="text-[11px] font-medium uppercase tracking-wide text-muted-light">Recent</div>
-                <div className="flex flex-wrap gap-2 w-full min-w-0">
+                <div className="flex flex-wrap gap-2 w-full min-w-0 max-h-32 overflow-y-auto">
                   {recentCwds.map((path) => (
                     <button
                       key={path}

@@ -109,6 +109,18 @@ function parseSkillMd(content: string): SkillMetadata | null {
 }
 
 /**
+ * Extract owner/repo from GitHub API URL
+ * e.g., "https://api.github.com/repos/owner/repo/contents/skills" -> { owner: "owner", repo: "repo" }
+ */
+function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
+  const match = url.match(/api\.github\.com\/repos\/([^/]+)\/([^/]+)/);
+  if (match) {
+    return { owner: match[1], repo: match[2] };
+  }
+  return null;
+}
+
+/**
  * Fetch skill list from GitHub marketplace
  */
 export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
@@ -116,6 +128,12 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
   const marketplaceUrl = settings.marketplaceUrl;
 
   console.log("[SkillsLoader] Fetching skills from:", marketplaceUrl);
+
+  // Parse owner/repo from marketplace URL
+  const repoInfo = parseGitHubUrl(marketplaceUrl);
+  if (!repoInfo) {
+    throw new Error(`Invalid marketplace URL: ${marketplaceUrl}`);
+  }
 
   try {
     // Fetch skills directory listing
@@ -139,7 +157,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
     // Fetch SKILL.md for each skill
     for (const dir of skillDirs) {
       try {
-        const skillMdUrl = `https://raw.githubusercontent.com/vakovalskii/LocalDesk-Skills/main/${dir.path}/SKILL.md`;
+        const skillMdUrl = `https://raw.githubusercontent.com/${repoInfo.owner}/${repoInfo.repo}/main/${dir.path}/SKILL.md`;
         const skillMdResponse = await fetch(skillMdUrl);
 
         if (skillMdResponse.ok) {
@@ -195,6 +213,12 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
     throw new Error(`Skill not found: ${skillId}`);
   }
 
+  // Parse owner/repo from marketplace URL
+  const repoInfo = parseGitHubUrl(settings.marketplaceUrl);
+  if (!repoInfo) {
+    throw new Error(`Invalid marketplace URL: ${settings.marketplaceUrl}`);
+  }
+
   const skillsDir = ensureSkillsDir(cwd);
   const skillCacheDir = path.join(skillsDir, skillId);
 
@@ -206,7 +230,7 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
   }
 
   // Fetch skill directory contents
-  const contentsUrl = `https://api.github.com/repos/vakovalskii/LocalDesk-Skills/contents/${skill.repoPath}`;
+  const contentsUrl = `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${skill.repoPath}`;
   const response = await fetch(contentsUrl, {
     headers: {
       "Accept": "application/vnd.github.v3+json",
@@ -221,7 +245,7 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
   const contents: GitHubContent[] = await response.json();
 
   // Download all files recursively
-  await downloadContents(contents, skillCacheDir, skill.repoPath);
+  await downloadContents(contents, skillCacheDir, skill.repoPath, repoInfo);
 
   return skillCacheDir;
 }
@@ -229,7 +253,8 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
 async function downloadContents(
   contents: GitHubContent[],
   targetDir: string,
-  basePath: string
+  basePath: string,
+  repoInfo: { owner: string; repo: string }
 ): Promise<void> {
   for (const item of contents) {
     const localPath = path.join(targetDir, item.name);
@@ -245,7 +270,7 @@ async function downloadContents(
         fs.mkdirSync(localPath, { recursive: true });
       }
 
-      const subContentsUrl = `https://api.github.com/repos/vakovalskii/LocalDesk-Skills/contents/${item.path}`;
+      const subContentsUrl = `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${item.path}`;
       const subResponse = await fetch(subContentsUrl, {
         headers: {
           "Accept": "application/vnd.github.v3+json",
@@ -255,7 +280,7 @@ async function downloadContents(
 
       if (subResponse.ok) {
         const subContents: GitHubContent[] = await subResponse.json();
-        await downloadContents(subContents, localPath, item.path);
+        await downloadContents(subContents, localPath, item.path, repoInfo);
       }
     }
   }

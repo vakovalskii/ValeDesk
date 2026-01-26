@@ -14,9 +14,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2.3.4"
+tauri-plugin-notification = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
+regex = "1"
 
 # Code Sandbox - pure Rust interpreters (no external deps needed)
 boa_engine = "0.21"           # JavaScript engine

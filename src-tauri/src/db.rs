@@ -703,6 +703,16 @@ impl Database {
         self.set_setting("api_settings", &json)
     }
 
+    // --- Scheduler Default Model ---
+    
+    pub fn get_scheduler_default_model(&self) -> SqliteResult<Option<String>> {
+        self.get_setting("scheduler_default_model")
+    }
+    
+    pub fn set_scheduler_default_model(&self, model_id: &str) -> SqliteResult<()> {
+        self.set_setting("scheduler_default_model", model_id)
+    }
+
     // --- Providers ---
 
     pub fn list_providers(&self) -> SqliteResult<Vec<LLMProvider>> {
@@ -901,5 +911,240 @@ impl Database {
         self.save_models_bulk(&settings.models)?;
         
         Ok(())
+    }
+}
+
+// ============ Scheduled Tasks ============
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledTask {
+    pub id: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    pub schedule: String,
+    pub next_run: i64,
+    pub is_recurring: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_before: Option<i64>,
+    pub enabled: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateScheduledTaskParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    pub schedule: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_before: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateScheduledTaskParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_run: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_recurring: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_before: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+impl Database {
+    // --- Scheduled Tasks ---
+
+    pub fn create_scheduled_task(&self, params: &CreateScheduledTaskParams, next_run: i64, is_recurring: bool) -> SqliteResult<ScheduledTask> {
+        let conn = self.conn.lock().unwrap();
+        let id = params.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let now = chrono::Utc::now().timestamp_millis();
+
+        conn.execute(
+            r#"INSERT INTO scheduled_tasks 
+               (id, title, prompt, schedule, next_run, is_recurring, notify_before, enabled, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9)"#,
+            params![
+                &id,
+                &params.title,
+                &params.prompt,
+                &params.schedule,
+                next_run,
+                if is_recurring { 1 } else { 0 },
+                &params.notify_before,
+                now,
+                now
+            ],
+        )?;
+
+        Ok(ScheduledTask {
+            id,
+            title: params.title.clone(),
+            prompt: params.prompt.clone(),
+            schedule: params.schedule.clone(),
+            next_run,
+            is_recurring,
+            notify_before: params.notify_before,
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub fn get_scheduled_task(&self, id: &str) -> SqliteResult<Option<ScheduledTask>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"SELECT id, title, prompt, schedule, next_run, is_recurring, notify_before, enabled, created_at, updated_at
+               FROM scheduled_tasks WHERE id = ?1"#
+        )?;
+
+        let mut rows = stmt.query_map([id], |row| {
+            Ok(ScheduledTask {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                prompt: row.get(2)?,
+                schedule: row.get(3)?,
+                next_run: row.get(4)?,
+                is_recurring: row.get::<_, i32>(5)? != 0,
+                notify_before: row.get(6)?,
+                enabled: row.get::<_, i32>(7)? != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+
+        match rows.next() {
+            Some(result) => Ok(Some(result?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn list_scheduled_tasks(&self, include_disabled: bool) -> SqliteResult<Vec<ScheduledTask>> {
+        let conn = self.conn.lock().unwrap();
+        let query = if include_disabled {
+            "SELECT id, title, prompt, schedule, next_run, is_recurring, notify_before, enabled, created_at, updated_at FROM scheduled_tasks ORDER BY next_run ASC"
+        } else {
+            "SELECT id, title, prompt, schedule, next_run, is_recurring, notify_before, enabled, created_at, updated_at FROM scheduled_tasks WHERE enabled = 1 ORDER BY next_run ASC"
+        };
+        
+        let mut stmt = conn.prepare(query)?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ScheduledTask {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                prompt: row.get(2)?,
+                schedule: row.get(3)?,
+                next_run: row.get(4)?,
+                is_recurring: row.get::<_, i32>(5)? != 0,
+                notify_before: row.get(6)?,
+                enabled: row.get::<_, i32>(7)? != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    pub fn get_tasks_due_now(&self, now: i64) -> SqliteResult<Vec<ScheduledTask>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"SELECT id, title, prompt, schedule, next_run, is_recurring, notify_before, enabled, created_at, updated_at
+               FROM scheduled_tasks
+               WHERE enabled = 1 AND next_run <= ?1
+               ORDER BY next_run ASC"#
+        )?;
+
+        let rows = stmt.query_map([now], |row| {
+            Ok(ScheduledTask {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                prompt: row.get(2)?,
+                schedule: row.get(3)?,
+                next_run: row.get(4)?,
+                is_recurring: row.get::<_, i32>(5)? != 0,
+                notify_before: row.get(6)?,
+                enabled: row.get::<_, i32>(7)? != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    pub fn update_scheduled_task(&self, id: &str, params: &UpdateScheduledTaskParams) -> SqliteResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+
+        let mut updates = vec!["updated_at = ?1".to_string()];
+        let mut values: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(now)];
+        let mut idx = 2;
+
+        if let Some(ref title) = params.title {
+            updates.push(format!("title = ?{}", idx));
+            values.push(Box::new(title.clone()));
+            idx += 1;
+        }
+        if let Some(ref prompt) = params.prompt {
+            updates.push(format!("prompt = ?{}", idx));
+            values.push(Box::new(prompt.clone()));
+            idx += 1;
+        }
+        if let Some(ref schedule) = params.schedule {
+            updates.push(format!("schedule = ?{}", idx));
+            values.push(Box::new(schedule.clone()));
+            idx += 1;
+        }
+        if let Some(next_run) = params.next_run {
+            updates.push(format!("next_run = ?{}", idx));
+            values.push(Box::new(next_run));
+            idx += 1;
+        }
+        if let Some(is_recurring) = params.is_recurring {
+            updates.push(format!("is_recurring = ?{}", idx));
+            values.push(Box::new(if is_recurring { 1i32 } else { 0i32 }));
+            idx += 1;
+        }
+        if let Some(notify_before) = params.notify_before {
+            updates.push(format!("notify_before = ?{}", idx));
+            values.push(Box::new(notify_before));
+            idx += 1;
+        }
+        if let Some(enabled) = params.enabled {
+            updates.push(format!("enabled = ?{}", idx));
+            values.push(Box::new(if enabled { 1i32 } else { 0i32 }));
+            idx += 1;
+        }
+
+        let sql = format!(
+            "UPDATE scheduled_tasks SET {} WHERE id = ?{}",
+            updates.join(", "),
+            idx
+        );
+        values.push(Box::new(id.to_string()));
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+        let changed = conn.execute(&sql, params_refs.as_slice())?;
+        Ok(changed > 0)
+    }
+
+    pub fn delete_scheduled_task(&self, id: &str) -> SqliteResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute("DELETE FROM scheduled_tasks WHERE id = ?1", [id])?;
+        Ok(changed > 0)
     }
 }

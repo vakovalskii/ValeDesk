@@ -61,7 +61,6 @@ const logTurn = (sessionId: string, iteration: number, type: 'request' | 'respon
     writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf8');
     
     if (type === 'request' && iteration === 1) {
-      console.log(`[OpenAI Runner] Session logs: ${logsDir}`);
     }
   } catch (error) {
     console.error(`[OpenAI Runner] Failed to write ${type} log:`, error);
@@ -277,13 +276,45 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         maxRetries: 2
       });
 
-      // Get scheduler store from global (may be undefined in sidecar mode)
-      const schedulerStore = (global as any).schedulerStore || undefined;
+      // Create scheduler IPC callback for Tauri mode
+      // This callback sends events through the session's onEvent handler
+      // Scheduler operations are handled by Rust backend
+      const schedulerIPCCallback = async (
+        operation: "create" | "list" | "delete" | "update",
+        params: Record<string, any>
+      ): Promise<{ success: boolean; data?: any; error?: string }> => {
+        return new Promise((resolve) => {
+          // Generate unique request ID
+          const requestId = `scheduler-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          
+          // Set up a timeout to avoid hanging forever
+          const timeout = setTimeout(() => {
+            resolve({ success: false, error: "Scheduler request timed out" });
+          }, 5000);
+          
+          // Store the resolve function to call when response arrives
+          (global as any).schedulerPendingRequests = (global as any).schedulerPendingRequests || {};
+          (global as any).schedulerPendingRequests[requestId] = (result: any) => {
+            clearTimeout(timeout);
+            delete (global as any).schedulerPendingRequests[requestId];
+            resolve(result);
+          };
+          
+          // Emit the scheduler request through the event system
+          onEvent({
+            type: "scheduler.request" as any,
+            payload: {
+              requestId,
+              operation,
+              params
+            }
+          });
+        });
+      };
 
       // Initialize tool executor with API settings for web tools
       // If no cwd, pass empty string to enable "no workspace" mode
-      // schedulerStore is optional - schedule_task tool won't be available without it
-      const toolExecutor = new ToolExecutor(session.cwd || '', guiSettings, schedulerStore);
+      const toolExecutor = new ToolExecutor(session.cwd || '', guiSettings, schedulerIPCCallback);
 
       // Build conversation history from session
       const currentCwd = session.cwd || 'No workspace folder';
@@ -302,7 +333,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           
           await access(memoryPath, constants.F_OK);
           const content = await readFile(memoryPath, 'utf-8');
-          console.log('[OpenAI Runner] Memory loaded from:', memoryPath);
           return content;
         } catch (error: any) {
           if (error.code !== 'ENOENT') {
@@ -344,12 +374,10 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         // Clear todos from previous session for this sessionId, then load from history
         clearTodos(session.id);
         if (history && history.todos && history.todos.length > 0) {
-          console.log(`[OpenAI Runner] Loading ${history.todos.length} todos from history for session ${session.id}`);
           setTodos(session.id, history.todos);
         }
         
         if (history && history.messages.length > 0) {
-          console.log(`[OpenAI Runner] Loading ${history.messages.length} messages from history`);
           
           let currentAssistantText = '';
           let currentToolCalls: any[] = [];
@@ -483,18 +511,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       let activeTools = initialTools;
       let currentGuiSettings = guiSettings;
       
-      console.log(`\n[OpenAI Runner] ══════════════════════════════════════`);
-      console.log(`[OpenAI Runner] Session: ${session.id}`);
-      console.log(`[OpenAI Runner] Provider: ${providerInfo}`);
-      console.log(`[OpenAI Runner] Model: ${modelName}`);
-      console.log(`[OpenAI Runner] Temperature: ${temperature !== undefined ? temperature : '(not sent)'}`)
-      console.log(`[OpenAI Runner] Base URL: ${baseURL}`);
-      console.log(`[OpenAI Runner] Messages: ${messages.length}`);
-      console.log(`[OpenAI Runner] Tools: ${activeTools.length} (${activeTools.map(t => t.function.name).join(', ')})`);
-      console.log(`[OpenAI Runner] ══════════════════════════════════════\n`);
-      
-      // Session logs will be saved to: ~/.localdesk/logs/sessions/{sessionId}/
-      console.log(`[OpenAI Runner] Session logs: ~/.localdesk/logs/sessions/${session.id}/`);
+      console.log(`\n[runner] → ${modelName} | ${activeTools.length} tools | ${messages.length} msgs`);
 
       // Send system init message
       sendMessage('system', {
@@ -535,7 +552,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           const newToolNames = newTools.map(t => t.function.name).sort().join(',');
           
           if (oldToolNames !== newToolNames) {
-            console.log(`[OpenAI Runner] Tools updated: ${activeTools.length} → ${newTools.length}`);
             activeTools = newTools;
             currentGuiSettings = freshSettings;
             // Update tool executor with new settings
@@ -552,7 +568,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         }
         messages[0] = { role: 'system', content: updatedSystemContent };
         
-        console.log(`\n[OpenAI Runner] ▶ Iteration ${iterationCount} | Messages: ${messages.length} | Tools: ${activeTools.length}`);
+        console.log(`[runner] iteration ${iterationCount}`);
 
         // Log request to file
         const requestPayload = {
@@ -586,7 +602,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
               for await (const chunk of stream) {
                 if (aborted) {
-                  console.log('[OpenAI Runner] Stream aborted by user');
+                  console.log('[runner] ✗ aborted');
                   break;
                 }
 
@@ -697,7 +713,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
         // Check if aborted during stream
         if (aborted) {
-          console.log('[OpenAI Runner] Session aborted during streaming');
           if (onSessionUpdate) {
             onSessionUpdate({ inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
           }
@@ -733,7 +748,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         };
         logTurn(session.id, iterationCount, 'response', responsePayload);
         
-        console.log(`[OpenAI Runner] ──────────────────────────────────────`);
         
         // If no tool calls, we're done
         if (toolCalls.length === 0) {
@@ -795,7 +809,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           }
         } else {
           // Parallel batch - clear loop detection (intentional parallel work)
-          console.log(`[OpenAI Runner] Parallel batch (${toolCalls.length} tools) - resetting loop detection`);
           recentToolCalls.length = 0;
         }
         
@@ -859,7 +872,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
             // Add hint to help model break out of loop
             if (!loopHintAdded) {
               loopHintAdded = true;
-              console.log(`[OpenAI Runner] Adding loop-break hint to messages`);
             }
             
             // Clear recent calls to give model fresh start
@@ -933,7 +945,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
         for (const toolCall of toolCalls) {
           if (aborted) {
-            console.log('[OpenAI Runner] Tool execution aborted by user');
             break;
           }
 
@@ -957,7 +968,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           const currentSettings = loadApiSettings();
           const permissionMode = currentSettings?.permissionMode || 'ask';
           
-          console.log(`[OpenAI Runner] Executing tool: ${toolName} (permission mode: ${permissionMode})`, toolArgs);
+          console.log(`[tool] ${toolName}`);
           
           if (permissionMode === 'ask') {
             // Send permission request and wait for user approval
@@ -984,12 +995,11 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
             });
             
             if (aborted) {
-              console.log(`[OpenAI Runner] Tool execution aborted while waiting for permission: ${toolName}`);
               break;
             }
             
             if (!approved) {
-              console.log(`[OpenAI Runner] Tool execution denied by user: ${toolName}`);
+              console.log(`[tool] ✗ ${toolName} denied`);
               
               // Add error result for denied tool
               toolResults.push({
@@ -1033,7 +1043,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
           // If Memory tool was executed successfully, reload memory for next iteration
           if (toolName === 'manage_memory' && result.success) {
-            console.log('[OpenAI Runner] Memory tool executed, reloading memory...');
             memoryContent = await loadMemory();
           }
 
@@ -1044,7 +1053,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
               try {
                 // Only track changes if this is a git repository
                 if (!isGitRepo(session.cwd)) {
-                  console.log(`[OpenAI Runner] Skipping file change tracking - not a git repository: ${session.cwd}`);
                 } else {
                   // Get relative path from project root
                   const relativePath = getRelativePath(filePath, session.cwd);
@@ -1061,7 +1069,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
                     };
                     // Add to session store
                     sessionStore.addFileChanges(session.id, [fileChange]);
-                    console.log(`[OpenAI Runner] File change tracked: ${fileChange.path} (+${fileChange.additions} -${fileChange.deletions})`);
                     // Emit event for UI update
                     onEvent({
                       type: 'file_changes.updated',
@@ -1108,7 +1115,6 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
         // Check if aborted during tool execution
         if (aborted) {
-          console.log('[OpenAI Runner] Session aborted during tool execution');
           if (onSessionUpdate) {
             onSessionUpdate({ inputTokens: totalInputTokens, outputTokens: totalOutputTokens });
           }
@@ -1155,7 +1161,6 @@ DO NOT call the same tool again with similar arguments.`
                 role: 'user',
                 content: getInitialPrompt(originalRequest, memoryContent)
               };
-              console.log('[OpenAI Runner] Updated first user message with refreshed memory');
             }
           }
         }
@@ -1246,7 +1251,6 @@ DO NOT call the same tool again with similar arguments.`
     abort: () => {
       aborted = true;
       abortController.abort();
-      console.log('[OpenAI Runner] Aborted');
     },
     resolvePermission: (toolUseId: string, approved: boolean) => {
       resolvePermission(toolUseId, approved);

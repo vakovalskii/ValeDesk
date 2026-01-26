@@ -126,6 +126,11 @@ function App() {
     if (event.type === "llm.providers.loaded") {
       setLlmProvidersLoaded(true);
     }
+    
+    // Scheduler notifications are now handled natively by Rust
+    if (event.type === "scheduler.notification") {
+      console.log(`[scheduler] 🔔 ${event.payload.title}: ${event.payload.body}`);
+    }
   }, [handleServerEvent, handlePartialMessages]);
 
   const { connected, sendEvent } = useIPC(onEvent);
@@ -142,6 +147,7 @@ function App() {
       sendEvent({ type: "settings.get" });
       sendEvent({ type: "models.get" });
       sendEvent({ type: "llm.providers.get" });
+      sendEvent({ type: "scheduler.default_model.get" });
     }
   }, [connected, sendEvent]);
 

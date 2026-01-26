@@ -1220,27 +1220,26 @@ function WebToolsTab({
             Получите API ключ на <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-ink-700 hover:underline">tavily.com</a>
           </p>
           
-          {tavilyApiKey && (
-            <div className="mt-4 flex items-center justify-between">
-              <div>
-                <span className="text-sm font-medium text-ink-700">Enable Web Search</span>
-                <p className="text-xs text-ink-500">Use Tavily for search_web and extract_page tools</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEnableTavilySearch(!enableTavilySearch)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  enableTavilySearch ? "bg-accent" : "bg-ink-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    enableTavilySearch ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+          <div className="mt-4 flex items-center justify-between">
+            <div>
+              <span className={`text-sm font-medium ${tavilyApiKey ? 'text-ink-700' : 'text-ink-400'}`}>Enable Web Search</span>
+              <p className="text-xs text-ink-500">Use Tavily for search_web and extract_page tools</p>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => tavilyApiKey && setEnableTavilySearch(!enableTavilySearch)}
+              disabled={!tavilyApiKey}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                !tavilyApiKey ? "bg-ink-200 cursor-not-allowed" : enableTavilySearch ? "bg-accent" : "bg-ink-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  enableTavilySearch && tavilyApiKey ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
         </div>
       )}
 

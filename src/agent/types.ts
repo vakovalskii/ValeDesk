@@ -173,7 +173,9 @@ export type ServerEvent =
   | { type: "llm.models.checked"; payload: { unavailableModels: string[] } }
   // Skills events
   | { type: "skills.loaded"; payload: { skills: Skill[]; marketplaceUrl: string; lastFetched?: number } }
-  | { type: "skills.error"; payload: { message: string } };
+  | { type: "skills.error"; payload: { message: string } }
+  // Scheduler IPC (sidecar -> Rust)
+  | { type: "scheduler.request"; payload: { requestId: string; operation: string; params: Record<string, any> } };
 
 // Skill types
 export interface Skill {
