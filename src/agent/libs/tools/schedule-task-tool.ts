@@ -7,6 +7,11 @@ import {
 } from "./base-tool.js";
 import type { SchedulerStore, ScheduledTask } from "../scheduler-store.js";
 
+// Global scheduler emit for Tauri/sidecar mode
+declare global {
+  var schedulerEmit: ((type: string, payload: any) => Promise<any>) | undefined;
+}
+
 export interface ScheduleTaskParams {
   explanation: string;
   operation: "create" | "list" | "delete" | "update";
@@ -197,13 +202,6 @@ export class ScheduleTaskTool extends BaseTool {
     schedule: string;
     notifyBefore?: number;
   }): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
-
     const taskId = crypto.randomUUID();
     const nextRun = this.calculateNextRun(params.schedule);
 
@@ -218,7 +216,7 @@ export class ScheduleTaskTool extends BaseTool {
       params.schedule.startsWith("every") ||
       params.schedule.startsWith("daily");
 
-    const task = this.schedulerStore.createTask({
+    const taskData = {
       id: taskId,
       title: params.title,
       prompt: params.prompt,
@@ -227,7 +225,26 @@ export class ScheduleTaskTool extends BaseTool {
       isRecurring,
       notifyBefore: params.notifyBefore,
       enabled: true,
-    });
+    };
+
+    // Use schedulerStore if available (Electron), otherwise use IPC (Tauri)
+    if (this.schedulerStore) {
+      this.schedulerStore.createTask(taskData);
+    } else if (global.schedulerEmit) {
+      try {
+        await global.schedulerEmit("scheduler.task.create", taskData);
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to create task: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    } else {
+      return {
+        success: false,
+        error: "Scheduler not available",
+      };
+    }
 
     return {
       success: true,
@@ -236,55 +253,75 @@ export class ScheduleTaskTool extends BaseTool {
   }
 
   private async listTasks(): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
+    // Use schedulerStore if available (Electron)
+    if (this.schedulerStore) {
+      const tasks = this.schedulerStore.listTasks();
 
-    const tasks = this.schedulerStore.listTasks();
+      if (tasks.length === 0) {
+        return {
+          success: true,
+          output: 'No scheduled tasks yet. Use operation="create" to add one.',
+        };
+      }
 
-    if (tasks.length === 0) {
-      return {
-        success: true,
-        output: 'No scheduled tasks yet. Use operation="create" to add one.',
-      };
-    }
-
-    const output = tasks
-      .map((task, index) => {
-        const nextRun = new Date(task.nextRun).toLocaleString();
-        const status = task.enabled ? "✅" : "⏸️";
-        return `${index + 1}. ${status} ${task.title}
+      const output = tasks
+        .map((task, index) => {
+          const nextRun = new Date(task.nextRun).toLocaleString();
+          const status = task.enabled ? "✅" : "⏸️";
+          return `${index + 1}. ${status} ${task.title}
    ID: ${task.id}
    Schedule: ${task.schedule}
    Next run: ${nextRun}
    ${task.prompt ? `Prompt: ${task.prompt.substring(0, 50)}${task.prompt.length > 50 ? "..." : ""}` : "Reminder only"}
    ${task.notifyBefore ? `Notify: ${task.notifyBefore}m before` : ""}`;
-      })
-      .join("\n\n");
+        })
+        .join("\n\n");
+
+      return {
+        success: true,
+        output: `📋 Scheduled Tasks (${tasks.length}):\n\n${output}`,
+      };
+    } 
+    
+    // For Tauri - fire-and-forget, tasks shown in UI
+    if (global.schedulerEmit) {
+      // Trigger refresh in UI
+      global.schedulerEmit("scheduler.tasks.list", {}).catch(() => {});
+      return {
+        success: true,
+        output: "📋 Scheduled tasks list has been refreshed. Check the Scheduler tab in Settings to view all tasks.",
+      };
+    }
 
     return {
-      success: true,
-      output: `📋 Scheduled Tasks (${tasks.length}):\n\n${output}`,
+      success: false,
+      error: "Scheduler not available",
     };
   }
 
   private async deleteTask(taskId: string): Promise<ToolResult> {
-    if (!this.schedulerStore) {
+    // Use schedulerStore if available (Electron), otherwise use IPC (Tauri)
+    if (this.schedulerStore) {
+      const deleted = this.schedulerStore.deleteTask(taskId);
+      if (!deleted) {
+        return {
+          success: false,
+          error: `Task ${taskId} not found`,
+        };
+      }
+    } else if (global.schedulerEmit) {
+      try {
+        await global.schedulerEmit("scheduler.task.delete", { id: taskId });
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to delete task: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    } else {
       return {
         success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
-
-    const deleted = this.schedulerStore.deleteTask(taskId);
-
-    if (!deleted) {
-      return {
-        success: false,
-        error: `Task ${taskId} not found`,
+        error: "Scheduler not available",
       };
     }
 
@@ -304,15 +341,8 @@ export class ScheduleTaskTool extends BaseTool {
       enabled?: boolean;
     },
   ): Promise<ToolResult> {
-    if (!this.schedulerStore) {
-      return {
-        success: false,
-        error: "Scheduler store not initialized",
-      };
-    }
-
-    // If schedule is being updated, recalculate nextRun
-    const updateData: Parameters<typeof this.schedulerStore.updateTask>[1] = {};
+    // Build update data
+    const updateData: Record<string, any> = { id: taskId };
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.prompt !== undefined) updateData.prompt = updates.prompt;
@@ -335,12 +365,28 @@ export class ScheduleTaskTool extends BaseTool {
         updates.schedule.startsWith("daily");
     }
 
-    const updated = this.schedulerStore.updateTask(taskId, updateData);
-
-    if (!updated) {
+    // Use schedulerStore if available (Electron), otherwise use IPC (Tauri)
+    if (this.schedulerStore) {
+      const updated = this.schedulerStore.updateTask(taskId, updateData);
+      if (!updated) {
+        return {
+          success: false,
+          error: `Task ${taskId} not found`,
+        };
+      }
+    } else if (global.schedulerEmit) {
+      try {
+        await global.schedulerEmit("scheduler.task.update", updateData);
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to update task: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    } else {
       return {
         success: false,
-        error: `Task ${taskId} not found`,
+        error: "Scheduler not available",
       };
     }
 

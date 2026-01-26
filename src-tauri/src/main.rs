@@ -248,6 +248,105 @@ fn handle_session_sync(db: &Arc<Database>, payload: &Value) {
   }
 }
 
+/// Handle scheduler events from sidecar (agent tool calls) - save to DB and emit to UI
+fn handle_scheduler_from_sidecar(db: &Arc<Database>, app: &tauri::AppHandle, event_type: &str, payload: &Value) {
+  eprintln!("[scheduler] Handling from sidecar: {} payload={:?}", event_type, payload);
+  
+  match event_type {
+    "scheduler.task.create" => {
+      let task: db::ScheduledTask = match serde_json::from_value(payload.clone()) {
+        Ok(t) => t,
+        Err(e) => {
+          eprintln!("[scheduler.task.create] Invalid task: {}", e);
+          return;
+        }
+      };
+      
+      if let Err(e) = db.create_scheduled_task(&task) {
+        eprintln!("[scheduler.task.create] DB error: {}", e);
+        return;
+      }
+      
+      // Emit updated task list to UI
+      if let Ok(tasks) = db.list_scheduled_tasks() {
+        let _ = emit_server_event_app(app, &json!({
+          "type": "scheduler.tasks.loaded",
+          "payload": { "tasks": tasks }
+        }));
+      }
+    }
+    
+    "scheduler.tasks.list" => {
+      // For list, we need to send response back - but sidecar can't receive sync responses
+      // So we just emit to UI and agent will see empty result (fire-and-forget)
+      if let Ok(tasks) = db.list_scheduled_tasks() {
+        let _ = emit_server_event_app(app, &json!({
+          "type": "scheduler.tasks.loaded",
+          "payload": { "tasks": tasks }
+        }));
+      }
+    }
+    
+    "scheduler.task.update" => {
+      let task_id = match payload.get("id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => {
+          eprintln!("[scheduler.task.update] Missing id");
+          return;
+        }
+      };
+      
+      let updates: db::UpdateScheduledTaskParams = match serde_json::from_value(payload.clone()) {
+        Ok(u) => u,
+        Err(e) => {
+          eprintln!("[scheduler.task.update] Invalid updates: {}", e);
+          return;
+        }
+      };
+      
+      if let Err(e) = db.update_scheduled_task(task_id, &updates) {
+        eprintln!("[scheduler.task.update] DB error: {}", e);
+        return;
+      }
+      
+      // Emit updated task list to UI
+      if let Ok(tasks) = db.list_scheduled_tasks() {
+        let _ = emit_server_event_app(app, &json!({
+          "type": "scheduler.tasks.loaded",
+          "payload": { "tasks": tasks }
+        }));
+      }
+    }
+    
+    "scheduler.task.delete" => {
+      let task_id = match payload.get("id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => {
+          eprintln!("[scheduler.task.delete] Missing id");
+          return;
+        }
+      };
+      
+      if let Err(e) = db.delete_scheduled_task(task_id) {
+        eprintln!("[scheduler.task.delete] DB error: {}", e);
+        return;
+      }
+      
+      // Emit updated task list to UI
+      if let Ok(tasks) = db.list_scheduled_tasks() {
+        let _ = emit_server_event_app(app, &json!({
+          "type": "scheduler.tasks.loaded",
+          "payload": { "tasks": tasks }
+        }));
+      }
+    }
+    
+    _ => {
+      eprintln!("[scheduler] Unknown event type: {}", event_type);
+    }
+  }
+}
+
 fn normalize_llm_provider_settings(value: Option<Value>) -> Value {
   let mut obj = match value {
     Some(Value::Object(o)) => o,
@@ -455,6 +554,15 @@ fn start_sidecar(app: tauri::AppHandle, sidecar_state: &SidecarState) -> Result<
                   if let Some(payload) = event.get("payload") {
                     let state: tauri::State<'_, AppState> = app_handle.state();
                     handle_session_sync(&state.db, payload);
+                  }
+                  continue; // Don't emit to frontend
+                }
+                
+                // Handle scheduler events from sidecar (agent tool calls)
+                if event_type.starts_with("scheduler.") {
+                  let state: tauri::State<'_, AppState> = app_handle.state();
+                  if let Some(payload) = event.get("payload") {
+                    handle_scheduler_from_sidecar(&state.db, &app_handle, event_type, payload);
                   }
                   continue; // Don't emit to frontend
                 }

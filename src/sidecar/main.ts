@@ -44,6 +44,16 @@ sessions.setSyncCallback((type, sessionId, data) => {
 // Note: schedulerStore is now handled by Tauri
 (global as any).sessionStore = sessions;
 
+// Scheduler operations are handled by Tauri/Rust - fire-and-forget IPC
+(global as any).schedulerEmit = (type: string, payload: any): Promise<void> => {
+  // Emit scheduler event to Rust (fire-and-forget)
+  emit({
+    type: type as any,
+    payload
+  });
+  return Promise.resolve();
+};
+
 const runnerHandles = new Map<string, RunnerHandle>();
 const multiThreadTasks = new Map<string, any>();
 
