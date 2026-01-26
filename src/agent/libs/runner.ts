@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { query, type SDKMessage, type PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import type { ServerEvent } from "../types.js";
 import type { Session } from "./session-store.js";

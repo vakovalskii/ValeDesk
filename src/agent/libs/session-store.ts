@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Database from "better-sqlite3";
 import type { SessionStatus, StreamMessage, FileChange } from "../types.js";
 
