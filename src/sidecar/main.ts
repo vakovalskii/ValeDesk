@@ -702,11 +702,12 @@ function handleTaskCreate(event: Extract<ClientEvent, { type: "task.create" }>) 
       threadIds.push(thread.id);
       createdThreads.push({ threadId: thread.id, model: consensusModel, status: "idle", createdAt: now, updatedAt: now });
     }
-  } else if (mode === "different_tasks" && payload.tasks) {
+  } else if ((mode === "different_tasks" || mode === "role_group") && payload.tasks) {
     const tasks = payload.tasks as any[];
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
-      const threadTitle = `${title} [${i + 1}/${tasks.length}]`;
+      const roleLabel = t.roleName || t.roleId || `${i + 1}/${tasks.length}`;
+      const threadTitle = `${title} [${roleLabel}]`;
       const thread = sessions.createSession({
         title: threadTitle,
         cwd,
@@ -753,7 +754,7 @@ function handleTaskCreate(event: Extract<ClientEvent, { type: "task.create" }>) 
         startThread(threadId, consensusPrompt);
       }
     }
-  } else if (task.mode === "different_tasks" && task.tasks) {
+  } else if ((task.mode === "different_tasks" || task.mode === "role_group") && task.tasks) {
     for (let i = 0; i < task.threadIds.length; i++) {
       const threadId = task.threadIds[i];
       const prompt = task.tasks[i]?.prompt || "";
@@ -783,7 +784,7 @@ function handleTaskStart(event: Extract<ClientEvent, { type: "task.start" }>) {
         startThread(threadId, consensusPrompt);
       }
     }
-  } else if (task.mode === "different_tasks" && task.tasks) {
+  } else if ((task.mode === "different_tasks" || task.mode === "role_group") && task.tasks) {
     for (let i = 0; i < task.threadIds.length; i++) {
       const threadId = task.threadIds[i];
       const prompt = task.tasks[i]?.prompt || "";

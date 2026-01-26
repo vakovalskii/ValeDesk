@@ -3,7 +3,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { useAppStore } from "../store/useAppStore";
 import { SpinnerIcon } from "./SpinnerIcon";
-import type { ApiSettings } from "../types";
+import type { ApiSettings, TaskMode } from "../types";
 
 interface SidebarProps {
   connected: boolean;
@@ -11,6 +11,7 @@ interface SidebarProps {
   onDeleteSession: (sessionId: string) => void;
   onOpenSettings: () => void;
   onOpenTaskDialog: () => void;
+  onOpenRoleGroupDialog: () => void;
   apiSettings: ApiSettings | null;
 }
 
@@ -19,6 +20,7 @@ export function Sidebar({
   onDeleteSession,
   onOpenSettings,
   onOpenTaskDialog,
+  onOpenRoleGroupDialog,
   apiSettings
 }: SidebarProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -41,6 +43,12 @@ export function Sidebar({
   const formatNumberWithSpaces = (num: number | undefined): string => {
     if (num === undefined) return "0";
     return num.toLocaleString("ru-RU", { useGrouping: true });
+  };
+
+  const getTaskModeLabel = (mode: TaskMode) => {
+    if (mode === "consensus") return "Consensus";
+    if (mode === "role_group") return "Roles";
+    return "Multi";
   };
 
   // Extract model name from full ID (provider::model -> model)
@@ -159,6 +167,37 @@ export function Sidebar({
                 collisionPadding={12}
               >
                 Multi-Thread
+                <Tooltip.Arrow className="fill-white" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+
+        <Tooltip.Provider>
+          <Tooltip.Root delayDuration={200}>
+            <Tooltip.Trigger asChild>
+              <button
+                className="flex shrink-0 items-center justify-center w-9 h-9 rounded-xl border border-info/30 bg-info/10 text-info hover:bg-info/20 transition-colors"
+                onClick={onOpenRoleGroupDialog}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M7 21v-2a4 4 0 0 1 3-3.87" />
+                  <circle cx="12" cy="7" r="3" />
+                  <path d="M5.5 12.5A3 3 0 1 1 7 6.4" />
+                  <path d="M18.5 12.5A3 3 0 1 0 17 6.4" />
+                </svg>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                className="z-[100] rounded-lg border border-ink-900/10 bg-white px-3 py-2 text-sm shadow-lg"
+                side="bottom"
+                align="center"
+                sideOffset={8}
+                collisionPadding={12}
+              >
+                Role Group
                 <Tooltip.Arrow className="fill-white" />
               </Tooltip.Content>
             </Tooltip.Portal>
@@ -317,7 +356,7 @@ export function Sidebar({
                             {task.title}
                           </div>
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-accent/10 text-accent whitespace-nowrap">
-                            {task.mode === 'consensus' ? 'Consensus' : 'Multi'}
+                            {getTaskModeLabel(task.mode)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between mt-0.5 text-xs text-muted">

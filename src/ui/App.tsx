@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StartSessionModal } from "./components/StartSessionModal";
 import { SessionEditModal } from "./components/SessionEditModal";
 import { TaskDialog } from "./components/TaskDialog";
+import { RoleGroupDialog } from "./components/RoleGroupDialog";
 import { SettingsModal } from "./components/SettingsModal";
 import { FileBrowser } from "./components/FileBrowser";
 import { PromptInput, usePromptActions } from "./components/PromptInput";
@@ -27,6 +28,7 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [showRoleGroupDialog, setShowRoleGroupDialog] = useState(false);
   const [showSessionEditModal, setShowSessionEditModal] = useState(false);
   const [apiSettings, setApiSettings] = useState<ApiSettings | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false); // Track if settings have been loaded from backend
@@ -369,6 +371,11 @@ function App() {
     setShowTaskDialog(false);
   }, [sendEvent]);
 
+  const handleCreateRoleGroupTask = useCallback((payload: any) => {
+    sendEvent({ type: "task.create", payload });
+    setShowRoleGroupDialog(false);
+  }, [sendEvent]);
+
   return (
     <div className="flex h-screen bg-surface">
       <Sidebar
@@ -377,6 +384,7 @@ function App() {
         onDeleteSession={handleDeleteSession}
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenTaskDialog={() => setShowTaskDialog(true)}
+        onOpenRoleGroupDialog={() => setShowRoleGroupDialog(true)}
         apiSettings={apiSettings}
       />
 
@@ -593,6 +601,17 @@ function App() {
           cwd={cwd}
           onClose={() => setShowTaskDialog(false)}
           onCreateTask={handleCreateTask}
+          apiSettings={apiSettings}
+          availableModels={availableModels}
+          llmModels={llmModels}
+        />
+      )}
+
+      {showRoleGroupDialog && (
+        <RoleGroupDialog
+          cwd={cwd}
+          onClose={() => setShowRoleGroupDialog(false)}
+          onCreateTask={handleCreateRoleGroupTask}
           apiSettings={apiSettings}
           availableModels={availableModels}
           llmModels={llmModels}

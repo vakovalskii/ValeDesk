@@ -796,13 +796,14 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
           updatedAt: now
         });
       }
-    } else if (mode === 'different_tasks' && payload.tasks) {
+    } else if ((mode === 'different_tasks' || mode === 'role_group') && payload.tasks) {
       // Create threads with different models and tasks - DON'T START THEM YET
       const tasks = payload.tasks as ThreadTask[];
 
       for (let i = 0; i < tasks.length; i++) {
         const task = tasks[i];
-        const threadTitle = `${title} [${i + 1}/${tasks.length}]`;
+        const roleLabel = task.roleName || task.roleId || `${i + 1}/${tasks.length}`;
+        const threadTitle = `${title} [${roleLabel}]`;
 
         const thread = sessions.createSession({
           title: threadTitle,
@@ -906,7 +907,7 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
             });
         }
       }
-    } else if (task.mode === 'different_tasks' && task.tasks) {
+    } else if ((task.mode === 'different_tasks' || task.mode === 'role_group') && task.tasks) {
       for (let i = 0; i < task.threadIds.length; i++) {
         const threadId = task.threadIds[i];
         const taskPrompt = task.tasks[i]?.prompt || '';
@@ -1007,7 +1008,7 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
             });
         }
       }
-    } else if (task.mode === 'different_tasks' && task.tasks) {
+    } else if ((task.mode === 'different_tasks' || task.mode === 'role_group') && task.tasks) {
       for (let i = 0; i < task.threadIds.length; i++) {
         const threadId = task.threadIds[i];
         const taskPrompt = task.tasks[i]?.prompt || '';

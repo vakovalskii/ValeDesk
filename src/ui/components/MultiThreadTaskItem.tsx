@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { MultiThreadTask, SessionInfo } from "../types";
+import type { MultiThreadTask, SessionInfo, TaskMode } from "../types";
 
 interface MultiThreadTaskItemProps {
   task: MultiThreadTask;
@@ -43,6 +43,12 @@ export function MultiThreadTaskItem({
   const isCreated = task.status === 'created';
   const isRunning = task.status === 'running' || runningCount > 0;
   const isCompleted = task.status === 'completed';
+
+  const getTaskModeLabel = (mode: TaskMode) => {
+    if (mode === "consensus") return "Consensus";
+    if (mode === "role_group") return "Roles";
+    return "Multi";
+  };
 
   return (
     <div className="rounded-xl border border-accent/30 bg-accent/5">
@@ -98,7 +104,7 @@ export function MultiThreadTaskItem({
                 <div className="flex items-center gap-2">
                   {/* Mode badge */}
                   <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent/20 text-accent">
-                    {task.mode === 'consensus' ? 'Consensus' : 'Multi'}
+                    {getTaskModeLabel(task.mode)}
                   </span>
                   {totalTokens > 0 && (
                     <span className="text-[10px] text-muted bg-ink-100 px-1.5 py-0.5 rounded-full">
