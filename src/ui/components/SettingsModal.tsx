@@ -996,7 +996,7 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
                     className="w-full px-4 py-2.5 text-sm border border-ink-900/20 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/20"
                   >
                     <option value="default">Default (https://api.z.ai/api/paas/v4)</option>
-                    <option value="coding">Coding (https://api.z.ai/api/coding/paas/v4)</option>
+                    <option value="coding">Subscription/Coding (https://api.z.ai/api/coding/paas/v4)</option>
                   </select>
                 </div>
               )}
@@ -1292,7 +1292,7 @@ function WebToolsTab({
             className="w-full px-4 py-2.5 text-sm border border-ink-900/20 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           >
             <option value="default">Default (https://api.z.ai/api/paas/v4/web_search)</option>
-            <option value="coding">Coding (https://api.z.ai/api/coding/paas/v4/web_search)</option>
+            <option value="coding">Subscription/Coding (https://api.z.ai/api/coding/paas/v4/web_search)</option>
           </select>
         </div>
       )}
@@ -1332,7 +1332,7 @@ function WebToolsTab({
             className="w-full px-4 py-2.5 text-sm border border-ink-900/20 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
           >
             <option value="default">Default (https://api.z.ai/api/paas/v4/reader)</option>
-            <option value="coding">Coding (https://api.z.ai/api/coding/paas/v4/reader)</option>
+            <option value="coding">Subscription/Coding (https://api.z.ai/api/coding/paas/v4/reader)</option>
           </select>
           {!zaiApiKey && (
             <p className="mt-1 text-xs text-amber-600">
