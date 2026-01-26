@@ -7,56 +7,56 @@ export const ROLE_GROUP_DEFAULTS: RoleGroupSettings = {
       name: "Product Manager",
       enabled: true,
       model: "",
-      prompt: "Focus on user needs, scope, priorities, and success criteria."
+      prompt: "Определи бизнес-ценность, цели, метрики успеха, границы и приоритеты. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "team_lead",
       name: "Team Lead",
       enabled: true,
       model: "",
-      prompt: "Plan execution steps, risks, and coordination across roles."
+      prompt: "Разбей работу на задачи для разработчиков, оцени риски и зависимости, синхронизируйся с аналитиком. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "backend_dev",
       name: "Backend Developer",
       enabled: true,
       model: "",
-      prompt: "Design APIs, data models, and backend implementation details."
+      prompt: "Спроектируй API, модели данных и план реализации бэкенда. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "frontend_dev",
       name: "Frontend Developer",
       enabled: true,
       model: "",
-      prompt: "Design UI flow, components, and client-side integration."
+      prompt: "Спроектируй UI- потоки, компоненты и фронтенд-интеграцию. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "analyst",
       name: "Analyst",
       enabled: true,
       model: "",
-      prompt: "Clarify requirements, edge cases, and acceptance criteria."
+      prompt: "Уточни требования, крайние случаи и критерии приемки. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "qa",
       name: "QA Engineer",
       enabled: true,
       model: "",
-      prompt: "Propose test plan, critical scenarios, and regressions."
+      prompt: "Составь тест-план, критичные сценарии и регрессионные проверки. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "devops",
       name: "DevOps Engineer",
       enabled: true,
       model: "",
-      prompt: "Consider deployment, CI/CD, observability, and infra needs."
+      prompt: "Определи требования к деплою, CI/CD, наблюдаемости и инфраструктуре. Веди чеклист плана и отмечай выполненные пункты."
     },
     {
       id: "architect",
       name: "Architect",
       enabled: true,
       model: "",
-      prompt: "Evaluate architecture choices, scalability, and trade-offs."
+      prompt: "Оцени архитектуру, масштабирование и компромиссы. Веди чеклист плана и отмечай выполненные пункты."
     }
   ]
 };

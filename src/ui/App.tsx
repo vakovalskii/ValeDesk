@@ -372,9 +372,27 @@ function App() {
   }, [sendEvent]);
 
   const handleCreateRoleGroupTask = useCallback((payload: any) => {
-    sendEvent({ type: "task.create", payload });
+    if (payload?.mode === "role_group") {
+      const prompt = payload.roleGroupPrompt || "";
+      const model = payload.roleGroupModel || payload.tasks?.[0]?.model;
+      if (!prompt.trim()) {
+        setGlobalError("Role Group prompt is empty.");
+        return;
+      }
+      sendEvent({
+        type: "session.start",
+        payload: {
+          title: payload.title || "Role Group",
+          prompt,
+          cwd: payload.cwd,
+          model
+        }
+      });
+    } else {
+      sendEvent({ type: "task.create", payload });
+    }
     setShowRoleGroupDialog(false);
-  }, [sendEvent]);
+  }, [sendEvent, setGlobalError]);
 
   return (
     <div className="flex h-screen bg-surface">

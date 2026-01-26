@@ -239,6 +239,10 @@ export type CreateTaskPayload = {
   // For different tasks mode: array of tasks
   tasks?: ThreadTask[];
   shareWebCache?: boolean; // Share web requests between threads
+
+  // For role_group mode
+  roleGroupPrompt?: string;
+  roleGroupModel?: string;
 };
 
 // Client -> Server events

@@ -681,6 +681,23 @@ function handleTaskCreate(event: Extract<ClientEvent, { type: "task.create" }>) 
     webCache.clear();
   }
 
+  if (mode === "role_group") {
+    const roleGroupPrompt = payload.roleGroupPrompt || "";
+    const roleGroupModel = payload.roleGroupModel || payload.tasks?.[0]?.model || "gpt-4";
+    const thread = sessions.createSession({
+      title,
+      cwd,
+      allowedTools,
+      model: roleGroupModel,
+      threadId: "role-group",
+    });
+    handleSessionList();
+    if (roleGroupPrompt.trim()) {
+      startThread(thread.id, roleGroupPrompt);
+    }
+    return;
+  }
+
   const createdThreads: Array<{ threadId: string; model: string; status: "idle" | "running" | "completed" | "error"; createdAt: number; updatedAt: number }> = [];
   const threadIds: string[] = [];
   const now = Date.now();

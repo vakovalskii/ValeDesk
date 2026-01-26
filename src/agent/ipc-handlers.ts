@@ -765,6 +765,55 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
       webCache.clear();
     }
 
+    if (mode === 'role_group') {
+      const roleGroupPrompt = (payload as any).roleGroupPrompt || '';
+      const roleGroupModel = (payload as any).roleGroupModel || payload.tasks?.[0]?.model || 'gpt-4';
+      const thread = sessions.createSession({
+        title,
+        cwd,
+        allowedTools,
+        model: roleGroupModel,
+        threadId: 'role-group'
+      });
+
+      // Broadcast session.list to update UI with new session
+      const allSessions = sessions.listSessions();
+      broadcast({
+        type: "session.list",
+        payload: { sessions: allSessions }
+      });
+
+      if (roleGroupPrompt.trim()) {
+        sessions.updateSession(thread.id, { status: "running", lastPrompt: roleGroupPrompt });
+        emit({
+          type: "stream.user_prompt",
+          payload: { sessionId: thread.id, threadId: thread.id, prompt: roleGroupPrompt }
+        });
+
+        selectRunner(thread.model)({
+          prompt: roleGroupPrompt,
+          session: thread,
+          resumeSessionId: thread.claudeSessionId,
+          onEvent: emit,
+          onSessionUpdate: (updates) => {
+            sessions.updateSession(thread.id, updates);
+          }
+        })
+          .then((handle) => {
+            runnerHandles.set(thread.id, handle);
+            sessions.setAbortController(thread.id, undefined);
+          })
+          .catch((error) => {
+            sessions.updateSession(thread.id, { status: "error" });
+            emit({
+              type: "runner.error",
+              payload: { sessionId: thread.id, message: error.message }
+            });
+          });
+      }
+      return;
+    }
+
     const createdThreads: Array<{ threadId: string; model: string; status: "idle" | "running" | "completed" | "error"; createdAt: number; updatedAt: number }> = [];
     const threadIds: string[] = [];
     const now = Date.now();

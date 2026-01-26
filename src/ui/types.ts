@@ -112,6 +112,10 @@ export type CreateTaskPayload = {
 
   // For different_tasks mode
   tasks?: ThreadTask[];
+
+  // For role_group mode
+  roleGroupPrompt?: string;
+  roleGroupModel?: string;
 };
 
 export type CreatedThreadInfo = {

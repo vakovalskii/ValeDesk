@@ -22,6 +22,94 @@ function buildRolePrompt(role: RoleGroupRoleConfig, taskPrompt: string): string 
   ].filter(Boolean).join("\n\n");
 }
 
+function buildRoleGroupPrompt(roles: RoleGroupRoleConfig[], taskPrompt: string, cwd: string): string {
+  const roleByName = new Map(roles.map(role => [role.name, role]));
+
+  const orderedRoles: Array<{ label: string; role?: RoleGroupRoleConfig; note?: string }> = [
+    {
+      label: "Product Manager",
+      role: roleByName.get("Product Manager"),
+      note: "Assess business value, success metrics, scope, constraints."
+    },
+    {
+      label: "Analyst",
+      role: roleByName.get("Analyst"),
+      note: "Clarify requirements, edge cases, acceptance criteria."
+    },
+    {
+      label: "Architect",
+      role: roleByName.get("Architect"),
+      note: "Propose architecture and technical plan."
+    },
+    {
+      label: "Product Manager (Review)",
+      role: roleByName.get("Product Manager"),
+      note: "Validate plan vs business goals and scope."
+    },
+    {
+      label: "Team Lead",
+      role: roleByName.get("Team Lead"),
+      note: "Break down tasks for devs and coordinate with Analyst."
+    },
+    {
+      label: "Backend Developer",
+      role: roleByName.get("Backend Developer"),
+      note: "Detail backend implementation tasks and responsibilities."
+    },
+    {
+      label: "Frontend Developer",
+      role: roleByName.get("Frontend Developer"),
+      note: "Detail frontend implementation tasks and responsibilities."
+    },
+    {
+      label: "QA Engineer",
+      role: roleByName.get("QA Engineer"),
+      note: "Define test plan; add tests if needed."
+    },
+    {
+      label: "Product Manager (MVP Sign-off)",
+      role: roleByName.get("Product Manager"),
+      note: "Confirm MVP meets business requirements."
+    },
+    {
+      label: "Architect (Final Approval)",
+      role: roleByName.get("Architect"),
+      note: "Confirm architecture feasibility and risks."
+    },
+    {
+      label: "Analyst (Final Approval)",
+      role: roleByName.get("Analyst"),
+      note: "Confirm requirements coverage and acceptance criteria."
+    }
+  ];
+
+  return [
+    "You are a single assistant producing one response, but writing sequentially for multiple roles.",
+    "Follow the exact order below. Use headings with the role label.",
+    `User Task:\n${taskPrompt.trim()}`,
+    cwd.trim()
+      ? `Workspace Folder:\n${cwd.trim()}`
+      : "Workspace Folder:\nNot set",
+    "Order and responsibilities:",
+    ...orderedRoles.map(item => {
+      const roleInstruction = item.role?.prompt?.trim();
+      const extraNote = item.note ? ` ${item.note}` : "";
+      if (roleInstruction) {
+        return `- ${item.label}: ${roleInstruction}${extraNote}`;
+      }
+      return `- ${item.label}: Use best practices for this role.${extraNote}`;
+    }),
+    "Rules:",
+    "- Each role builds on prior output and references decisions.",
+    "- The Team Lead must split tasks for Backend/Frontend with Analyst input.",
+    "- QA must provide a test plan and list needed tests.",
+    "- Final approvals must explicitly confirm readiness.",
+    "- Maintain a checklist of the plan and mark items as completed when done.",
+    "- Save any required files inside the Workspace Folder and mention their paths.",
+    "Output sections only in the specified order."
+  ].join("\n");
+}
+
 interface RoleGroupDialogProps {
   cwd: string;
   onClose: () => void;
@@ -105,6 +193,8 @@ export function RoleGroupDialog({
       roleId: role.id,
       roleName: role.name
     }));
+    const primaryModel = enabledRoles.find(role => role.model)?.model || apiSettings?.model || "gpt-4";
+    const roleGroupPrompt = buildRoleGroupPrompt(enabledRoles, taskPrompt, localCwd);
 
     const payload: CreateTaskPayload = {
       mode: "role_group",
@@ -112,7 +202,9 @@ export function RoleGroupDialog({
       cwd: localCwd,
       allowedTools: undefined,
       shareWebCache,
-      tasks
+      tasks,
+      roleGroupPrompt,
+      roleGroupModel: primaryModel
     };
 
     onCreateTask(payload);
