@@ -1,9 +1,11 @@
 <div align="center">
 
-# LocalDesk
+# ValeDesk
 
-[![Version](https://img.shields.io/badge/version-0.0.8-blue.svg)](https://github.com/vakovalskii/LocalDesk/releases)
-[![Platform](https://img.shields.io/badge/platform-%20Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/vakovalskii/LocalDesk)
+**Very Almost Local, Eventually Reasonable Assistant**
+
+[![Version](https://img.shields.io/badge/version-0.0.8-blue.svg)](https://github.com/vakovalskii/ValeDesk/releases)
+[![Platform](https://img.shields.io/badge/platform-%20Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/vakovalskii/ValeDesk)
 [![License](https://img.shields.io/badge/license-Community-blue.svg)](LICENSE)
 
 **Desktop AI Assistant with Local Model Support**
@@ -40,18 +42,18 @@ https://github.com/user-attachments/assets/a8c54ce0-2fe0-40c3-8018-026cab9d7483
 - ✅ **Permission System** — ask/default modes for tool execution control
 
 ### Advanced Features
-- ✅ **Memory System** — persistent storage of user preferences in `~/.localdesk/memory.md`
+- ✅ **Memory System** — persistent storage of user preferences in `~/.valera/memory.md`
 - ✅ **Token Tracking** — display input/output tokens and API duration
 - ✅ **Optimized Streaming** — requestAnimationFrame-based UI updates (60fps)
 - ✅ **Stop Streaming** — interrupt LLM responses at any time
 - ✅ **Loop Detection** — automatic detection of stuck tool call loops (5+ sequential same-tool calls)
 - ✅ **Request Timeouts** — 5-minute timeout with auto-retry for LLM requests
-- ✅ **Session Logging** — full request/response JSON logs per iteration in `~/.localdesk/logs/sessions/`
+- ✅ **Session Logging** — full request/response JSON logs per iteration in `~/.valera/logs/sessions/`
 
-## 🤔 Why LocalDesk?
+## 🤔 Why ValeDesk?
 
 ### Open Architecture & Full Control
-LocalDesk isn't just another AI assistant — **it's a framework you own**. Built with TypeScript and Electron, every component is transparent and modifiable:
+ValeDesk isn't just another AI assistant — **it's a framework you own**. Built with TypeScript and Tauri, every component is transparent and modifiable:
 
 - **Readable codebase** — well-structured, documented code you can understand
 - **Easy customization** — add new tools, modify prompts, change UI without black boxes
@@ -78,14 +80,14 @@ Perfect for developers, researchers, and AI enthusiasts:
 ```bash
 # Run Ollama locally (free, 100% private)
 ollama serve
-# Configure LocalDesk: http://localhost:11434/v1
+# Configure ValeDesk: http://localhost:11434/v1
 
 # Or use vLLM for faster inference
 vllm serve Qwen/Qwen2.5-14B-Instruct --port 8000
-# Configure LocalDesk: http://localhost:8000/v1
+# Configure ValeDesk: http://localhost:8000/v1
 ```
 
-**TL;DR:** LocalDesk gives you the **power of ChatGPT/Claude** with the **freedom of open source** and **privacy of local execution**.
+**TL;DR:** ValeDesk gives you the **power of ChatGPT/Claude** with the **freedom of open source** and **privacy of local execution**.
 
 ## 🚀 Quick Start
 
@@ -99,8 +101,8 @@ vllm serve Qwen/Qwen2.5-14B-Instruct --port 8000
 
 ```bash
 # Clone and enter
-git clone https://github.com/vakovalskii/LocalDesk.git
-cd LocalDesk
+git clone https://github.com/vakovalskii/ValeDesk.git
+cd ValeDesk
 
 # Install dependencies
 npm install
@@ -121,7 +123,7 @@ npm run test
 # Build DMG (macOS)
 make bundle
 
-# Output: LocalDesk-0.0.8.dmg
+# Output: ValeDesk-0.0.8.dmg
 ```
 
 ### Manual Build Steps
@@ -134,9 +136,9 @@ npm run build:sidecar
 cd src-tauri && cargo build --release
 
 # 3. Create DMG
-hdiutil create -volname "LocalDesk" \
-  -srcfolder src-tauri/target/release/bundle/macos/LocalDesk.app \
-  -ov -format UDZO LocalDesk-0.0.8.dmg
+hdiutil create -volname "ValeDesk" \
+  -srcfolder src-tauri/target/release/bundle/macos/ValeDesk.app \
+  -ov -format UDZO ValeDesk-0.0.8.dmg
 ```
 
 ### Windows (coming soon)
@@ -175,7 +177,7 @@ Windows build requires cross-compilation setup. Check `.github/workflows/` for C
 
 ## 🎯 Skills Marketplace
 
-Browse and install verified skills for LocalDesk: **[Skills Marketplace](https://vakovalskii.github.io/LocalDesk-Skills/)**
+Browse and install verified skills for ValeDesk: **[Skills Marketplace](https://vakovalskii.github.io/ValeDesk-Skills/)**
 
 <img width="974" height="1123" alt="image" src="https://github.com/user-attachments/assets/8c7fa387-599d-48ab-999a-d5b9c5f811f7" />
 
@@ -244,7 +246,7 @@ Features:
 # Build executable and installer
 npm run dist:win
 
-# Output: dist/LocalDesk Setup 0.0.8.exe
+# Output: dist/ValeDesk Setup 0.0.8.exe
 ```
 
 ### macOS
@@ -265,9 +267,9 @@ npm run dist:linux
 ## 🔐 Data Storage
 
 ### Application Data
-- **Windows:** `C:\Users\YourName\AppData\Roaming\localdesk\`
-- **macOS:** `~/Library/Application Support/localdesk/`
-- **Linux:** `~/.config/localdesk/`
+- **Windows:** `C:\Users\YourName\AppData\Roaming\ValeDesk\`
+- **macOS:** `~/Library/Application Support/ValeDesk/`
+- **Linux:** `~/.config/ValeDesk/`
 
 Files:
 - `sessions.db` — SQLite database with chat history, todos, scheduled tasks, and settings
@@ -275,8 +277,8 @@ Files:
 - `skills-settings.json` — Skills marketplace configuration
 
 ### Global Data
-- `~/.localdesk/memory.md` — persistent memory storage
-- `~/.localdesk/logs/sessions/{session-id}/` — per-session API logs:
+- `~/.valera/memory.md` — persistent memory storage
+- `~/.valera/logs/sessions/{session-id}/` — per-session API logs:
   - `turn-001-request.json` — full request (model, messages, tools, temperature)
   - `turn-001-response.json` — full response (usage, content, tool_calls)
 
@@ -286,11 +288,11 @@ See [CURSOR.md](CURSOR.md) for development guidelines and project architecture.
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=vakovalskii/LocalDesk&type=Date)](https://star-history.com/#vakovalskii/LocalDesk&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=vakovalskii/ValeDesk&type=Date)](https://star-history.com/#vakovalskii/ValeDesk&Date)
 
 ## 📄 License
 
-**LocalDesk Community License** — free for individuals and companies with revenue under $1M/year. Commercial license required for larger organizations.
+**ValeDesk Community License** — free for individuals and companies with revenue under $1M/year. Commercial license required for larger organizations.
 
 See [LICENSE](LICENSE) for full terms.
 

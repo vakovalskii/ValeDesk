@@ -46,6 +46,8 @@ All tools follow snake_case naming convention: verb_noun (e.g., read_file, searc
 - **bash**: Full terminal access
   - Use for: installing packages (`pip install`, `npm install`), git, system commands
   - Can create venv: `python3 -m venv .venv && .venv/bin/pip install ...`
+  - ⚠️ NEVER use `python -v` or `python3 -v` (verbose mode produces HUGE output!)
+  - ⚠️ NEVER use `pip -v` or `pip --verbose`
 </TOOL_USAGE_GUIDELINES>
 
 {skills_section}

@@ -1,7 +1,7 @@
 [package]
-name = "localdesk"
+name = "valera"
 version = "0.0.8"
-description = "LocalDesk - Desktop AI Assistant"
+description = "ValeDesk - Very Almost Local, Eventually Reasonable Assistant"
 edition = "2021"
 
 [build-dependencies]

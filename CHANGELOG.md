@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.
 - ✅ **Clear limitations** — no require, no npm, no async
 
 #### Skills Improvements
-- ✅ **Local download** — skills saved to `{cwd}/skills/` not `.localdesk`
+- ✅ **Local download** — skills saved to `{cwd}/skills/` not `.valera`
 - ✅ **Clearer UX** — explicit instructions for reading skill files
 
 ### 🐛 Bug Fixes
@@ -144,7 +144,7 @@ All tools renamed to follow `verb_noun` pattern:
 - ✅ **GUI Settings Modal** - configure API key, base URL, model, and temperature
 - ✅ **Temperature Control** - adjust model creativity (0.0 - 2.0)
 - ✅ **Model Indicator** - shows current model in UI
-- ✅ **Settings Storage** - saved to `~/.localdesk/settings.json`
+- ✅ **Settings Storage** - saved to `~/.valera/settings.json`
 - ✅ **No Claude Code required** - completely standalone
 
 #### Security & Safety
@@ -176,7 +176,7 @@ All tools renamed to follow `verb_noun` pattern:
 - ✅ **No Cost Display** - removed for local models
 
 #### Developer Experience
-- ✅ **Request Logging** - full API requests saved to `~/.localdesk/logs/`
+- ✅ **Request Logging** - full API requests saved to `~/.valera/logs/`
 - ✅ **Console Debugging** - detailed logs for message flow
 - ✅ **Message Inspection** - last 3 messages logged before each API call
 
@@ -213,9 +213,9 @@ All tools renamed to follow `verb_noun` pattern:
   - `src/electron/libs/runner.ts` - old Claude SDK runner (kept for reference)
 
 #### Data Storage
-- **Settings:** `~/.localdesk/settings.json`
-- **Database:** `~/.localdesk/sessions.db` (SQLite)
-- **Logs:** `~/.localdesk/logs/openai-request-*.json`
+- **Settings:** `~/.valera/settings.json`
+- **Database:** `~/.valera/sessions.db` (SQLite)
+- **Logs:** `~/.valera/logs/openai-request-*.json`
 
 ### 📝 Documentation
 
@@ -228,7 +228,7 @@ All tools renamed to follow `verb_noun` pattern:
 
 1. **No backward compatibility** with original settings
    - Old: `~/.claude/settings.json`
-   - New: `~/.localdesk/settings.json`
+   - New: `~/.valera/settings.json`
 
 2. **Different API format** - OpenAI instead of Claude
    - Must configure API key, base URL, model in GUI
@@ -272,4 +272,4 @@ All tools renamed to follow `verb_noun` pattern:
 
 **License:** MIT  
 **Author:** [Valerii Kovalskii](https://github.com/vakovalskii)  
-**Repository:** https://github.com/vakovalskii/LocalDesk
+**Repository:** https://github.com/vakovalskii/ValeDesk

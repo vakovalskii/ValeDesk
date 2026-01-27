@@ -98,7 +98,7 @@ fn home_dir() -> Result<PathBuf, String> {
 fn app_data_dir() -> Result<PathBuf, String> {
   // We intentionally keep this independent of Electron/Tauri internal APIs to keep behavior predictable.
   // The directory name matches the product name used in the existing Electron build.
-  const APP_DIR: &str = "LocalDesk";
+  const APP_DIR: &str = "ValeDesk";
 
   #[cfg(target_os = "windows")]
   {
@@ -189,7 +189,7 @@ fn emit_server_event_app(app: &tauri::AppHandle, event: &Value) -> Result<(), St
 }
 
 fn memory_path() -> Result<PathBuf, String> {
-  Ok(home_dir()?.join(".localdesk").join("memory.md"))
+  Ok(home_dir()?.join(".valera").join("memory.md"))
 }
 
 /// Handle scheduler.request events from sidecar - execute scheduler operations
@@ -446,7 +446,7 @@ struct SidecarChild {
 }
 
 fn resolve_sidecar_entry() -> Result<PathBuf, String> {
-  if let Ok(p) = std::env::var("LOCALDESK_SIDECAR_ENTRY") {
+  if let Ok(p) = std::env::var("VALERA_SIDECAR_ENTRY") {
     if !p.trim().is_empty() {
       return Ok(PathBuf::from(p));
     }
@@ -454,7 +454,7 @@ fn resolve_sidecar_entry() -> Result<PathBuf, String> {
 
   #[cfg(debug_assertions)]
   {
-    // Dev default: run from workspace root (LocalDesk/)
+    // Dev default: run from workspace root (ValeDesk/)
     let candidate = PathBuf::from("dist-sidecar/sidecar/main.js");
     if candidate.exists() {
       return Ok(candidate);
@@ -465,8 +465,8 @@ fn resolve_sidecar_entry() -> Result<PathBuf, String> {
   #[cfg(not(debug_assertions))]
   {
       // Prod: Look for sidecar binary in the executables directory
-      // Name formatting: local-desk-sidecar-<target-triple>
-      // For now, we search for a file starting with local-desk-sidecar
+      // Name formatting: valera-sidecar-<target-triple>
+      // For now, we search for a file starting with valera-sidecar
       let exe = std::env::current_exe().map_err(|e| format!("[sidecar] Failed to get current exe: {e}"))?;
       let dir = exe.parent().ok_or("[sidecar] Failed to get exe parent")?;
       
@@ -474,7 +474,7 @@ fn resolve_sidecar_entry() -> Result<PathBuf, String> {
       for entry in entries {
           if let Ok(entry) = entry {
               let name = entry.file_name().to_string_lossy().to_string();
-              if name.starts_with("local-desk-sidecar") {
+              if name.starts_with("valera-sidecar") {
                   return Ok(entry.path());
               }
           }
@@ -484,7 +484,7 @@ fn resolve_sidecar_entry() -> Result<PathBuf, String> {
 }
 
 fn resolve_node_bin() -> Result<String, String> {
-  if let Ok(v) = std::env::var("LOCALDESK_NODE_BIN") {
+  if let Ok(v) = std::env::var("VALERA_NODE_BIN") {
     if !v.trim().is_empty() {
       return Ok(v);
     }
@@ -529,7 +529,7 @@ fn start_sidecar(app: tauri::AppHandle, sidecar_state: &SidecarState) -> Result<
   }
 
   let mut child = child_cmd
-    .env("LOCALDESK_USER_DATA_DIR", user_data_dir.to_string_lossy().to_string())
+    .env("VALERA_USER_DATA_DIR", user_data_dir.to_string_lossy().to_string())
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -1574,7 +1574,212 @@ fn migrate_json_to_db(db: &Database, user_data_dir: &PathBuf) {
   }
 }
 
+/// Migrate data from old app directories to new ValeDesk directory
+/// Checks: localdesk, LocalDesk, ValeraDesk (in order of priority)
+fn migrate_from_localdesk() {
+  let new_dir = match app_data_dir() {
+    Ok(d) => d,
+    Err(_) => return,
+  };
+  
+  // Skip if new dir already has sessions.db with actual data
+  let new_db_path = new_dir.join("sessions.db");
+  if new_db_path.exists() {
+    // Check if the file has meaningful size (> 4KB means it has data)
+    if let Ok(meta) = fs::metadata(&new_db_path) {
+      if meta.len() > 4096 {
+        return; // Already has data, skip migration
+      }
+    }
+  }
+  
+  // Try old directories in order of likelihood
+  let old_dirs = get_old_app_dirs();
+  
+  for old_dir in old_dirs {
+    if !old_dir.exists() {
+      continue;
+    }
+    
+    let old_db = old_dir.join("sessions.db");
+    if !old_db.exists() {
+      continue;
+    }
+    
+    // Check if old db has meaningful data
+    if let Ok(meta) = fs::metadata(&old_db) {
+      if meta.len() <= 4096 {
+        continue; // Empty database, skip
+      }
+    }
+    
+    eprintln!("[migration] Found old data at {}", old_dir.display());
+    eprintln!("[migration] Migrating to {}", new_dir.display());
+    
+    // Create new directory
+    if let Err(e) = fs::create_dir_all(&new_dir) {
+      eprintln!("[migration] Failed to create new dir: {e}");
+      return;
+    }
+    
+    // Copy all files from old to new
+    let entries = match fs::read_dir(&old_dir) {
+      Ok(e) => e,
+      Err(e) => {
+        eprintln!("[migration] Failed to read old dir: {e}");
+        return;
+      }
+    };
+    
+    for entry in entries.flatten() {
+      let src = entry.path();
+      let file_name = entry.file_name();
+      let dst = new_dir.join(&file_name);
+      
+      if src.is_file() {
+        if let Err(e) = fs::copy(&src, &dst) {
+          eprintln!("[migration] Failed to copy {}: {e}", file_name.to_string_lossy());
+        } else {
+          eprintln!("[migration] Copied {}", file_name.to_string_lossy());
+        }
+      }
+    }
+    
+    eprintln!("[migration] Migration complete!");
+    return; // Done, don't check other old dirs
+  }
+}
+
+/// Get list of old app data directories to check for migration
+fn get_old_app_dirs() -> Vec<PathBuf> {
+  // Old directory names in order of priority
+  const OLD_NAMES: &[&str] = &["localdesk", "LocalDesk", "ValeraDesk"];
+  
+  let mut dirs = Vec::new();
+  
+  #[cfg(target_os = "windows")]
+  {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+      if !appdata.trim().is_empty() {
+        let base = PathBuf::from(appdata);
+        for name in OLD_NAMES {
+          dirs.push(base.join(name));
+        }
+      }
+    }
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    if let Ok(home) = home_dir() {
+      let base = home.join("Library").join("Application Support");
+      for name in OLD_NAMES {
+        dirs.push(base.join(name));
+      }
+    }
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    let base = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+      if !xdg.trim().is_empty() {
+        Some(PathBuf::from(xdg))
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+    
+    let base = base.or_else(|| home_dir().ok().map(|h| h.join(".config")));
+    
+    if let Some(base) = base {
+      for name in OLD_NAMES {
+        dirs.push(base.join(name));
+      }
+    }
+  }
+  
+  dirs
+}
+
+/// Migrate ~/.localdesk/ to ~/.valera/
+fn migrate_dot_localdesk() {
+  let home = match home_dir() {
+    Ok(h) => h,
+    Err(_) => return,
+  };
+  
+  let old_dir = home.join(".localdesk");
+  let new_dir = home.join(".valera");
+  
+  // Skip if old dir doesn't exist
+  if !old_dir.exists() {
+    return;
+  }
+  
+  // Skip if new dir already has memory.md (already migrated)
+  let new_memory = new_dir.join("memory.md");
+  if new_memory.exists() {
+    return;
+  }
+  
+  eprintln!("[migration] Found old ~/.localdesk/ data");
+  eprintln!("[migration] Migrating to ~/.valera/");
+  
+  // Create new directory
+  if let Err(e) = fs::create_dir_all(&new_dir) {
+    eprintln!("[migration] Failed to create ~/.valera/: {e}");
+    return;
+  }
+  
+  // Copy memory.md if exists
+  let old_memory = old_dir.join("memory.md");
+  if old_memory.exists() {
+    if let Err(e) = fs::copy(&old_memory, &new_memory) {
+      eprintln!("[migration] Failed to copy memory.md: {e}");
+    } else {
+      eprintln!("[migration] Copied memory.md");
+    }
+  }
+  
+  // Copy logs directory if exists
+  let old_logs = old_dir.join("logs");
+  let new_logs = new_dir.join("logs");
+  if old_logs.exists() && old_logs.is_dir() {
+    if let Err(e) = copy_dir_recursive(&old_logs, &new_logs) {
+      eprintln!("[migration] Failed to copy logs: {e}");
+    } else {
+      eprintln!("[migration] Copied logs directory");
+    }
+  }
+  
+  eprintln!("[migration] ~/.valera/ migration complete!");
+}
+
+/// Recursively copy a directory
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+  fs::create_dir_all(dst)?;
+  for entry in fs::read_dir(src)? {
+    let entry = entry?;
+    let src_path = entry.path();
+    let dst_path = dst.join(entry.file_name());
+    if src_path.is_dir() {
+      copy_dir_recursive(&src_path, &dst_path)?;
+    } else {
+      fs::copy(&src_path, &dst_path)?;
+    }
+  }
+  Ok(())
+}
+
 fn main() {
+  // Migrate data from old LocalDesk directory if needed
+  migrate_from_localdesk();
+  
+  // Migrate ~/.localdesk/ to ~/.valera/
+  migrate_dot_localdesk();
+  
   // Initialize database
   let user_data_dir = app_data_dir().expect("Failed to get app data dir");
   fs::create_dir_all(&user_data_dir).expect("Failed to create app data dir");

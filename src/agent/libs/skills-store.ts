@@ -33,7 +33,7 @@ export interface SkillsSettings {
   lastFetched?: number;
 }
 
-const DEFAULT_MARKETPLACE_URL = "https://api.github.com/repos/vakovalskii/LocalDesk-Skills/contents/skills";
+const DEFAULT_MARKETPLACE_URL = "https://api.github.com/repos/vakovalskii/ValeDesk-Skills/contents/skills";
 
 // In pkg binary, import.meta.url is undefined. Use eval to get require in CJS context.
 const require = (process as any).pkg
@@ -41,12 +41,12 @@ const require = (process as any).pkg
   : (typeof globalThis.require === "function" ? globalThis.require : createRequire(import.meta.url));
 
 function getUserDataDir(): string {
-  const envDir = process.env.LOCALDESK_USER_DATA_DIR;
+  const envDir = process.env.VALERA_USER_DATA_DIR;
   if (envDir && envDir.trim()) return envDir;
 
   const electronVersion = (process.versions as any)?.electron;
   if (!electronVersion) {
-    throw new Error("[SkillsStore] LOCALDESK_USER_DATA_DIR is required outside Electron");
+    throw new Error("[SkillsStore] VALERA_USER_DATA_DIR is required outside Electron");
   }
 
   const electron = require("electron");

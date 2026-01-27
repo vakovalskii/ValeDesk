@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "LocalDesk",
+  "productName": "ValeDesk",
   "version": "0.0.8",
-  "identifier": "com.vakovalskii.localdesk",
+  "identifier": "com.vakovalskii.valera",
   "build": {
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist-react"
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "LocalDesk",
+        "title": "ValeDesk",
         "width": 1200,
         "height": 800,
         "resizable": true
@@ -36,7 +36,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "bin/local-desk-sidecar"
+      "bin/valera-sidecar"
     ],
     "resources": {
       "../dist-sidecar/agent/libs/prompts": "prompts"

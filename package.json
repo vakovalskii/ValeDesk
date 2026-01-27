@@ -1,13 +1,13 @@
 {
-	"name": "localdesk",
+	"name": "valera",
 	"private": true,
 	"version": "0.0.8",
-	"description": "LocalDesk - Desktop AI Assistant with Local Model Support - OpenAI SDK compatible agent with memory system, file operations, web search, and modern UI",
+	"description": "ValeDesk - Very Almost Local, Eventually Reasonable Assistant - OpenAI SDK compatible AI agent with memory system, file operations, web search, and modern UI",
 	"author": "Valerii Kovalskii <v.kovalskii@example.com>",
 	"license": "SEE LICENSE IN LICENSE",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/vakovalskii/LocalDesk.git"
+		"url": "https://github.com/vakovalskii/ValeDesk.git"
 	},
 	"keywords": [
 		"ai-assistant",
@@ -38,7 +38,7 @@
 		"lint": "eslint .",
 		"preview": "vite preview",
 		"transpile:sidecar": "tsc --project src/sidecar/tsconfig.json && npm run copy:sidecar-prompts",
-		"build:sidecar": "npm run copy:sidecar-prompts && npx esbuild src/sidecar/main.ts --bundle --platform=node --format=cjs --outfile=dist-sidecar/bundled.js --external:sharp --external:electron --external:playwright --external:playwright-core --external:chromium-bidi && pkg dist-sidecar/bundled.js --target node22-macos-arm64 --output src-tauri/bin/local-desk-sidecar-aarch64-apple-darwin",
+		"build:sidecar": "npm run copy:sidecar-prompts && npx esbuild src/sidecar/main.ts --bundle --platform=node --format=cjs --outfile=dist-sidecar/bundled.js --external:sharp --external:electron --external:playwright --external:playwright-core --external:chromium-bidi && pkg dist-sidecar/bundled.js --target node22-macos-arm64 --output src-tauri/bin/valera-sidecar-aarch64-apple-darwin",
 		"copy:prompts": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist-agent/libs/prompts',{recursive:true});fs.readdirSync('src/agent/libs/prompts').filter(f=>f.endsWith('.txt')).forEach(f=>fs.copyFileSync(path.join('src/agent/libs/prompts',f),path.join('dist-agent/libs/prompts',f)))\"",
 		"copy:sidecar-prompts": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist-sidecar/agent/libs/prompts',{recursive:true});fs.readdirSync('src/agent/libs/prompts').filter(f=>f.endsWith('.txt')).forEach(f=>fs.copyFileSync(path.join('src/agent/libs/prompts',f),path.join('dist-sidecar/agent/libs/prompts',f)))\"",
 		"type-check": "tsc --noEmit",

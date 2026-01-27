@@ -22,7 +22,7 @@ else
 fi
 
 BIN_DIR="src-tauri/bin"
-BIN_NAME="local-desk-sidecar-${TARGET}"
+BIN_NAME="valera-sidecar-${TARGET}"
 BIN_PATH="${BIN_DIR}/${BIN_NAME}"
 
 mkdir -p "$BIN_DIR"

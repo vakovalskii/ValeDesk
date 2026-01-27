@@ -1,10 +1,10 @@
-# LocalDesk - AI Agent Guidelines
+# ValeDesk - AI Agent Guidelines
 
 > This file helps AI coding assistants understand the project structure and conventions.
 
 ## Project Overview
 
-LocalDesk is a desktop AI assistant built with **Tauri (Rust)** + **Node.js sidecar** + **React**.
+ValeDesk is a desktop AI assistant built with **Tauri (Rust)** + **Node.js sidecar** + **React**.
 It supports local LLM inference via OpenAI-compatible APIs (vLLM, Ollama, LM Studio).
 
 ## Architecture

@@ -15,7 +15,7 @@ vi.mock("os", async (importOriginal) => {
 
 describe("memory tool", () => {
   beforeAll(async () => {
-    tempHome = await mkdtemp(join(tmpdir(), "localdesk-test-"));
+    tempHome = await mkdtemp(join(tmpdir(), "valera-test-"));
   });
 
   afterAll(async () => {
@@ -57,7 +57,7 @@ describe("memory tool", () => {
     }, ctx);
     expect(del.success).toBe(true);
 
-    const memoryPath = join(tempHome, ".localdesk", "memory.md");
+    const memoryPath = join(tempHome, ".valera", "memory.md");
     const content = await readFile(memoryPath, "utf-8");
     expect(content).toContain("City: Orenburg");
     expect(content).not.toContain("Language: Russian");

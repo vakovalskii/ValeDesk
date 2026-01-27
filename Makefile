@@ -1,7 +1,7 @@
 .PHONY: dev dev-sidecar dev-ui dev-tauri check-tools ensure-tools ensure-node-deps ensure-tauri-cli ensure-rust bundle
 
-LOCALDESK_ROOT := $(CURDIR)
-SIDECAR_ENTRY := $(LOCALDESK_ROOT)/dist-sidecar/sidecar/main.js
+VALERA_ROOT := $(CURDIR)
+SIDECAR_ENTRY := $(VALERA_ROOT)/dist-sidecar/sidecar/main.js
 MIN_RUST_VERSION := 1.74.0
 
 check-tools:
@@ -90,7 +90,7 @@ dev-ui: ensure-tools
 	@npm run dev:react
 
 dev-tauri: ensure-tools
-	@cd src-tauri && LOCALDESK_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev
+	@cd src-tauri && VALERA_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev
 
 dev: dev-sidecar
 	@echo "Starting Vite + Tauri (Node-sidecar)..."
@@ -99,7 +99,7 @@ ifdef OS
 else
 	@npm run dev:react & \
 	VITE_PID=$$!; \
-	cd src-tauri && LOCALDESK_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev; \
+	cd src-tauri && VALERA_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev; \
 	STATUS=$$?; \
 	kill $$VITE_PID >/dev/null 2>&1 || true; \
 	exit $$STATUS

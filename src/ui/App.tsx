@@ -386,7 +386,7 @@ function App() {
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           <div className="flex items-center gap-2 flex-shrink-0" />
-          <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title || "LocalDesk"}</span>
+          <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title || "ValeDesk"}</span>
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Edit session button */}
             {activeSessionId && (

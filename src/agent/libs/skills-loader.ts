@@ -3,28 +3,28 @@ import * as path from "path";
 import { homedir } from "os";
 import { Skill, SkillMetadata, loadSkillsSettings, updateSkillsList } from "./skills-store.js";
 
-const LOCALDESK_DIR = ".localdesk";
+const VALERA_DIR = ".valera";
 const SKILLS_SUBDIR = "skills";
 
 /**
  * Get skills directory path.
  * If cwd is provided, use {cwd}/skills/  (project-local)
- * Otherwise, use global ~/.localdesk/skills/
+ * Otherwise, use global ~/.valera/skills/
  */
 function getSkillsDir(cwd?: string): string {
   if (cwd && cwd.trim()) {
     // Project-local: {cwd}/skills/
     return path.join(cwd, SKILLS_SUBDIR);
   }
-  // Global fallback: ~/.localdesk/skills/
-  return path.join(homedir(), LOCALDESK_DIR, SKILLS_SUBDIR);
+  // Global fallback: ~/.valera/skills/
+  return path.join(homedir(), VALERA_DIR, SKILLS_SUBDIR);
 }
 
 /**
  * Get global skills directory (fallback when no cwd)
  */
 function getGlobalSkillsDir(): string {
-  return path.join(homedir(), LOCALDESK_DIR, SKILLS_SUBDIR);
+  return path.join(homedir(), VALERA_DIR, SKILLS_SUBDIR);
 }
 
 interface GitHubContent {
@@ -140,7 +140,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
     const response = await fetch(marketplaceUrl, {
       headers: {
         "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "LocalDesk"
+        "User-Agent": "ValeDesk"
       }
     });
 
@@ -203,7 +203,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
 /**
  * Download and cache a skill's full contents
  * @param skillId - The skill ID to download
- * @param cwd - Optional working directory. If provided, skill is saved to {cwd}/.localdesk/skills/
+ * @param cwd - Optional working directory. If provided, skill is saved to {cwd}/.valera/skills/
  */
 export async function downloadSkill(skillId: string, cwd?: string): Promise<string> {
   const settings = loadSkillsSettings();
@@ -234,7 +234,7 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
   const response = await fetch(contentsUrl, {
     headers: {
       "Accept": "application/vnd.github.v3+json",
-      "User-Agent": "LocalDesk"
+      "User-Agent": "ValeDesk"
     }
   });
 
@@ -274,7 +274,7 @@ async function downloadContents(
       const subResponse = await fetch(subContentsUrl, {
         headers: {
           "Accept": "application/vnd.github.v3+json",
-          "User-Agent": "LocalDesk"
+          "User-Agent": "ValeDesk"
         }
       });
 

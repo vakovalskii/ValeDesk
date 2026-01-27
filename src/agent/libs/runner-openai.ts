@@ -44,7 +44,7 @@ type ChatMessage = {
 
 // Logging - organized by session folders with turn-based request/response files
 const getSessionLogsDir = (sessionId: string) => {
-  const baseDir = join(homedir(), '.localdesk', 'logs', 'sessions', sessionId);
+  const baseDir = join(homedir(), '.valera', 'logs', 'sessions', sessionId);
   if (!existsSync(baseDir)) {
     mkdirSync(baseDir, { recursive: true });
   }
@@ -329,7 +329,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           const { join } = await import('path');
           const { homedir } = await import('os');
           
-          const memoryPath = join(homedir(), '.localdesk', 'memory.md');
+          const memoryPath = join(homedir(), '.valera', 'memory.md');
           
           await access(memoryPath, constants.F_OK);
           const content = await readFile(memoryPath, 'utf-8');

@@ -188,7 +188,7 @@ pub fn execute_python(
     let python = python_cmd.unwrap();
     
     // Create temp file for code (safer than -c for multiline)
-    let temp_file = std::env::temp_dir().join(format!("localdesk_sandbox_{}.py", uuid::Uuid::new_v4()));
+    let temp_file = std::env::temp_dir().join(format!("valera_sandbox_{}.py", uuid::Uuid::new_v4()));
     
     // Write code to temp file
     if let Err(e) = std::fs::write(&temp_file, code) {

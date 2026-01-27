@@ -6,6 +6,18 @@
 import { executePython } from '../container/quickjs-sandbox.js';
 import type { ToolDefinition, ToolResult, ToolExecutionContext } from './base-tool.js';
 
+// Max output size to prevent token explosion (100KB)
+const MAX_OUTPUT_SIZE = 100 * 1024;
+
+function truncateOutput(output: string): string {
+  if (output.length <= MAX_OUTPUT_SIZE) {
+    return output;
+  }
+  const half = Math.floor(MAX_OUTPUT_SIZE / 2);
+  const truncatedMsg = `\n\n... [OUTPUT TRUNCATED: ${output.length} bytes total, showing first ${half} and last ${half} bytes] ...\n\n`;
+  return output.slice(0, half) + truncatedMsg + output.slice(-half);
+}
+
 export const ExecutePythonToolDefinition: ToolDefinition = {
   type: "function",
   function: {
@@ -85,13 +97,14 @@ export async function executePythonTool(
     
     if (result.success) {
       let output = '✅ Python code executed successfully\n\n';
-    
-      if (result.logs.length > 0) {
-        output += '**Output:**\n```\n' + result.logs.join('\n') + '\n```\n\n';
+      
+      const logsText = result.logs.join('\n');
+      if (logsText.length > 0) {
+        output += '**Output:**\n```\n' + truncateOutput(logsText) + '\n```\n\n';
       }
     
-      if (result.output && result.output !== result.logs.join('\n')) {
-        output += '**Result:**\n```\n' + result.output + '\n```';
+      if (result.output && result.output !== logsText) {
+        output += '**Result:**\n```\n' + truncateOutput(result.output) + '\n```';
       }
     
       return { success: true, output };
@@ -102,7 +115,8 @@ export async function executePythonTool(
       errorMsg += `**Your code:**\n\`\`\`python\n${args.code.substring(0, 500)}${args.code.length > 500 ? '\n# ... truncated ...' : ''}\n\`\`\`\n\n`;
     
       if (result.logs.length > 0) {
-        errorMsg += `\n**Output before error:**\n\`\`\`\n${result.logs.join('\n')}\n\`\`\``;
+        const logsText = result.logs.join('\n');
+        errorMsg += `\n**Output before error:**\n\`\`\`\n${truncateOutput(logsText)}\n\`\`\``;
       }
       
       return { success: false, error: errorMsg };

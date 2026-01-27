@@ -2,7 +2,7 @@
 
 ## Workspace Sandboxing
 
-LocalDesk implements multiple layers of security to ensure that the AI agent can only access files within the user-specified workspace folder.
+ValeDesk implements multiple layers of security to ensure that the AI agent can only access files within the user-specified workspace folder.
 
 ### Protection Mechanisms
 

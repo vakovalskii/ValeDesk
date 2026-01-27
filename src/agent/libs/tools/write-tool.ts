@@ -37,6 +37,21 @@ export async function executeWriteTool(
   args: { file_path: string; content: string; explanation: string },
   context: ToolExecutionContext
 ): Promise<ToolResult> {
+  // Validate required parameters
+  if (!args.file_path) {
+    return {
+      success: false,
+      error: 'Missing required parameter: file_path'
+    };
+  }
+  
+  if (args.content === undefined || args.content === null) {
+    return {
+      success: false,
+      error: 'Missing required parameter: content. You must provide the file content to write.'
+    };
+  }
+  
   // Security check
   if (!context.isPathSafe(args.file_path)) {
     return {
