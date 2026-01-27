@@ -1470,27 +1470,26 @@ function WebToolsTab({
             Получите API ключ на <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-ink-700 hover:underline">tavily.com</a>
           </p>
           
-          {tavilyApiKey && (
-            <div className="mt-4 flex items-center justify-between">
-              <div>
-                <span className="text-sm font-medium text-ink-700">Enable Web Search</span>
-                <p className="text-xs text-ink-500">Use Tavily for search_web and extract_page tools</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEnableTavilySearch(!enableTavilySearch)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  enableTavilySearch ? "bg-accent" : "bg-ink-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    enableTavilySearch ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+          <div className="mt-4 flex items-center justify-between">
+            <div>
+              <span className={`text-sm font-medium ${tavilyApiKey ? 'text-ink-700' : 'text-ink-400'}`}>Enable Web Search</span>
+              <p className="text-xs text-ink-500">Use Tavily for search_web and extract_page tools</p>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => tavilyApiKey && setEnableTavilySearch(!enableTavilySearch)}
+              disabled={!tavilyApiKey}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                !tavilyApiKey ? "bg-ink-200 cursor-not-allowed" : enableTavilySearch ? "bg-accent" : "bg-ink-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  enableTavilySearch && tavilyApiKey ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1732,7 +1731,7 @@ function MemoryModeTab({
           <div className="flex-1">
             <span className="block text-sm font-medium text-ink-700">Enable Memory</span>
             <p className="mt-1 text-xs text-ink-500">
-              Allow agent to store and recall information in memory.md (stored in ~/.localdesk/)
+              Allow agent to store and recall information in memory.md (stored in ~/.valera/)
             </p>
           </div>
           <div className="relative">
@@ -1776,7 +1775,7 @@ function MemoryModeTab({
               className="w-full h-32 px-3 py-2 text-xs border border-ink-900/20 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all resize-none font-mono"
             />
             <p className="mt-1 text-xs text-ink-500">
-              File: <code className="bg-ink-50 px-1 py-0.5 rounded">~/.localdesk/memory.md</code>
+              File: <code className="bg-ink-50 px-1 py-0.5 rounded">~/.valera/memory.md</code>
             </p>
           </div>
         )}

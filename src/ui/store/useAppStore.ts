@@ -57,6 +57,9 @@ interface AppState {
   llmProviders: LLMProvider[];
   llmModels: LLMModel[];
   llmProviderSettings: LLMProviderSettings | null;
+  schedulerDefaultModel: string | null;
+  schedulerDefaultTemperature: number | null;
+  schedulerDefaultSendTemperature: boolean | null;
 
   setApiSettings: (settings: ApiSettings | null) => void;
   setVoiceServerStatus: (status: VoiceServerStatus) => void;
@@ -119,6 +122,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   llmProviders: [],
   llmModels: [],
   llmProviderSettings: null,
+  schedulerDefaultModel: null,
+  schedulerDefaultTemperature: null,
+  schedulerDefaultSendTemperature: null,
 
   setApiSettings: (apiSettings) => set({ apiSettings }),
   setVoiceServerStatus: (voiceServerStatus) => set({ voiceServerStatus }),
@@ -615,6 +621,55 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       case "llm.models.checked": {
+        break;
+      }
+
+      // Scheduler default model loaded
+      case "scheduler.default_model.loaded": {
+        const { modelId } = event.payload;
+        set({ schedulerDefaultModel: modelId });
+        break;
+      }
+
+      // Scheduler default temperature loaded
+      case "scheduler.default_temperature.loaded": {
+        const { temperature, sendTemperature } = event.payload;
+        set({
+          schedulerDefaultTemperature: temperature,
+          schedulerDefaultSendTemperature: sendTemperature
+        });
+        break;
+      }
+
+      // Scheduler task execution - auto-start session with prompt
+      case "scheduler.task_execute": {
+        const { title, prompt } = event.payload as any;
+        if (prompt) {
+          // Use scheduler default model, or fallback to first enabled model
+          const { schedulerDefaultModel, llmModels } = get();
+          let model = schedulerDefaultModel;
+          
+          if (!model) {
+            const enabledModels = llmModels.filter(m => m.enabled);
+            model = enabledModels.length > 0 ? enabledModels[0].id : null;
+          }
+          
+          if (!model) {
+            console.warn(`[scheduler] ✗ No model configured for task: ${title}`);
+            break;
+          }
+          
+          console.log(`[scheduler] ▶ Executing task: ${title} (model: ${model})`);
+          getPlatform().sendClientEvent({
+            type: "session.start",
+            payload: {
+              title: `Scheduled: ${title}`,
+              prompt: prompt,
+              model: model,
+              cwd: undefined,
+            }
+          });
+        }
         break;
       }
     }

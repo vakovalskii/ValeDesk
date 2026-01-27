@@ -329,11 +329,9 @@ function handleSessionContinue(event: Extract<ClientEvent, { type: "session.cont
       temperature: sessionData.temperature,
     });
     
-    // Restore message history from DB (critical for LLM context)
+    // Restore message history from DB
     if (historyMessages && Array.isArray(historyMessages)) {
-      console.log(`[sidecar] Restoring ${historyMessages.length} messages for session ${sessionId}`);
       for (const msg of historyMessages) {
-        // recordMessage adds to in-memory store (don't sync back to DB - they're already there)
         const messages = (sessions as any).messages.get(sessionId) || [];
         messages.push(msg);
         (sessions as any).messages.set(sessionId, messages);
@@ -342,7 +340,6 @@ function handleSessionContinue(event: Extract<ClientEvent, { type: "session.cont
     
     // Restore todos from DB
     if (historyTodos && Array.isArray(historyTodos)) {
-      console.log(`[sidecar] Restoring ${historyTodos.length} todos for session ${sessionId}`);
       (sessions as any).todos.set(sessionId, historyTodos);
     }
   }
@@ -458,9 +455,8 @@ function handleMessageEdit(event: Extract<ClientEvent, { type: "message.edit" }>
       temperature: sessionData.temperature,
     });
     
-    // Restore message history from DB (critical for LLM context)
+    // Restore message history from DB
     if (historyMessages && Array.isArray(historyMessages)) {
-      console.log(`[sidecar] Restoring ${historyMessages.length} messages for session ${sessionId} (message.edit)`);
       for (const msg of historyMessages) {
         const messages = (sessions as any).messages.get(sessionId) || [];
         messages.push(msg);
@@ -470,7 +466,6 @@ function handleMessageEdit(event: Extract<ClientEvent, { type: "message.edit" }>
     
     // Restore todos from DB
     if (historyTodos && Array.isArray(historyTodos)) {
-      console.log(`[sidecar] Restoring ${historyTodos.length} todos for session ${sessionId}`);
       (sessions as any).todos.set(sessionId, historyTodos);
     }
   }
@@ -1065,6 +1060,18 @@ rl.on("line", (line) => {
   if (!line.trim()) return;
   // Fail fast on invalid input: log the line, then let JSON.parse throw if invalid.
   const msg = JSON.parse(line) as SidecarInboundMessage;
+  
+  if (msg.type === "scheduler-response") {
+    // Handle scheduler response from Rust
+    const { requestId, result } = msg.payload;
+    const pendingRequests = (global as any).schedulerPendingRequests || {};
+    const resolve = pendingRequests[requestId];
+    if (resolve) {
+      resolve(result);
+    }
+    return;
+  }
+  
   if (msg.type !== "client-event") {
     throw new Error(`[sidecar] Unsupported inbound message type: ${(msg as any).type}`);
   }

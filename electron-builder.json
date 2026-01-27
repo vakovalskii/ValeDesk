@@ -1,6 +1,6 @@
 {
-    "appId": "com.vakovalskii.localdesk",
-    "productName": "LocalDesk",
+    "appId": "com.vakovalskii.valera",
+    "productName": "ValeDesk",
     "files": [
         "dist-electron",
         "dist-react"

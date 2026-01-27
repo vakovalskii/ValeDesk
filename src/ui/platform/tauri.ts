@@ -48,7 +48,14 @@ export function createTauriPlatform(): PlatformAdapter {
 
   return {
     sendClientEvent: (event) => {
-      void tauriInvoke("client_event", { event }).catch(() => {});
+      const eventType = (event as any)?.type;
+      // Log user actions (skip noisy events)
+      if (!["session.list", "session.history", "settings.get", "models.get", "llm.providers.get", "skills.get"].includes(eventType)) {
+        console.log(`[ui] → ${eventType}`, (event as any)?.payload || "");
+      }
+      void tauriInvoke("client_event", { event }).catch((error) => {
+        console.error(`[ui] ✗ ${eventType}`, { error });
+      });
     },
 
     onServerEvent: (callback, onReady) => {
@@ -58,13 +65,20 @@ export function createTauriPlatform(): PlatformAdapter {
       void tauriListen("server-event", (event) => {
         try {
           const payload = (event as any)?.payload;
+          let parsed: any;
           if (typeof payload === "string") {
-            const parsed = JSON.parse(payload);
-            callback(parsed);
-            return;
+            parsed = JSON.parse(payload);
+          } else {
+            parsed = payload;
           }
-          callback(payload as any);
-        } catch {
+          // Log non-streaming events
+          const eventType = parsed?.type;
+          if (eventType && !["stream.message"].includes(eventType)) {
+            console.log(`[ui] ← ${eventType}`);
+          }
+          callback(parsed);
+        } catch (error) {
+          console.error("[ui] ✗ parse server-event", error);
         }
       })
         .then((fn) => {

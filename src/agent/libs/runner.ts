@@ -34,7 +34,7 @@ const DEFAULT_CWD = process.cwd();
 
 // Create logs directory
 const getLogsDir = () => {
-  const logsDir = join(homedir(), '.localdesk', 'logs');
+  const logsDir = join(homedir(), '.valera', 'logs');
   if (!existsSync(logsDir)) {
     mkdirSync(logsDir, { recursive: true });
   }
@@ -228,7 +228,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       console.log(`[Agent] Temperature:`, env.ANTHROPIC_TEMPERATURE || env.TEMPERATURE);
       console.log(`[Agent] Permission Mode: default (requires user approval)`);
       console.log(`[Agent] System Prompt: Using Claude Code preset + custom append to prevent tool hallucination`);
-      console.log(`[Agent] Request log saved to: ~/.localdesk/logs/`);
+      console.log(`[Agent] Request log saved to: ~/.valera/logs/`);
 
       const q = query({
         prompt,

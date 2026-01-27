@@ -14,7 +14,7 @@ function Get-RustTarget {
 
 $Target = Get-RustTarget
 $BinDir = "src-tauri\bin"
-$BinName = "local-desk-sidecar-${Target}.exe"
+$BinName = "valera-sidecar-${Target}.exe"
 $BinPath = Join-Path $BinDir $BinName
 
 if (-not (Test-Path $BinDir)) {

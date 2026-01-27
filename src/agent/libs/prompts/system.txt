@@ -22,8 +22,16 @@ All tools follow snake_case naming convention: verb_noun (e.g., read_file, searc
 
 **Usage Principles:**
 - Always prefer specific tools over general ones (e.g., read_file for text, read_document for PDF/DOCX)
-- Web search tools should be used as LAST RESORT - try local operations first
 - For multi-step tasks, use manage_todos to track progress
+
+**🌐 Web Search (search_web) - USE IMMEDIATELY when:**
+- User asks about NEWS, updates, recent events, current information
+- User asks to "find", "search", "look up" information about external topics
+- User mentions specific products, projects, companies, people (not local files)
+- User needs information that changes over time (prices, weather, stocks, releases)
+- User asks "what is X?" about something not in local files
+- **DO NOT** try to find external information using local file search or bash commands
+- **DO NOT** apologize for not having information - just search the web!
 
 **Code Execution Tools (prefer Python for complex tasks):**
 - **execute_python** ⭐ PREFERRED: System Python with FULL pip package support
@@ -38,6 +46,8 @@ All tools follow snake_case naming convention: verb_noun (e.g., read_file, searc
 - **bash**: Full terminal access
   - Use for: installing packages (`pip install`, `npm install`), git, system commands
   - Can create venv: `python3 -m venv .venv && .venv/bin/pip install ...`
+  - ⚠️ NEVER use `python -v` or `python3 -v` (verbose mode produces HUGE output!)
+  - ⚠️ NEVER use `pip -v` or `pip --verbose`
 </TOOL_USAGE_GUIDELINES>
 
 {skills_section}

@@ -1,10 +1,10 @@
-# LocalDesk - AI Agent Guidelines
+# ValeDesk - AI Agent Guidelines
 
 > This file helps AI coding assistants understand the project structure and conventions.
 
 ## Project Overview
 
-LocalDesk is a desktop AI assistant built with **Tauri (Rust)** + **Node.js sidecar** + **React**.
+ValeDesk is a desktop AI assistant built with **Tauri (Rust)** + **Node.js sidecar** + **React**.
 It supports local LLM inference via OpenAI-compatible APIs (vLLM, Ollama, LM Studio).
 
 ## Architecture
@@ -46,9 +46,11 @@ It supports local LLM inference via OpenAI-compatible APIs (vLLM, Ollama, LM Stu
 |------|-------|
 | Rust backend | `src-tauri/src/main.rs` |
 | SQLite DB | `src-tauri/src/db.rs` |
+| Scheduler service | `src-tauri/src/scheduler.rs` |
 | Node sidecar entry | `src/sidecar/main.ts` |
 | Agent libs | `src/agent/libs/` |
 | Tools | `src/agent/libs/tools/` |
+| Skills loader | `src/agent/libs/skills-loader.ts` |
 | System prompt | `src/agent/libs/prompts/system.txt` |
 | LLM runner | `src/agent/libs/runner-openai.ts` |
 | React UI | `src/ui/` |
@@ -114,8 +116,9 @@ security: remove hardcoded credentials
 
 - **Desktop**: Tauri 2.x (Rust backend)
 - **Sidecar**: Node.js bundled with `pkg` (LLM logic, tools)
-- **Database**: SQLite via `rusqlite` (Rust) - sessions, messages, todos, settings
+- **Database**: SQLite via `rusqlite` (Rust) - sessions, messages, todos, scheduled_tasks, settings
 - **Frontend**: React 19, Zustand, Tailwind CSS
+- **Notifications**: tauri-plugin-notification (native macOS/Windows/Linux)
 - **JS Sandbox**: Node.js `vm` module (sandboxed)
 - **Python Sandbox**: System Python subprocess
 - **Build**: Vite + cargo tauri build

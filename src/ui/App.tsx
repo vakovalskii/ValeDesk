@@ -125,6 +125,11 @@ function App() {
     if (event.type === "llm.providers.loaded") {
       setLlmProvidersLoaded(true);
     }
+    
+    // Scheduler notifications are now handled natively by Rust
+    if (event.type === "scheduler.notification") {
+      console.log(`[scheduler] 🔔 ${event.payload.title}: ${event.payload.body}`);
+    }
   }, [handleServerEvent, handlePartialMessages]);
 
   const { connected, sendEvent } = useIPC(onEvent);
@@ -141,6 +146,8 @@ function App() {
       sendEvent({ type: "settings.get" });
       sendEvent({ type: "models.get" });
       sendEvent({ type: "llm.providers.get" });
+      sendEvent({ type: "scheduler.default_model.get" });
+      sendEvent({ type: "scheduler.default_temperature.get" });
     }
   }, [connected, sendEvent]);
 
@@ -373,7 +380,7 @@ function App() {
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
           <div className="flex items-center gap-2 flex-shrink-0" />
-          <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title || "LocalDesk"}</span>
+          <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title || "ValeDesk"}</span>
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Edit session button */}
             {activeSessionId && (

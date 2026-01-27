@@ -21,7 +21,6 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
   const setPendingStart = useAppStore((state) => state.setPendingStart);
   const setGlobalError = useAppStore((state) => state.setGlobalError);
   const selectedModel = useAppStore((state) => state.selectedModel);
-  const setSelectedModel = useAppStore((state) => state.setSelectedModel);
   const selectedTemperature = useAppStore((state) => state.selectedTemperature);
   const sendTemperature = useAppStore((state) => state.sendTemperature);
 
@@ -55,8 +54,21 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
           temperature: sendTemperature ? selectedTemperature : undefined
         }
       });
-      // Clear selected model after starting session
-      setSelectedModel(null);
+      // Save selected model as default for future sessions
+      if (selectedModel) {
+        sendEvent({
+          type: "scheduler.default_model.set",
+          payload: { modelId: selectedModel }
+        } as ClientEvent);
+      }
+      // Save temperature as default for future sessions
+      sendEvent({
+        type: "scheduler.default_temperature.set",
+        payload: {
+          temperature: selectedTemperature,
+          sendTemperature: sendTemperature
+        }
+      } as ClientEvent);
     } else {
       if (activeSession?.status === "running") {
         setGlobalError("Session is still running. Please wait for it to finish.");
@@ -65,7 +77,7 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
       sendEvent({ type: "session.continue", payload: { sessionId: activeSessionId, prompt: trimmedPrompt } });
     }
     setPrompt("");
-  }, [activeSession, activeSessionId, cwd, prompt, sendEvent, sendTemperature, setGlobalError, setPendingStart, setPrompt, selectedModel, setSelectedModel, selectedTemperature]);
+  }, [activeSession, activeSessionId, cwd, prompt, sendEvent, sendTemperature, setGlobalError, setPendingStart, setPrompt, selectedModel, selectedTemperature]);
 
   const handleStop = useCallback(() => {
     if (!activeSessionId) return;
