@@ -21,7 +21,7 @@ type SettingsModalProps = {
   currentSettings: ApiSettings | null;
 };
 
-type TabId = 'llm-models' | 'web-tools' | 'tools' | 'skills' | 'memory-mode';
+type TabId = 'llm-models' | 'web-tools' | 'tools' | 'audio' | 'skills' | 'memory-mode';
 
 export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>('llm-models');
@@ -388,6 +388,16 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
               Tools
             </button>
             <button
+              onClick={() => setActiveTab('audio')}
+              className={`px-5 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+                activeTab === 'audio'
+                  ? 'text-ink-900 border-b-2 border-accent'
+                  : 'text-ink-600 hover:text-ink-900'
+              }`}
+            >
+              Audio
+            </button>
+            <button
               onClick={() => setActiveTab('skills')}
               className={`px-5 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'skills'
@@ -458,6 +468,8 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
                 enableImageTools={enableImageTools}
                 setEnableImageTools={setEnableImageTools}
               />
+            ) : activeTab === 'audio' ? (
+              <AudioTab />
             ) : activeTab === 'skills' ? (
               <div className="p-6">
                 <SkillsTab
@@ -1220,27 +1232,26 @@ function WebToolsTab({
             Получите API ключ на <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-ink-700 hover:underline">tavily.com</a>
           </p>
           
-          {tavilyApiKey && (
-            <div className="mt-4 flex items-center justify-between">
-              <div>
-                <span className="text-sm font-medium text-ink-700">Enable Web Search</span>
-                <p className="text-xs text-ink-500">Use Tavily for search_web and extract_page tools</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEnableTavilySearch(!enableTavilySearch)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  enableTavilySearch ? "bg-accent" : "bg-ink-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    enableTavilySearch ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+          <div className="mt-4 flex items-center justify-between">
+            <div>
+              <span className={`text-sm font-medium ${tavilyApiKey ? 'text-ink-700' : 'text-ink-400'}`}>Enable Web Search</span>
+              <p className="text-xs text-ink-500">Use Tavily for search_web and extract_page tools</p>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => tavilyApiKey && setEnableTavilySearch(!enableTavilySearch)}
+              disabled={!tavilyApiKey}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                !tavilyApiKey ? "bg-ink-200 cursor-not-allowed" : enableTavilySearch ? "bg-accent" : "bg-ink-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  enableTavilySearch && tavilyApiKey ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1464,6 +1475,143 @@ function ToolsTab({
   );
 }
 
+function AudioTab() {
+  const audioModelsStatus = useAppStore((s) => s.audioModelsStatus);
+  const audioModelsDownloadProgress = useAppStore((s) => s.audioModelsDownloadProgress);
+  const audioModelsDownloadError = useAppStore((s) => s.audioModelsDownloadError);
+
+  useEffect(() => {
+    getPlatform().sendClientEvent({ type: "audio.models.status.get" });
+  }, []);
+
+  const isDownloading =
+    !!audioModelsDownloadProgress &&
+    audioModelsDownloadProgress.bytesTotal > 0 &&
+    audioModelsDownloadProgress.bytesDownloaded < audioModelsDownloadProgress.bytesTotal;
+
+  const percent =
+    audioModelsDownloadProgress && audioModelsDownloadProgress.bytesTotal > 0
+      ? Math.min(100, Math.max(0, (audioModelsDownloadProgress.bytesDownloaded / audioModelsDownloadProgress.bytesTotal) * 100))
+      : 0;
+
+  const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const v = bytes / Math.pow(1024, i);
+    return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  };
+
+  const modelsDir =
+    audioModelsStatus && (audioModelsStatus as any).modelsDir ? String((audioModelsStatus as any).modelsDir) : null;
+
+  return (
+    <div className="px-6 py-4 space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-ink-900">Speech models</h3>
+        <p className="mt-1 text-sm text-ink-600">
+          Offline dictation requires the Parakeet TDT v3 + Silero VAD CoreML packs.
+        </p>
+      </div>
+
+      {audioModelsDownloadError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-700">
+            {audioModelsDownloadError.code}: {audioModelsDownloadError.message}
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => getPlatform().sendClientEvent({ type: "audio.models.download.start" })}
+          disabled={isDownloading}
+          className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isDownloading ? "Downloading…" : "Download speech models"}
+        </button>
+
+        <button
+          onClick={() => getPlatform().sendClientEvent({ type: "audio.models.status.get" })}
+          className="px-4 py-2 text-sm font-medium text-ink-700 bg-ink-50 rounded-lg hover:bg-ink-100 transition-colors"
+        >
+          Refresh status
+        </button>
+
+        {modelsDir && (
+          <button
+            onClick={() => void getPlatform().invoke("open-path-in-finder", modelsDir)}
+            className="px-4 py-2 text-sm font-medium text-ink-700 bg-ink-50 rounded-lg hover:bg-ink-100 transition-colors"
+          >
+            Open models folder
+          </button>
+        )}
+      </div>
+
+      {isDownloading && audioModelsDownloadProgress && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-ink-600">
+            <span>Downloading…</span>
+            <span>
+              {formatBytes(audioModelsDownloadProgress.bytesDownloaded)} / {formatBytes(audioModelsDownloadProgress.bytesTotal)} (
+              {percent.toFixed(1)}%)
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
+            <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-lg border border-ink-900/10 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-ink-900">Status</p>
+            <p className="mt-1 text-sm text-ink-600">
+              {audioModelsStatus
+                ? audioModelsStatus.state === "ready"
+                  ? "Ready"
+                  : audioModelsStatus.state === "not_installed"
+                    ? "Not installed"
+                    : audioModelsStatus.state === "manifest_incomplete"
+                      ? "Manifest incomplete"
+                      : audioModelsStatus.state === "error"
+                        ? "Error"
+                        : "Unknown"
+                : "Loading…"}
+            </p>
+          </div>
+          {modelsDir && (
+            <div className="text-right">
+              <p className="text-xs text-ink-500">Models dir</p>
+              <p className="text-xs text-ink-700 font-mono break-all max-w-[420px]">{modelsDir}</p>
+            </div>
+          )}
+        </div>
+
+        {audioModelsStatus?.state === "not_installed" && (
+          <div className="mt-3 text-xs text-ink-600">
+            Present: {audioModelsStatus.presentFiles}/{audioModelsStatus.totalFiles} files •{" "}
+            {formatBytes(audioModelsStatus.presentBytes)}/{formatBytes(audioModelsStatus.totalBytes)}
+          </div>
+        )}
+
+        {audioModelsStatus?.state === "manifest_incomplete" && (
+          <div className="mt-3 text-xs text-ink-600">
+            Missing fields: <span className="font-mono">{audioModelsStatus.missing.join(", ")}</span>
+          </div>
+        )}
+
+        {audioModelsStatus?.state === "error" && (
+          <div className="mt-3 text-xs text-red-700">
+            {audioModelsStatus.code}: {audioModelsStatus.message}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MemoryModeTab({
   enableMemory,
   setEnableMemory,
@@ -1482,7 +1630,7 @@ function MemoryModeTab({
           <div className="flex-1">
             <span className="block text-sm font-medium text-ink-700">Enable Memory</span>
             <p className="mt-1 text-xs text-ink-500">
-              Allow agent to store and recall information in memory.md (stored in ~/.localdesk/)
+              Allow agent to store and recall information in memory.md (stored in ~/.valera/)
             </p>
           </div>
           <div className="relative">
@@ -1526,7 +1674,7 @@ function MemoryModeTab({
               className="w-full h-32 px-3 py-2 text-xs border border-ink-900/20 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all resize-none font-mono"
             />
             <p className="mt-1 text-xs text-ink-500">
-              File: <code className="bg-ink-50 px-1 py-0.5 rounded">~/.localdesk/memory.md</code>
+              File: <code className="bg-ink-50 px-1 py-0.5 rounded">~/.valera/memory.md</code>
             </p>
           </div>
         )}

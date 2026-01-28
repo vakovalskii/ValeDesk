@@ -7,7 +7,12 @@ export function createElectronPlatform(): PlatformAdapter {
 
   return {
     sendClientEvent: (event) => window.electron.sendClientEvent(event),
-    onServerEvent: (callback) => window.electron.onServerEvent(callback),
+    onServerEvent: (callback, onReady) => {
+      const unsubscribe = window.electron.onServerEvent(callback);
+      // Electron listener is synchronous, call onReady immediately
+      onReady?.();
+      return unsubscribe;
+    },
 
     generateSessionTitle: (userInput) => window.electron.generateSessionTitle(userInput),
     getRecentCwds: (limit) => window.electron.getRecentCwds(limit),

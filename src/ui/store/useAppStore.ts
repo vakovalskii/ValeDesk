@@ -1,5 +1,19 @@
 import { create } from 'zustand';
-import type { ServerEvent, SessionStatus, StreamMessage, TodoItem, FileChange, MultiThreadTask, LLMModel, LLMProvider, LLMProviderSettings } from "../types";
+import type {
+  ServerEvent,
+  SessionStatus,
+  StreamMessage,
+  TodoItem,
+  FileChange,
+  MultiThreadTask,
+  LLMModel,
+  LLMProvider,
+  LLMProviderSettings,
+  AudioModelsStatus,
+  AudioModelsDownloadProgress,
+  AudioModelsError,
+  AudioSettings,
+} from "../types";
 import { getPlatform } from "../platform";
 
 export type PermissionRequest = {
@@ -53,6 +67,14 @@ interface AppState {
   llmProviders: LLMProvider[];
   llmModels: LLMModel[];
   llmProviderSettings: LLMProviderSettings | null;
+  schedulerDefaultModel: string | null;
+  schedulerDefaultTemperature: number | null;
+  schedulerDefaultSendTemperature: boolean | null;
+
+  audioModelsStatus: AudioModelsStatus | null;
+  audioModelsDownloadProgress: AudioModelsDownloadProgress | null;
+  audioModelsDownloadError: AudioModelsError | null;
+  audioSettings: AudioSettings | null;
 
   setPrompt: (prompt: string) => void;
   setCwd: (cwd: string) => void;
@@ -99,6 +121,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   llmProviders: [],
   llmModels: [],
   llmProviderSettings: null,
+  schedulerDefaultModel: null,
+  schedulerDefaultTemperature: null,
+  schedulerDefaultSendTemperature: null,
+
+  audioModelsStatus: null,
+  audioModelsDownloadProgress: null,
+  audioModelsDownloadError: null,
+  audioSettings: null,
 
   setPrompt: (prompt) => set({ prompt }),
   setCwd: (cwd) => set({ cwd }),
@@ -167,6 +197,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
 
     switch (event.type) {
+      // ====================
+      // Audio (speech)
+      // ====================
+      case "audio.models.status": {
+        set({ audioModelsStatus: event.payload.status });
+        break;
+      }
+
+      case "audio.models.download.progress": {
+        set({
+          audioModelsDownloadProgress: event.payload,
+          audioModelsDownloadError: null,
+        });
+        break;
+      }
+
+      case "audio.models.download.done": {
+        // Refresh status after download completes.
+        getPlatform().sendClientEvent({ type: "audio.models.status.get" });
+        break;
+      }
+
+      case "audio.models.download.error": {
+        set({ audioModelsDownloadError: event.payload });
+        break;
+      }
+
+      case "audio.settings.loaded": {
+        set({ audioSettings: event.payload.settings });
+        break;
+      }
+
       case "session.list": {
         const nextSessions: Record<string, SessionView> = {};
         for (const session of event.payload.sessions) {
@@ -557,6 +619,55 @@ export const useAppStore = create<AppState>((set, get) => ({
       case "llm.models.checked": {
         const { unavailableModels } = event.payload;
         console.log('[AppStore] LLM models checked, unavailable:', unavailableModels);
+        break;
+      }
+
+      // Scheduler default model loaded
+      case "scheduler.default_model.loaded": {
+        const { modelId } = event.payload;
+        set({ schedulerDefaultModel: modelId });
+        break;
+      }
+
+      // Scheduler default temperature loaded
+      case "scheduler.default_temperature.loaded": {
+        const { temperature, sendTemperature } = event.payload;
+        set({
+          schedulerDefaultTemperature: temperature,
+          schedulerDefaultSendTemperature: sendTemperature
+        });
+        break;
+      }
+
+      // Scheduler task execution - auto-start session with prompt
+      case "scheduler.task_execute": {
+        const { title, prompt } = event.payload as any;
+        if (prompt) {
+          // Use scheduler default model, or fallback to first enabled model
+          const { schedulerDefaultModel, llmModels } = get();
+          let model = schedulerDefaultModel;
+          
+          if (!model) {
+            const enabledModels = llmModels.filter(m => m.enabled);
+            model = enabledModels.length > 0 ? enabledModels[0].id : null;
+          }
+          
+          if (!model) {
+            console.warn(`[scheduler] ✗ No model configured for task: ${title}`);
+            break;
+          }
+          
+          console.log(`[scheduler] ▶ Executing task: ${title} (model: ${model})`);
+          getPlatform().sendClientEvent({
+            type: "session.start",
+            payload: {
+              title: `Scheduled: ${title}`,
+              prompt: prompt,
+              model: model,
+              cwd: undefined,
+            }
+          });
+        }
         break;
       }
     }

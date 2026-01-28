@@ -76,6 +76,55 @@ export interface LLMProviderSettings {
   models: LLMModel[];
 }
 
+// ====================
+// Audio (speech)
+// ====================
+
+export type AudioModelsError = {
+  code: string;
+  message: string;
+  context: unknown;
+};
+
+export type AudioModelInstallStatus = {
+  key: string;
+  repoDirname: string;
+  revisionSha: string;
+  totalFiles: number;
+  presentFiles: number;
+  totalBytes: number;
+  presentBytes: number;
+};
+
+export type AudioModelsStatus =
+  | { state: "manifest_incomplete"; message: string; missing: string[] }
+  | {
+      state: "not_installed";
+      modelsDir: string;
+      totalFiles: number;
+      presentFiles: number;
+      totalBytes: number;
+      presentBytes: number;
+      models: AudioModelInstallStatus[];
+    }
+  | {
+      state: "ready";
+      modelsDir: string;
+      totalFiles: number;
+      totalBytes: number;
+      models: AudioModelInstallStatus[];
+    }
+  | { state: "error"; code: string; message: string; context: unknown };
+
+export type AudioModelsDownloadProgress = {
+  bytesDownloaded: number;
+  bytesTotal: number;
+};
+
+export type AudioSettings = {
+  microphoneId?: string | null; // Part 2
+};
+
 export type UserPromptMessage = {
   type: "user_prompt";
   prompt: string;
@@ -173,7 +222,20 @@ export type ServerEvent =
   | { type: "llm.models.checked"; payload: { unavailableModels: string[] } }
   // Skills events
   | { type: "skills.loaded"; payload: { skills: Skill[]; marketplaceUrl: string; lastFetched?: number } }
-  | { type: "skills.error"; payload: { message: string } };
+  | { type: "skills.error"; payload: { message: string } }
+  // Audio (speech) events
+  | { type: "audio.dictation.partial"; payload: { dictationId: string; text: string; unstable?: string | null } }
+  | { type: "audio.dictation.final"; payload: { dictationId: string; text: string; start?: number | null; end?: number | null } }
+  | { type: "audio.dictation.audio_level"; payload: { dictationId: string; level: number } }
+  | { type: "audio.dictation.done"; payload: { dictationId: string } }
+  | { type: "audio.dictation.error"; payload: { dictationId: string; code: string; message: string; context: unknown } }
+  | { type: "audio.models.status"; payload: { status: AudioModelsStatus } }
+  | { type: "audio.models.download.progress"; payload: AudioModelsDownloadProgress }
+  | { type: "audio.models.download.done"; payload: {} }
+  | { type: "audio.models.download.error"; payload: AudioModelsError }
+  | { type: "audio.settings.loaded"; payload: { settings: AudioSettings | null } }
+  // Scheduler IPC (sidecar -> Rust)
+  | { type: "scheduler.request"; payload: { requestId: string; operation: string; params: Record<string, any> } };
 
 // Skill types
 export interface Skill {
@@ -245,4 +307,11 @@ export type ClientEvent =
   | { type: "skills.get" }
   | { type: "skills.refresh" }
   | { type: "skills.toggle"; payload: { skillId: string; enabled: boolean } }
-  | { type: "skills.set-marketplace"; payload: { url: string } };
+  | { type: "skills.set-marketplace"; payload: { url: string } }
+  // Audio (speech) events
+  | { type: "audio.dictation.start"; payload: { dictationId: string } }
+  | { type: "audio.dictation.stop"; payload: { dictationId: string } }
+  | { type: "audio.models.status.get" }
+  | { type: "audio.models.download.start" }
+  | { type: "audio.settings.get" }
+  | { type: "audio.settings.save"; payload: { settings: AudioSettings } };

@@ -1,7 +1,7 @@
-.PHONY: dev dev-sidecar dev-ui dev-tauri check-tools ensure-tools ensure-node-deps ensure-tauri-cli ensure-rust bundle
+.PHONY: dev dev-sidecar dev-ui dev-tauri check-tools ensure-tools ensure-node-deps ensure-tauri-cli ensure-rust ensure-asr-sidecar bundle
 
-LOCALDESK_ROOT := $(CURDIR)
-SIDECAR_ENTRY := $(LOCALDESK_ROOT)/dist-sidecar/sidecar/main.js
+VALERA_ROOT := $(CURDIR)
+SIDECAR_ENTRY := $(VALERA_ROOT)/dist-sidecar/sidecar/main.js
 MIN_RUST_VERSION := 1.74.0
 
 check-tools:
@@ -78,6 +78,37 @@ ensure-tools:
 	@$(MAKE) --no-print-directory ensure-node-deps
 	@$(MAKE) --no-print-directory ensure-tauri-cli
 
+ensure-asr-sidecar: ensure-rust
+ifdef OS
+	@powershell -NoProfile -Command "\
+		$$targetLine = (rustc -vV | Select-String -Pattern '^host: ' | Select-Object -First 1).Line; \
+		if (-not $$targetLine) { Write-Error 'level=error event=rust_target_missing msg=\"Failed to detect rustc host target triple\"'; exit 1 }; \
+		$$target = $$targetLine -replace '^host: ', ''; \
+		$$binDir = 'src-tauri\\bin'; \
+		$$binName = \"asr-sidecar-$${target}.exe\"; \
+		$$binPath = Join-Path $$binDir $$binName; \
+		if (-not (Test-Path $$binDir)) { New-Item -ItemType Directory -Path $$binDir | Out-Null }; \
+		'Mock asr-sidecar (macOS-only)' | Set-Content $$binPath; \
+		Write-Host \"level=info event=mock_created tool=asr-sidecar path=$$binPath\""
+else
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		echo "level=info event=build tool=asr-sidecar msg=\"building Swift/CoreML asr-sidecar\""; \
+		bash ./scripts/build_asr_sidecar.sh; \
+	else \
+		TARGET=$$(rustc -vV | sed -n 's|host: ||p'); \
+		test -n "$$TARGET" || { echo "level=error event=rust_target_missing msg=\"Failed to detect rustc host target triple\"" >&2; exit 1; }; \
+		BIN_DIR="src-tauri/bin"; \
+		BIN_NAME="asr-sidecar-$${TARGET}"; \
+		BIN_PATH="$${BIN_DIR}/$${BIN_NAME}"; \
+		mkdir -p "$${BIN_DIR}"; \
+		echo "#!/bin/sh" > "$${BIN_PATH}"; \
+		echo "echo 'asr-sidecar is macOS-only (Swift/CoreML).'" >> "$${BIN_PATH}"; \
+		echo "exit 1" >> "$${BIN_PATH}"; \
+		chmod +x "$${BIN_PATH}"; \
+		echo "level=info event=mock_created tool=asr-sidecar path=$${BIN_PATH}"; \
+	fi
+endif
+
 dev-sidecar: ensure-tools
 	@npm run transpile:sidecar
 ifdef OS
@@ -89,17 +120,17 @@ endif
 dev-ui: ensure-tools
 	@npm run dev:react
 
-dev-tauri: ensure-tools
-	@cd src-tauri && LOCALDESK_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev
+dev-tauri: dev-sidecar ensure-asr-sidecar
+	@cd src-tauri && VALERA_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev
 
-dev: dev-sidecar
+dev: dev-sidecar ensure-asr-sidecar
 	@echo "Starting Vite + Tauri (Node-sidecar)..."
 ifdef OS
 	@node scripts/dev-tauri.cjs
 else
 	@npm run dev:react & \
 	VITE_PID=$$!; \
-	cd src-tauri && LOCALDESK_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev; \
+	cd src-tauri && VALERA_SIDECAR_ENTRY="$(SIDECAR_ENTRY)" cargo tauri dev; \
 	STATUS=$$?; \
 	kill $$VITE_PID >/dev/null 2>&1 || true; \
 	exit $$STATUS
@@ -115,5 +146,6 @@ else
 	@mkdir -p src-tauri/bin
 endif
 	@npm run build:sidecar
+	@$(MAKE) --no-print-directory ensure-asr-sidecar
 	@echo "Building Tauri bundle..."
 	@cd src-tauri && cargo tauri build

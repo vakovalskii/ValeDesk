@@ -3,28 +3,28 @@ import * as path from "path";
 import { homedir } from "os";
 import { Skill, SkillMetadata, loadSkillsSettings, updateSkillsList } from "./skills-store.js";
 
-const LOCALDESK_DIR = ".localdesk";
+const VALERA_DIR = ".valera";
 const SKILLS_SUBDIR = "skills";
 
 /**
  * Get skills directory path.
  * If cwd is provided, use {cwd}/skills/  (project-local)
- * Otherwise, use global ~/.localdesk/skills/
+ * Otherwise, use global ~/.valera/skills/
  */
 function getSkillsDir(cwd?: string): string {
   if (cwd && cwd.trim()) {
     // Project-local: {cwd}/skills/
     return path.join(cwd, SKILLS_SUBDIR);
   }
-  // Global fallback: ~/.localdesk/skills/
-  return path.join(homedir(), LOCALDESK_DIR, SKILLS_SUBDIR);
+  // Global fallback: ~/.valera/skills/
+  return path.join(homedir(), VALERA_DIR, SKILLS_SUBDIR);
 }
 
 /**
  * Get global skills directory (fallback when no cwd)
  */
 function getGlobalSkillsDir(): string {
-  return path.join(homedir(), LOCALDESK_DIR, SKILLS_SUBDIR);
+  return path.join(homedir(), VALERA_DIR, SKILLS_SUBDIR);
 }
 
 interface GitHubContent {
@@ -109,6 +109,18 @@ function parseSkillMd(content: string): SkillMetadata | null {
 }
 
 /**
+ * Extract owner/repo from GitHub API URL
+ * e.g., "https://api.github.com/repos/owner/repo/contents/skills" -> { owner: "owner", repo: "repo" }
+ */
+function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
+  const match = url.match(/api\.github\.com\/repos\/([^/]+)\/([^/]+)/);
+  if (match) {
+    return { owner: match[1], repo: match[2] };
+  }
+  return null;
+}
+
+/**
  * Fetch skill list from GitHub marketplace
  */
 export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
@@ -117,12 +129,18 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
 
   console.log("[SkillsLoader] Fetching skills from:", marketplaceUrl);
 
+  // Parse owner/repo from marketplace URL
+  const repoInfo = parseGitHubUrl(marketplaceUrl);
+  if (!repoInfo) {
+    throw new Error(`Invalid marketplace URL: ${marketplaceUrl}`);
+  }
+
   try {
     // Fetch skills directory listing
     const response = await fetch(marketplaceUrl, {
       headers: {
         "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "LocalDesk"
+        "User-Agent": "ValeDesk"
       }
     });
 
@@ -139,7 +157,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
     // Fetch SKILL.md for each skill
     for (const dir of skillDirs) {
       try {
-        const skillMdUrl = `https://raw.githubusercontent.com/vakovalskii/LocalDesk-Skills/main/${dir.path}/SKILL.md`;
+        const skillMdUrl = `https://raw.githubusercontent.com/${repoInfo.owner}/${repoInfo.repo}/main/${dir.path}/SKILL.md`;
         const skillMdResponse = await fetch(skillMdUrl);
 
         if (skillMdResponse.ok) {
@@ -185,7 +203,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
 /**
  * Download and cache a skill's full contents
  * @param skillId - The skill ID to download
- * @param cwd - Optional working directory. If provided, skill is saved to {cwd}/.localdesk/skills/
+ * @param cwd - Optional working directory. If provided, skill is saved to {cwd}/.valera/skills/
  */
 export async function downloadSkill(skillId: string, cwd?: string): Promise<string> {
   const settings = loadSkillsSettings();
@@ -193,6 +211,12 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
 
   if (!skill) {
     throw new Error(`Skill not found: ${skillId}`);
+  }
+
+  // Parse owner/repo from marketplace URL
+  const repoInfo = parseGitHubUrl(settings.marketplaceUrl);
+  if (!repoInfo) {
+    throw new Error(`Invalid marketplace URL: ${settings.marketplaceUrl}`);
   }
 
   const skillsDir = ensureSkillsDir(cwd);
@@ -206,11 +230,11 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
   }
 
   // Fetch skill directory contents
-  const contentsUrl = `https://api.github.com/repos/vakovalskii/LocalDesk-Skills/contents/${skill.repoPath}`;
+  const contentsUrl = `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${skill.repoPath}`;
   const response = await fetch(contentsUrl, {
     headers: {
       "Accept": "application/vnd.github.v3+json",
-      "User-Agent": "LocalDesk"
+      "User-Agent": "ValeDesk"
     }
   });
 
@@ -221,7 +245,7 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
   const contents: GitHubContent[] = await response.json();
 
   // Download all files recursively
-  await downloadContents(contents, skillCacheDir, skill.repoPath);
+  await downloadContents(contents, skillCacheDir, skill.repoPath, repoInfo);
 
   return skillCacheDir;
 }
@@ -229,7 +253,8 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
 async function downloadContents(
   contents: GitHubContent[],
   targetDir: string,
-  basePath: string
+  basePath: string,
+  repoInfo: { owner: string; repo: string }
 ): Promise<void> {
   for (const item of contents) {
     const localPath = path.join(targetDir, item.name);
@@ -245,17 +270,17 @@ async function downloadContents(
         fs.mkdirSync(localPath, { recursive: true });
       }
 
-      const subContentsUrl = `https://api.github.com/repos/vakovalskii/LocalDesk-Skills/contents/${item.path}`;
+      const subContentsUrl = `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.repo}/contents/${item.path}`;
       const subResponse = await fetch(subContentsUrl, {
         headers: {
           "Accept": "application/vnd.github.v3+json",
-          "User-Agent": "LocalDesk"
+          "User-Agent": "ValeDesk"
         }
       });
 
       if (subResponse.ok) {
         const subContents: GitHubContent[] = await subResponse.json();
-        await downloadContents(subContents, localPath, item.path);
+        await downloadContents(subContents, localPath, item.path, repoInfo);
       }
     }
   }

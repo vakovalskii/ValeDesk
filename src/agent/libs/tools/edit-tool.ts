@@ -40,6 +40,28 @@ export async function executeEditTool(
   args: { file_path: string; old_string: string; new_string: string; explanation: string },
   context: ToolExecutionContext
 ): Promise<ToolResult> {
+  // Validate required parameters
+  if (!args.file_path) {
+    return {
+      success: false,
+      error: 'Missing required parameter: file_path'
+    };
+  }
+  
+  if (args.old_string === undefined || args.old_string === null) {
+    return {
+      success: false,
+      error: 'Missing required parameter: old_string'
+    };
+  }
+  
+  if (args.new_string === undefined || args.new_string === null) {
+    return {
+      success: false,
+      error: 'Missing required parameter: new_string'
+    };
+  }
+  
   // Security check
   if (!context.isPathSafe(args.file_path)) {
     return {

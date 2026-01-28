@@ -1,4 +1,4 @@
-# План миграции LocalDesk с Electron на Tauri
+# План миграции ValeDesk с Electron на Tauri
 
 ## 0) Цели и рамки
 
@@ -16,7 +16,7 @@
 **Текущее состояние (по коду):**
 - UI: React + Vite (`src/ui/*`).
 - Backend: Electron main + Node-логика (`src/electron/*`), IPC через preload (`src/electron/preload.cts`).
-- Данные: SQLite через `better-sqlite3` (sessions.db), настройки JSON в `userData`, память в `~/.localdesk/memory.md`.
+- Данные: SQLite через `better-sqlite3` (sessions.db), настройки JSON в `userData`, память в `~/.valera/memory.md`.
 
 ## Current implementation status (repo)
 
@@ -24,17 +24,17 @@ This section describes what is already implemented in the repository (not what i
 
 ### Runtime architecture (current)
 
-- **UI**: React/Vite under `LocalDesk/src/ui/`
-- **Tauri host (Rust)**: `LocalDesk/src-tauri/`
+- **UI**: React/Vite under `ValeDesk/src/ui/`
+- **Tauri host (Rust)**: `ValeDesk/src-tauri/`
   - Starts a **Node sidecar** process and proxies IPC.
   - Emits `"server-event"` to the UI via the Tauri event bus.
-- **Node sidecar (TypeScript -> Node runtime)**: `LocalDesk/src/sidecar/`
+- **Node sidecar (TypeScript -> Node runtime)**: `ValeDesk/src/sidecar/`
   - Runs the existing backend logic (sessions, runners, tools) on top of `src/electron/libs/*`.
   - IPC protocol: newline-delimited JSON over stdin/stdout (`client-event` → sidecar, `server-event` ← sidecar).
 
 ### UI platform abstraction (done)
 
-- Implemented `LocalDesk/src/ui/platform/*` with `getPlatform()`:
+- Implemented `ValeDesk/src/ui/platform/*` with `getPlatform()`:
   - `platform/electron.ts` wraps existing `window.electron`.
   - `platform/tauri.ts` uses `window.__TAURI__` (`invoke` + `event.listen`) and maps the legacy channels (`list-directory`, `read-memory`, etc.) to Rust commands.
 
@@ -44,12 +44,12 @@ This section describes what is already implemented in the repository (not what i
   - `client_event(...)`: forwards **all** client events to sidecar **except** `open.external` (handled by host).
   - Sidecar stdout messages `{ "type": "server-event", "event": ... }` are forwarded to the UI via `emit_all("server-event", ...)`.
 - Sidecar requires a user data dir via env:
-  - `LOCALDESK_USER_DATA_DIR` is injected by the Tauri host and used by the ported stores.
+  - `VALERA_USER_DATA_DIR` is injected by the Tauri host and used by the ported stores.
 
 ### Developer workflow (dev)
 
 - `make dev` (repo root) runs the full stack: sidecar build → Vite dev server → Tauri host.
-  - The actual logic lives in `LocalDesk/Makefile`.
+  - The actual logic lives in `ValeDesk/Makefile`.
   - Requires `cargo-tauri` (Tauri CLI as a cargo subcommand).
 
 ### Known limitations (current)
@@ -74,7 +74,7 @@ This section describes what is already implemented in the repository (not what i
 |---|---|---|
 | SQLite `sessions.db` | `src/electron/libs/session-store.ts` | `rusqlite/sqlx` + совместимая схема + миграция пути |
 | Настройки `api-settings.json`, `llm-providers-settings.json`, etc | `src/electron/libs/*-store.ts` | `tauri-plugin-store` (JSON) + секреты в `stronghold`/keychain (опционально) |
-| Memory `~/.localdesk/memory.md` | `src/electron/main.ts` | сохранить путь ради совместимости или перенести в app-data с импортом |
+| Memory `~/.valera/memory.md` | `src/electron/main.ts` | сохранить путь ради совместимости или перенести в app-data с импортом |
 
 ### 1.3. Tool-система (самая большая часть миграции)
 Папка: `src/electron/libs/tools/*`
@@ -115,7 +115,7 @@ Important: Tauri relies on the **system WebView**:
 ### Фаза 1 — Абстракция платформы в UI (1–2 дня)
 Цель: UI должен вызывать **не `window.electron` напрямую**, а через интерфейс `platform`.
 
-- [x] Introduce `LocalDesk/src/ui/platform/*`:
+- [x] Introduce `ValeDesk/src/ui/platform/*`:
   - interface: `invoke`, `sendClientEvent`, `onServerEvent`, plus host helpers.
   - `electron` implementation: thin wrapper over `window.electron`.
   - `tauri` implementation: real `invoke/listen` implementation (no stub).
@@ -125,7 +125,7 @@ Important: Tauri relies on the **system WebView**:
 **Контрольная точка:** Electron приложение работает без регрессий, UI не зависит от `window.electron` напрямую.
 
 ### Фаза 2 — Bootstrap Tauri (2–3 дня)
-- [x] Add `LocalDesk/src-tauri/` (Tauri v2) and wire it to Vite dev server.
+- [x] Add `ValeDesk/src-tauri/` (Tauri v2) and wire it to Vite dev server.
 - [x] Configure UI build for Tauri (`frontendDist`, `devUrl`, `base: './'`).
 - [x] Bring up the current React UI in Tauri (dev via `cargo tauri dev`).
 
@@ -152,12 +152,12 @@ Important: Tauri relies on the **system WebView**:
 Цель: не переписывать сразу `runner/tool-executor`, а “упаковать” его рядом с Tauri.
 
 - [x] Make `src/electron/libs/*` usable in pure Node (sidecar):
-  - replace `electron.app.getPath("userData")` with `LOCALDESK_USER_DATA_DIR` (required outside Electron)
+  - replace `electron.app.getPath("userData")` with `VALERA_USER_DATA_DIR` (required outside Electron)
   - gate Electron-only tools (`render_page`) behind runtime detection
 - [x] Sidecar protocol:
   - newline-delimited JSON over stdin/stdout
   - messages: `client-event` → sidecar, `server-event` ← sidecar
-  - sources: `LocalDesk/src/sidecar/*`
+  - sources: `ValeDesk/src/sidecar/*`
 - [x] Tauri host:
   - start sidecar on demand
   - forward `client_event` to sidecar
@@ -191,7 +191,7 @@ Important: Tauri relies on the **system WebView**:
 - [ ] На первом запуске Tauri:
   - попытаться найти старые файлы (sessions.db, settings) и импортировать/скопировать
   - дать пользователю ручной импорт, если авто-поиск не сработал
-- [ ] Сохранить совместимость `~/.localdesk/memory.md` (или сделать “однократный импорт” + редирект).
+- [ ] Сохранить совместимость `~/.valera/memory.md` (или сделать “однократный импорт” + редирект).
 
 ### Фаза 7 — Packaging/релизы (3–7 дней)
 - [ ] Иконки/бандлы под macOS/Windows/Linux.

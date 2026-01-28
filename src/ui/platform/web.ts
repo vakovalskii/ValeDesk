@@ -6,10 +6,12 @@ export function createWebPlatform(): PlatformAdapter {
             console.log("[web-platform] sendClientEvent", event);
         },
 
-        onServerEvent: (callback) => {
+        onServerEvent: (callback, onReady) => {
             console.log("[web-platform] onServerEvent listener registered");
             // For testing, we could manually invoke this callback from console
             (window as any).__web_emitServerEvent = callback;
+            // Web platform is synchronous
+            onReady?.();
             return () => {
                 console.log("[web-platform] onServerEvent disabled");
             };

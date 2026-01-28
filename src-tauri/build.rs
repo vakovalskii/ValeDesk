@@ -54,8 +54,26 @@ fn ensure_default_icon() {
     .unwrap_or_else(|error| panic!("[build] Failed to write default icon {}: {error}", icon_path.display()));
 }
 
+fn set_git_info() {
+  use std::process::Command;
+  
+  // Get full commit hash
+  if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output() {
+    if output.status.success() {
+      let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+      println!("cargo:rustc-env=GIT_COMMIT_HASH={}", hash);
+      println!("cargo:rustc-env=GIT_COMMIT_SHORT={}", &hash[..7.min(hash.len())]);
+    }
+  }
+  
+  // Get build time
+  let build_time = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+  println!("cargo:rustc-env=BUILD_TIME={}", build_time);
+}
+
 fn main() {
   ensure_default_icon();
+  set_git_info();
   tauri_build::build()
 }
 

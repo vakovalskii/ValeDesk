@@ -8,6 +8,18 @@ import type { ToolDefinition, ToolResult, ToolExecutionContext } from './base-to
 
 const execAsync = promisify(exec);
 
+// Max output size to prevent token explosion (100KB)
+const MAX_OUTPUT_SIZE = 100 * 1024;
+
+function truncateOutput(output: string): string {
+  if (output.length <= MAX_OUTPUT_SIZE) {
+    return output;
+  }
+  const half = Math.floor(MAX_OUTPUT_SIZE / 2);
+  const truncatedMsg = `\n\n... [OUTPUT TRUNCATED: ${output.length} bytes total, showing first ${half} and last ${half} bytes] ...\n\n`;
+  return output.slice(0, half) + truncatedMsg + output.slice(-half);
+}
+
 export const BashToolDefinition: ToolDefinition = {
   type: "function",
   function: {
@@ -51,15 +63,17 @@ export async function executeBashTool(
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
     });
     
+    const rawOutput = stdout || stderr || 'Command executed successfully (no output)';
     return {
       success: true,
-      output: stdout || stderr || 'Command executed successfully (no output)'
+      output: truncateOutput(rawOutput)
     };
   } catch (error: any) {
+    const rawOutput = error.stdout || error.stderr || '';
     return {
       success: false,
       error: error.message,
-      output: error.stdout || error.stderr
+      output: truncateOutput(rawOutput)
     };
   }
 }

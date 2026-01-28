@@ -11,12 +11,12 @@ const require = (process as any).pkg
   : (typeof globalThis.require === "function" ? globalThis.require : createRequire(import.meta.url));
 
 function getUserDataDir(): string {
-  const envDir = process.env.LOCALDESK_USER_DATA_DIR;
+  const envDir = process.env.VALERA_USER_DATA_DIR;
   if (envDir && envDir.trim()) return envDir;
 
   const electronVersion = (process.versions as any)?.electron;
   if (!electronVersion) {
-    throw new Error("[LLM Providers] LOCALDESK_USER_DATA_DIR is required outside Electron");
+    throw new Error("[LLM Providers] VALERA_USER_DATA_DIR is required outside Electron");
   }
 
   const electron = require("electron");

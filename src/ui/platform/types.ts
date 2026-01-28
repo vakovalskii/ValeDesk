@@ -5,7 +5,7 @@ export type Unsubscribe = () => void;
 export type PlatformAdapter = {
   // Claude Agent IPC APIs
   sendClientEvent: (event: ClientEvent) => void;
-  onServerEvent: (callback: (event: ServerEvent) => void) => Unsubscribe;
+  onServerEvent: (callback: (event: ServerEvent) => void, onReady?: () => void) => Unsubscribe;
 
   // Misc host APIs
   generateSessionTitle: (userInput: string | null) => Promise<string>;

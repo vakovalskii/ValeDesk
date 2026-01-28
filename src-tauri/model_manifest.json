@@ -1,0 +1,183 @@
+{
+  "models": [
+    {
+      "key": "asr_tdt_v3",
+      "repo_dirname": "parakeet-tdt-0.6b-v3-coreml",
+      "model_id": "FluidInference/parakeet-tdt-0.6b-v3-coreml",
+      "source_page_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml",
+      "macos": {
+        "revision_sha": "dc730587467ddc9f7ea93b6e3ad5caef8b4222f4",
+        "files": [
+          {
+            "path": "Decoder.mlmodelc/analytics/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Decoder.mlmodelc/analytics/coremldata.bin",
+            "sha256": "4238c4e81ecd0dc94bd7dfbb60f7e2cc824107c1ffe0387b8607b72833dba350",
+            "size": 243
+          },
+          {
+            "path": "Decoder.mlmodelc/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Decoder.mlmodelc/coremldata.bin",
+            "sha256": "18647af085d87bd8f3121c8a9b4d4564c1ede038dab63d295b4e745cf2d7fb99",
+            "size": 554
+          },
+          {
+            "path": "Decoder.mlmodelc/metadata.json",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Decoder.mlmodelc/metadata.json",
+            "sha256": "",
+            "size": 3427
+          },
+          {
+            "path": "Decoder.mlmodelc/model.mil",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Decoder.mlmodelc/model.mil",
+            "sha256": "",
+            "size": 13110
+          },
+          {
+            "path": "Decoder.mlmodelc/weights/weight.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Decoder.mlmodelc/weights/weight.bin",
+            "sha256": "48adf0f0d47c406c8253d4f7fef967436a39da14f5a65e66d5a4b407be355d41",
+            "size": 23604992
+          },
+          {
+            "path": "Encoder.mlmodelc/analytics/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Encoder.mlmodelc/analytics/coremldata.bin",
+            "sha256": "42e638870d73f26b332918a3496ce36793fbb413a81cbd3d16ba01328637a105",
+            "size": 243
+          },
+          {
+            "path": "Encoder.mlmodelc/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Encoder.mlmodelc/coremldata.bin",
+            "sha256": "d48034a167a82e88fc3df64f60af963ab3983538271175b8319e7d5720a0fb86",
+            "size": 485
+          },
+          {
+            "path": "Encoder.mlmodelc/metadata.json",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Encoder.mlmodelc/metadata.json",
+            "sha256": "",
+            "size": 2921
+          },
+          {
+            "path": "Encoder.mlmodelc/model.mil",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Encoder.mlmodelc/model.mil",
+            "sha256": "",
+            "size": 959769
+          },
+          {
+            "path": "Encoder.mlmodelc/weights/weight.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Encoder.mlmodelc/weights/weight.bin",
+            "sha256": "e2020f323703477a5b21d7c2d282c403e371afb5962e79877e3033e73ba6f421",
+            "size": 445187200
+          },
+          {
+            "path": "JointDecision.mlmodelc/analytics/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/JointDecision.mlmodelc/analytics/coremldata.bin",
+            "sha256": "bc69ef031ed427e888b1f3889d13eb373655edd5ac9927de20b5dae281b636b7",
+            "size": 243
+          },
+          {
+            "path": "JointDecision.mlmodelc/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/JointDecision.mlmodelc/coremldata.bin",
+            "sha256": "f56ded0404498e666ffcd84dda0c393924fc3581345ad03e41429ff560cb97b6",
+            "size": 534
+          },
+          {
+            "path": "JointDecision.mlmodelc/metadata.json",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/JointDecision.mlmodelc/metadata.json",
+            "sha256": "",
+            "size": 2936
+          },
+          {
+            "path": "JointDecision.mlmodelc/model.mil",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/JointDecision.mlmodelc/model.mil",
+            "sha256": "",
+            "size": 9723
+          },
+          {
+            "path": "JointDecision.mlmodelc/weights/weight.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/JointDecision.mlmodelc/weights/weight.bin",
+            "sha256": "4e0e63d840032f7f07ddb1d64446051166281e5491bf22da8a945c41f6eedb3e",
+            "size": 12642764
+          },
+          {
+            "path": "Preprocessor.mlmodelc/analytics/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Preprocessor.mlmodelc/analytics/coremldata.bin",
+            "sha256": "c9beeb989c8d66f8be11df59bc6df277ec76cee404f6865b46243835ef562f6d",
+            "size": 243
+          },
+          {
+            "path": "Preprocessor.mlmodelc/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Preprocessor.mlmodelc/coremldata.bin",
+            "sha256": "dbde3f2300842c1fd51ef3ff948a0bcffe65ffd2dca10707f2509f32c1d65b1d",
+            "size": 486
+          },
+          {
+            "path": "Preprocessor.mlmodelc/metadata.json",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Preprocessor.mlmodelc/metadata.json",
+            "sha256": "",
+            "size": 2841
+          },
+          {
+            "path": "Preprocessor.mlmodelc/model.mil",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Preprocessor.mlmodelc/model.mil",
+            "sha256": "",
+            "size": 28181
+          },
+          {
+            "path": "Preprocessor.mlmodelc/weights/weight.bin",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/Preprocessor.mlmodelc/weights/weight.bin",
+            "sha256": "129b76e3aeafa8afa3ea76d995b964b145fe83700d579f6ff42c4c38fa0968ea",
+            "size": 491072
+          },
+          {
+            "path": "parakeet_vocab.json",
+            "download_url": "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/dc730587467ddc9f7ea93b6e3ad5caef8b4222f4/parakeet_vocab.json",
+            "sha256": "",
+            "size": 151122
+          }
+        ]
+      }
+    },
+    {
+      "key": "silero_vad_v6",
+      "repo_dirname": "silero-vad-coreml",
+      "model_id": "FluidInference/silero-vad-coreml",
+      "source_page_url": "https://huggingface.co/FluidInference/silero-vad-coreml",
+      "macos": {
+        "revision_sha": "main",
+        "files": [
+          {
+            "path": "silero-vad-unified-256ms-v6.0.0.mlmodelc/analytics/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/silero-vad-coreml/resolve/main/silero-vad-unified-256ms-v6.0.0.mlmodelc/analytics/coremldata.bin",
+            "sha256": "30945d54e32c3f15ec35dc6ee32128a27a6cdc03b0a12ffab04434069c49dfb5",
+            "size": 243
+          },
+          {
+            "path": "silero-vad-unified-256ms-v6.0.0.mlmodelc/weights/weight.bin",
+            "download_url": "https://huggingface.co/FluidInference/silero-vad-coreml/resolve/main/silero-vad-unified-256ms-v6.0.0.mlmodelc/weights/weight.bin",
+            "sha256": "853cf34740d3f5061f977ebe2976f7c921b064261c9c4753b3a1196f2dba42b4",
+            "size": 882304
+          },
+          {
+            "path": "silero-vad-unified-256ms-v6.0.0.mlmodelc/coremldata.bin",
+            "download_url": "https://huggingface.co/FluidInference/silero-vad-coreml/resolve/main/silero-vad-unified-256ms-v6.0.0.mlmodelc/coremldata.bin",
+            "sha256": "0c3063bd09ba71c26ede0308d7c33591d0770e971a3fcc603ccad7ba1e8fb88d",
+            "size": 625
+          },
+          {
+            "path": "silero-vad-unified-256ms-v6.0.0.mlmodelc/metadata.json",
+            "download_url": "https://huggingface.co/FluidInference/silero-vad-coreml/resolve/main/silero-vad-unified-256ms-v6.0.0.mlmodelc/metadata.json",
+            "sha256": "",
+            "size": 3335
+          },
+          {
+            "path": "silero-vad-unified-256ms-v6.0.0.mlmodelc/model.mil",
+            "download_url": "https://huggingface.co/FluidInference/silero-vad-coreml/resolve/main/silero-vad-unified-256ms-v6.0.0.mlmodelc/model.mil",
+            "sha256": "",
+            "size": 176918
+          }
+        ]
+      }
+    }
+  ]
+}
+

@@ -10,12 +10,12 @@ const require = (process as any).pkg
 const SETTINGS_FILE = "api-settings.json";
 
 function getUserDataDir(): string {
-  const envDir = process.env.LOCALDESK_USER_DATA_DIR;
+  const envDir = process.env.VALERA_USER_DATA_DIR;
   if (envDir && envDir.trim()) return envDir;
 
   const electronVersion = (process.versions as any)?.electron;
   if (!electronVersion) {
-    throw new Error("[Settings] LOCALDESK_USER_DATA_DIR is required outside Electron");
+    throw new Error("[Settings] VALERA_USER_DATA_DIR is required outside Electron");
   }
 
   const electron = require("electron");

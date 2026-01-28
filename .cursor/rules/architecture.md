@@ -31,7 +31,8 @@ LocalDesk uses **Tauri** with a **Rust** backend and **Node.js sidecar** for LLM
 ├── src-tauri/                   # Rust backend (Tauri)
 │   ├── src/
 │   │   ├── main.rs             # Entry point, IPC commands, sidecar mgmt
-│   │   ├── db.rs               # SQLite database (sessions, messages, todos)
+│   │   ├── db.rs               # SQLite database (sessions, messages, todos, scheduled_tasks)
+│   │   ├── scheduler.rs        # Background scheduler service (notifications, auto-execution)
 │   │   └── sandbox.rs          # Code execution (JS/Python)
 │   ├── Cargo.toml              # Rust dependencies
 │   ├── tauri.conf.json         # Tauri configuration
@@ -49,6 +50,8 @@ LocalDesk uses **Tauri** with a **Rust** backend and **Node.js sidecar** for LLM
 │   │       ├── tools-executor.ts   # Tool dispatch
 │   │       ├── session-store.ts    # Session state management
 │   │       ├── prompt-loader.ts    # System prompt builder
+│   │       ├── skills-loader.ts    # Fetch skills from GitHub marketplace
+│   │       ├── skills-store.ts     # Skills settings persistence
 │   │       ├── container/
 │   │       │   └── quickjs-sandbox.ts  # JS/Python sandboxes
 │   │       ├── prompts/
@@ -77,7 +80,8 @@ LocalDesk uses **Tauri** with a **Rust** backend and **Node.js sidecar** for LLM
 | File | Purpose |
 |------|---------|
 | `main.rs` | Entry point, Tauri commands, sidecar management |
-| `db.rs` | SQLite database - sessions, messages, todos, settings |
+| `db.rs` | SQLite database - sessions, messages, todos, scheduled_tasks, settings |
+| `scheduler.rs` | Background scheduler - checks due tasks, sends notifications, triggers auto-execution |
 | `sandbox.rs` | Code execution sandboxes (unused, logic in sidecar) |
 | `tauri.conf.json` | Window config, bundle settings, permissions |
 | `Cargo.toml` | Rust dependencies |
@@ -98,6 +102,8 @@ LocalDesk uses **Tauri** with a **Rust** backend and **Node.js sidecar** for LLM
 | `tools-executor.ts` | Execute tools, handle permissions |
 | `session-store.ts` | Session state management |
 | `prompt-loader.ts` | Build system prompt from template |
+| `skills-loader.ts` | Fetch and cache skills from GitHub marketplace |
+| `skills-store.ts` | Skills settings persistence |
 | `container/quickjs-sandbox.ts` | JS (vm) and Python (subprocess) sandboxes |
 
 ### React UI (src/ui/)
@@ -161,9 +167,10 @@ sessions (id, title, cwd, model, status, allowed_tools, temperature,
 messages (id, session_id, data, created_at)
 todos (session_id, todos)
 file_changes (session_id, file_changes)
-settings (key, value)
+settings (key, value)  -- includes scheduler_default_model
 llm_providers (id, name, type, base_url, api_key, enabled, config, ...)
 llm_models (id, provider_id, name, enabled, config)
+scheduled_tasks (id, title, prompt, recurrence, next_run, enabled, created_at)
 ```
 
 ## Tech Stack

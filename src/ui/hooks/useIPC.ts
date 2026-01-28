@@ -8,13 +8,18 @@ export function useIPC(onEvent: (event: ServerEvent) => void) {
 
   useEffect(() => {
     const platform = getPlatform();
-    // Subscribe to server events
-    const unsubscribe = platform.onServerEvent((event: ServerEvent) => {
-      onEvent(event);
-    });
+    // Subscribe to server events, wait for listener to be ready
+    const unsubscribe = platform.onServerEvent(
+      (event: ServerEvent) => {
+        onEvent(event);
+      },
+      () => {
+        // onReady callback - listener is now established
+        setConnected(true);
+      }
+    );
     
     unsubscribeRef.current = unsubscribe;
-    setConnected(true);
 
     return () => {
       if (unsubscribeRef.current) {

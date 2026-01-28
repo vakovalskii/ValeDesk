@@ -48,7 +48,7 @@ case "$TARGET" in
 esac
 
 BIN_DIR="src-tauri/bin"
-BIN_NAME="local-desk-sidecar-${TARGET}"
+BIN_NAME="valera-sidecar-${TARGET}"
 BIN_PATH="${BIN_DIR}/${BIN_NAME}"
 
 echo "Building sidecar for target: $TARGET"

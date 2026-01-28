@@ -23,7 +23,7 @@ setTimeout(() => {
     shell: isWindows,
     env: {
       ...process.env,
-      LOCALDESK_SIDECAR_ENTRY: sidecarEntry
+      VALERA_SIDECAR_ENTRY: sidecarEntry
     }
   });
 

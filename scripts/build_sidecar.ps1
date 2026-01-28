@@ -53,7 +53,7 @@ function Get-OutputFilename {
     param([string]$RustTarget)
     
     $ext = if ($RustTarget -match "windows") { ".exe" } else { "" }
-    return "local-desk-sidecar-${RustTarget}${ext}"
+    return "valera-sidecar-${RustTarget}${ext}"
 }
 
 # Determine targets
