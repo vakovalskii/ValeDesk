@@ -36,7 +36,7 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
     if (!activeSessionId) {
       // Starting new session - can be empty for chat-only mode
       setPendingStart(true);
-      
+
       // Generate title from first 3 words of prompt
       let title = "New Chat";
       if (trimmedPrompt) {
@@ -204,8 +204,8 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
           case "audio.dictation.partial": {
             if (event.payload.dictationId !== currentId) return;
             committedTextRef.current = event.payload.text;
-            unstableTextRef.current = event.payload.unstable;
-            setLivePreview(`${event.payload.text}${event.payload.unstable}`.trim());
+            unstableTextRef.current = event.payload.unstable ?? "";
+            setLivePreview(`${event.payload.text}${event.payload.unstable ?? ""}`.trim());
             return;
           }
           case "audio.dictation.final": {
@@ -289,7 +289,8 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
       if (isRecording) {
         const animate = () => {
           const t = Date.now();
-          const energy = Math.min(1, Math.max(0, audioLevelRef.current));
+          // Boost the signal significantly (RMS for speech is often 0.01-0.05)
+          const energy = Math.min(1, Math.max(0, audioLevelRef.current * 25));
           const floor = 0.05;
 
           setBars((prev) =>
@@ -342,7 +343,7 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
       handleSend();
       return;
     }
-    
+
     // Shift+Enter - allow multiline (default behavior)
   };
 
@@ -387,9 +388,8 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
             ref={promptRef}
           />
           <button
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
-              isDictating ? "bg-error text-white hover:bg-error/90" : "bg-ink-100 text-ink-700 hover:bg-ink-200"
-            }`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${isDictating ? "bg-error text-white hover:bg-error/90" : "bg-ink-100 text-ink-700 hover:bg-ink-200"
+              }`}
             onClick={isDictating ? stopDictation : startDictation}
             disabled={isStopRequested}
             aria-label={isDictating ? "Stop dictation" : "Start dictation"}
@@ -422,18 +422,22 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
         </div>
 
         {isDictating && (
-          <div className="mt-3 px-2">
-            <WaveformVisualizer isRecording={true} />
-            {livePreview && (
-              <div className="mt-2 text-xs text-ink-700 break-words">
-                <span className="font-medium text-ink-900">Live:</span> {livePreview}
+          <div className="absolute bottom-full left-0 right-0 mb-4 px-4 z-50">
+            <div className="mx-auto w-full max-w-full">
+              <div className="flex flex-col items-center gap-2">
+                <WaveformVisualizer isRecording={true} />
+                {livePreview && (
+                  <div className="text-sm font-medium text-ink-900 bg-surface/80 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-ink-900/5">
+                    {livePreview}
+                  </div>
+                )}
+                {dictationError && (
+                  <div className="text-xs text-error bg-surface/80 backdrop-blur-sm px-2 py-1 rounded shadow-sm">
+                    {dictationError}
+                  </div>
+                )}
               </div>
-            )}
-            {dictationError && (
-              <div className="mt-2 text-xs text-error break-words">
-                <span className="font-medium">Dictation error:</span> {dictationError}
-              </div>
-            )}
+            </div>
           </div>
         )}
 
