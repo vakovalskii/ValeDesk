@@ -281,6 +281,64 @@ export class MemorySessionStore {
     }
   }
 
+  updateMessageByUuid(sessionId: string, uuid: string, updates: Partial<StreamMessage>): void {
+    const messages = this.messages.get(sessionId) || [];
+    
+    // Find message with matching uuid
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i] as any;
+      
+      // Check if uuid matches (can be in uuid field or id field)
+      const messageUuid = message.uuid || message.id;
+      if (messageUuid === uuid) {
+        console.log(`[MemorySessionStore] Found message with uuid ${uuid}:`, {
+          type: message.type,
+          name: message.name,
+          id: message.id,
+          hasInput: !!message.input,
+          inputKeys: message.input ? Object.keys(message.input) : []
+        });
+        
+        // For tool_use messages, we need to update the input field specifically
+        if ((message.type === 'tool_use' || message.name) && (updates as any).input) {
+          // Merge the input field instead of replacing the whole message
+          const updatedMessage = {
+            ...message,
+            input: {
+              ...message.input,
+              ...(updates as any).input
+            }
+          };
+          
+          messages[i] = updatedMessage as StreamMessage;
+          this.messages.set(sessionId, messages);
+          
+          console.log(`[MemorySessionStore] ✓ Updated tool_use message ${uuid} with diffSnapshot:`, {
+            newInputKeys: Object.keys(updatedMessage.input),
+            hasDiffSnapshot: !!updatedMessage.input.diffSnapshot
+          });
+          
+          // Sync updated message to Rust DB
+          this.syncCallback?.('message', sessionId, updatedMessage);
+          return;
+        }
+        
+        // For other message types, update normally
+        const updatedMessage = { ...message, ...updates };
+        messages[i] = updatedMessage as StreamMessage;
+        this.messages.set(sessionId, messages);
+        
+        console.log(`[MemorySessionStore] Updated message ${uuid} (non-tool_use)`);
+        
+        // Sync updated message to Rust DB
+        this.syncCallback?.('message', sessionId, updatedMessage);
+        return;
+      }
+    }
+    
+    console.warn(`[MemorySessionStore] Message with uuid ${uuid} not found in session ${sessionId}`);
+  }
+
   deleteSession(id: string): boolean {
     this.messages.delete(id);
     this.todos.delete(id);

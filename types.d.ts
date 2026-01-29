@@ -42,6 +42,8 @@ type EventPayloadMapping = {
     "write-memory": void;
     "get-build-info": BuildInfo;
     "open-external-url": { success: boolean; error?: string };
+    "get-file-old-content": string;
+    "get-file-new-content": string;
 }
 
 interface Window {

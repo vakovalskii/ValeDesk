@@ -314,6 +314,111 @@ app.on("ready", () => {
     }
   });
 
+  // Handle get file old content (from git HEAD or snapshot)
+  ipcMainHandle("get-file-old-content", async (_, filePath: string, cwd: string, useGit: boolean = true) => {
+    try {
+      if (useGit) {
+        // Use git (original behavior), but fallback to snapshot if git is not available
+        const { execSync } = await import("child_process");
+        
+        // First, check if this is a git repository
+        let isGitRepo = false;
+        try {
+          execSync("git rev-parse --git-dir", {
+            cwd,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          isGitRepo = true;
+        } catch {
+          // Not a git repo, fallback to snapshot
+          isGitRepo = false;
+        }
+        
+        if (!isGitRepo) {
+          // Not a git repo, fallback to snapshot
+          return await getFileSnapshot(filePath, cwd);
+        }
+        
+        // Try to get file content from git HEAD
+        try {
+          const content = execSync(`git show HEAD:"${filePath}"`, {
+            cwd,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          return content;
+        } catch (gitError: any) {
+          // File doesn't exist in git HEAD (new file) - fallback to snapshot
+          return await getFileSnapshot(filePath, cwd);
+        }
+      } else {
+        // Use file snapshot
+        return await getFileSnapshot(filePath, cwd);
+      }
+    } catch (error: any) {
+      console.error(`[Main] Failed to get old content for ${filePath}:`, error);
+      throw error;
+    }
+  });
+
+  // Helper function to get file snapshot
+  async function getFileSnapshot(filePath: string, cwd: string): Promise<string> {
+    const { join } = await import("path");
+    const snapshotPath = join(cwd, ".valedesk", "snapshots", filePath);
+    
+    try {
+      const content = await fs.readFile(snapshotPath, "utf-8");
+      return content;
+    } catch (error: any) {
+      if (error.code === "ENOENT") {
+        // No snapshot exists, return empty string (new file)
+        return "";
+      }
+      throw error;
+    }
+  }
+
+  // Handle get file snapshot
+  ipcMainHandle("get-file-snapshot", async (_, filePath: string, cwd: string) => {
+    try {
+      return await getFileSnapshot(filePath, cwd);
+    } catch (error: any) {
+      console.error(`[Main] Failed to get file snapshot for ${filePath}:`, error);
+      throw error;
+    }
+  });
+
+  // Handle save file snapshot
+  ipcMainHandle("save-file-snapshot", async (_, filePath: string, cwd: string, content: string) => {
+    try {
+      const { join, dirname } = await import("path");
+      const snapshotPath = join(cwd, ".valedesk", "snapshots", filePath);
+      
+      // Create parent directory if it doesn't exist
+      const snapshotDir = dirname(snapshotPath);
+      await fs.mkdir(snapshotDir, { recursive: true });
+      
+      // Save the content
+      await fs.writeFile(snapshotPath, content, "utf-8");
+    } catch (error: any) {
+      console.error(`[Main] Failed to save file snapshot for ${filePath}:`, error);
+      throw error;
+    }
+  });
+
+  // Handle get file new content (current file)
+  ipcMainHandle("get-file-new-content", async (_, filePath: string, cwd: string) => {
+    try {
+      const fullPath = resolve(cwd, filePath);
+      const content = await fs.readFile(fullPath, "utf-8");
+      return content;
+    } catch (error: any) {
+      console.error(`[Main] Failed to get new content for ${filePath}:`, error);
+      throw error;
+    }
+  });
+
   // Handle get build info
   ipcMainHandle("get-build-info", async () => {
     try {

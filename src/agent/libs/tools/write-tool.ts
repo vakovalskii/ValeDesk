@@ -5,6 +5,7 @@
 import { writeFile, mkdir, access } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { constants } from 'fs';
+import { diffLines } from 'diff';
 import type { ToolDefinition, ToolResult, ToolExecutionContext } from './base-tool.js';
 
 export const WriteToolDefinition: ToolDefinition = {
@@ -79,11 +80,69 @@ export async function executeWriteTool(
     // Create directory if it doesn't exist
     await mkdir(dir, { recursive: true });
     
-    await writeFile(fullPath, args.content, 'utf-8');
-    return {
-      success: true,
-      output: `File created: ${args.file_path}`
+    // For new files, old content is empty
+    const oldContent = '';
+    const newContent = args.content;
+    
+    await writeFile(fullPath, newContent, 'utf-8');
+    
+    // Calculate diff statistics (all lines are additions for new file)
+    const diffChanges = diffLines(oldContent, newContent);
+    let additions = 0;
+    let deletions = 0;
+    
+    for (const change of diffChanges) {
+      if (change.added) {
+        // Count lines (including empty lines, but not the trailing empty line if change ends with newline)
+        const lines = change.value.split('\n');
+        additions += lines.length - (change.value.endsWith('\n') ? 1 : 0);
+      } else if (change.removed) {
+        // Count lines (including empty lines, but not the trailing empty line if change ends with newline)
+        const lines = change.value.split('\n');
+        deletions += lines.length - (change.value.endsWith('\n') ? 1 : 0);
+      }
+    }
+    
+    // Return result with diff snapshot
+    const diffSnapshot = {
+      oldContent,
+      newContent,
+      additions,
+      deletions,
+      filePath: args.file_path
     };
+    
+    console.log(`[WriteTool] Calculated diff for ${args.file_path}:`, {
+      additions,
+      deletions,
+      oldContentLength: oldContent.length,
+      newContentLength: newContent.length,
+      diffSnapshotKeys: Object.keys(diffSnapshot),
+      hasOldContent: !!diffSnapshot.oldContent,
+      hasNewContent: !!diffSnapshot.newContent
+    });
+    
+    // Force flush stdout in case of buffering
+    if (process.stdout && typeof (process.stdout as any).flush === 'function') {
+      (process.stdout as any).flush();
+    }
+    
+    const result = {
+      success: true,
+      output: `File created: ${args.file_path}`,
+      data: {
+        diffSnapshot
+      }
+    };
+    
+    console.log(`[WriteTool] Returning result:`, {
+      success: result.success,
+      hasData: !!result.data,
+      hasDiffSnapshot: !!(result.data && result.data.diffSnapshot),
+      dataKeys: result.data ? Object.keys(result.data) : []
+    });
+    
+    return result;
   } catch (error: any) {
     return {
       success: false,

@@ -8,9 +8,11 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { StreamMessage } from "../types";
 import type { PermissionRequest } from "../store/useAppStore";
+import { useAppStore } from "../store/useAppStore";
 import MDContent from "../render/markdown";
 import { DecisionPanel } from "./DecisionPanel";
 import { ChangedFiles, type ChangedFile } from "./ChangedFiles";
+import { DiffViewerModal } from "./DiffViewerModal";
 import type { FileChange } from "../types";
 
 type MessageContent = SDKAssistantMessage["message"]["content"][number];
@@ -78,6 +80,13 @@ const SessionResult = ({ message, fileChanges, sessionId, onConfirmChanges, onRo
   onConfirmChanges?: (sessionId: string) => void;
   onRollbackChanges?: (sessionId: string) => void;
 }) => {
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
+  
+  // Get cwd from session store
+  const sessions = useAppStore((state) => state.sessions);
+  const cwd = sessionId ? sessions[sessionId]?.cwd : undefined;
+
   const formatMinutes = (ms: number | undefined) => typeof ms !== "number" ? "-" : `${(ms / 60000).toFixed(2)} min`;
   const formatUsd = (usd: number | undefined) => typeof usd !== "number" ? "-" : usd.toFixed(2);
   const formatMillions = (tokens: number | undefined) => typeof tokens !== "number" ? "-" : `${(tokens / 1_000_000).toFixed(3)}m`;
@@ -96,9 +105,8 @@ const SessionResult = ({ message, fileChanges, sessionId, onConfirmChanges, onRo
   }));
 
   const handleViewDiff = (file: ChangedFile) => {
-    // Open diff view for the file
-    console.log('View diff for:', file.file_path);
-    // TODO: Implement diff viewer modal or panel
+    setSelectedFile(file);
+    setDiffModalOpen(true);
   };
 
   const handleApply = () => {
@@ -110,34 +118,49 @@ const SessionResult = ({ message, fileChanges, sessionId, onConfirmChanges, onRo
   };
 
   return (
-    <div className="flex flex-col gap-2 mt-4">
-      <div className="header text-accent">Session Result</div>
-      <div className="flex flex-col rounded-xl px-4 py-3 border border-ink-900/10 bg-surface-secondary space-y-2">
-        <div className="flex flex-wrap items-center gap-2 text-[14px]">
-          <span className="font-normal">Duration</span>
-          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{formatMinutes(message.duration_ms)}</span>
-          <span className="font-normal">API</span>
-          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{formatMinutes(message.duration_api_ms)}</span>
+    <>
+      <div className="flex flex-col gap-2 mt-4">
+        <div className="header text-accent">Session Result</div>
+        <div className="flex flex-col rounded-xl px-4 py-3 border border-ink-900/10 bg-surface-secondary space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-[14px]">
+            <span className="font-normal">Duration</span>
+            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{formatMinutes(message.duration_ms)}</span>
+            <span className="font-normal">API</span>
+            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{formatMinutes(message.duration_api_ms)}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[14px]">
+            <span className="font-normal">Tokens</span>
+            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">input:{formatMillions(message.usage?.input_tokens)}</span>
+            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">output:{formatMillions(message.usage?.output_tokens)}</span>
+            {hasCost && (
+              <span className="inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-accent text-[13px]">
+                ${formatUsd(message.total_cost_usd)}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-[14px]">
-          <span className="font-normal">Tokens</span>
-          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">input:{formatMillions(message.usage?.input_tokens)}</span>
-          <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">output:{formatMillions(message.usage?.output_tokens)}</span>
-          {hasCost && (
-            <span className="inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-accent text-[13px]">
-              ${formatUsd(message.total_cost_usd)}
-            </span>
-          )}
-        </div>
+        {/* Always show changed files after Session Result using new ChangedFiles component */}
+        <ChangedFiles
+          files={changedFiles}
+          onApply={fileChanges?.some(f => f.status === 'pending') ? handleApply : undefined}
+          onReject={fileChanges?.some(f => f.status === 'pending') ? handleReject : undefined}
+          onViewDiff={handleViewDiff}
+        />
       </div>
-      {/* Always show changed files after Session Result using new ChangedFiles component */}
-      <ChangedFiles
+      <DiffViewerModal
+        file={selectedFile}
         files={changedFiles}
-        onApply={fileChanges?.some(f => f.status === 'pending') ? handleApply : undefined}
-        onReject={fileChanges?.some(f => f.status === 'pending') ? handleReject : undefined}
-        onViewDiff={handleViewDiff}
+        cwd={cwd}
+        open={diffModalOpen}
+        onClose={() => {
+          setDiffModalOpen(false);
+          setSelectedFile(null);
+        }}
+        onFileChange={(file) => {
+          setSelectedFile(file);
+        }}
       />
-    </div>
+    </>
   );
 };
 
@@ -254,12 +277,16 @@ const ToolUseCard = ({
   messageContent, 
   showIndicator = false,
   permissionRequest,
-  onPermissionResult
+  onPermissionResult,
+  sessionId,
+  cwd
 }: { 
   messageContent: MessageContent; 
   showIndicator?: boolean;
   permissionRequest?: PermissionRequest;
   onPermissionResult?: (toolUseId: string, result: PermissionResult) => void;
+  sessionId?: string;
+  cwd?: string;
 }) => {
   if (messageContent.type !== "tool_use") return null;
   
@@ -268,6 +295,8 @@ const ToolUseCard = ({
   const isPending = !toolStatus || toolStatus === "pending";
   const shouldShowDot = toolStatus === "success" || toolStatus === "error" || showIndicator;
   const [isExpanded, setIsExpanded] = useState(false);
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
 
   useEffect(() => {
     if (messageContent?.id && !toolStatusMap.has(messageContent.id)) setToolStatus(messageContent.id, "pending");
@@ -309,6 +338,51 @@ const ToolUseCard = ({
     }
   };
 
+  // Check if this is a file operation tool with diff snapshot
+  const diffSnapshot = input?.diffSnapshot as { oldContent: string; newContent: string; additions: number; deletions: number; filePath: string } | undefined;
+  const hasDiffSnapshot = Boolean(diffSnapshot && diffSnapshot.additions + diffSnapshot.deletions > 0);
+  
+  // Debug logging for file tools
+  useEffect(() => {
+    if ((messageContent.name === 'write_file' || messageContent.name === 'edit_file' || 
+         messageContent.name === 'Write' || messageContent.name === 'Edit') && messageContent.id) {
+      console.log(`[ToolUseCard] ========== RENDERING ${messageContent.name} ==========`);
+      console.log(`[ToolUseCard] ID:`, messageContent.id);
+      console.log(`[ToolUseCard] Has input:`, !!input);
+      console.log(`[ToolUseCard] Has diffSnapshot:`, !!diffSnapshot);
+      console.log(`[ToolUseCard] Input keys:`, input ? Object.keys(input) : []);
+      console.log(`[ToolUseCard] messageContent.input keys:`, messageContent.input ? Object.keys(messageContent.input) : []);
+      console.log(`[ToolUseCard] messageContent.input === input:`, messageContent.input === input);
+      if (diffSnapshot) {
+        console.log(`[ToolUseCard] DiffSnapshot:`, {
+          additions: diffSnapshot.additions,
+          deletions: diffSnapshot.deletions,
+          filePath: diffSnapshot.filePath,
+          hasOldContent: !!diffSnapshot.oldContent,
+          hasNewContent: !!diffSnapshot.newContent
+        });
+      } else {
+        console.log(`[ToolUseCard] ⚠ DiffSnapshot is NULL/UNDEFINED`);
+        console.log(`[ToolUseCard] Full messageContent:`, messageContent);
+      }
+      console.log(`[ToolUseCard] ====================================================`);
+    }
+  }, [messageContent, input, diffSnapshot]);
+
+  const handleViewDiff = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (diffSnapshot) {
+      setSelectedFile({
+        file_path: diffSnapshot.filePath,
+        lines_added: diffSnapshot.additions,
+        lines_removed: diffSnapshot.deletions,
+        content_old: diffSnapshot.oldContent,
+        content_new: diffSnapshot.newContent
+      });
+      setDiffModalOpen(true);
+    }
+  };
+
   // Check if this tool needs permission
   const isActiveRequest = permissionRequest && permissionRequest.toolUseId === messageContent.id;
 
@@ -324,30 +398,63 @@ const ToolUseCard = ({
   }
 
   return (
-    <div
-      className={`flex flex-col gap-2 rounded-[1rem] bg-surface-tertiary px-3 py-2 mt-4 overflow-hidden ${canExpand ? "cursor-pointer" : ""}`}
-      onClick={toggleExpand}
-      onKeyDown={handleKeyDown}
-      role={canExpand ? "button" : undefined}
-      tabIndex={canExpand ? 0 : -1}
-      aria-expanded={canExpand ? isExpanded : undefined}
-    >
-      <div className="flex flex-row items-center gap-2 min-w-0">
-        <StatusDot variant={statusVariant} isActive={isPending && showIndicator} isVisible={shouldShowDot} />
-        <div className="flex flex-row items-center gap-2 tool-use-item min-w-0 flex-1">
-          <span className="inline-flex items-center rounded-md text-accent py-0.5 text-sm font-medium shrink-0">{messageContent.name}</span>
-          <span className="text-sm text-muted truncate">{getToolInfo()}</span>
+    <>
+      <div
+        className={`flex flex-col gap-2 rounded-[1rem] bg-surface-tertiary px-3 py-2 mt-4 overflow-hidden ${canExpand ? "cursor-pointer" : ""}`}
+        onClick={toggleExpand}
+        onKeyDown={handleKeyDown}
+        role={canExpand ? "button" : undefined}
+        tabIndex={canExpand ? 0 : -1}
+        aria-expanded={canExpand ? isExpanded : undefined}
+      >
+        <div className="flex flex-row items-center gap-2 min-w-0">
+          <StatusDot variant={statusVariant} isActive={isPending && showIndicator} isVisible={shouldShowDot} />
+          <div className="flex flex-row items-center gap-2 tool-use-item min-w-0 flex-1">
+            <span className="inline-flex items-center rounded-md text-accent py-0.5 text-sm font-medium shrink-0">{messageContent.name}</span>
+            <span className="text-sm text-muted truncate">{getToolInfo()}</span>
+            {hasDiffSnapshot && diffSnapshot && (
+              <span className="text-xs text-muted shrink-0">
+                <span className="text-success font-medium">+{diffSnapshot.additions}</span>
+                <span className="text-ink-400 mx-1">·</span>
+                <span className="text-error font-medium">-{diffSnapshot.deletions}</span>
+              </span>
+            )}
+          </div>
+          {hasDiffSnapshot && (
+            <button
+              onClick={handleViewDiff}
+              className="shrink-0 text-xs font-medium text-accent hover:text-accent/80 px-2 py-1 rounded-md border border-accent/20 hover:border-accent/40 bg-accent/5 hover:bg-accent/10 transition-colors"
+              title="View diff"
+            >
+              View diff
+            </button>
+          )}
+          {canExpand && (
+            <span className="text-xs text-muted shrink-0">{isExpanded ? "▲" : "▼"}</span>
+          )}
         </div>
-        {canExpand && (
-          <span className="text-xs text-muted shrink-0">{isExpanded ? "▲" : "▼"}</span>
+        {canExpand && isExpanded && (
+          <pre className="mt-2 rounded-lg bg-ink-900/5 px-3 py-2 text-xs text-ink-700 whitespace-pre-wrap break-words overflow-auto">
+            {String(commandText)}
+          </pre>
         )}
       </div>
-      {canExpand && isExpanded && (
-        <pre className="mt-2 rounded-lg bg-ink-900/5 px-3 py-2 text-xs text-ink-700 whitespace-pre-wrap break-words overflow-auto">
-          {String(commandText)}
-        </pre>
+      {hasDiffSnapshot && (
+        <DiffViewerModal
+          file={selectedFile}
+          files={selectedFile ? [selectedFile] : []}
+          cwd={cwd}
+          open={diffModalOpen}
+          onClose={() => {
+            setDiffModalOpen(false);
+            setSelectedFile(null);
+          }}
+          onFileChange={(file) => {
+            setSelectedFile(file);
+          }}
+        />
       )}
-    </div>
+    </>
   );
 };
 
@@ -396,6 +503,14 @@ const SystemInfoCard = ({ message, showIndicator = false }: { message: SDKMessag
   if (message.type !== "system" || !("subtype" in message)) return null;
 
   const systemMsg = message as any;
+
+  if (systemMsg.subtype === "debug") {
+    // Debug messages - log to console and optionally display
+    const debugText = systemMsg.text || systemMsg.message || "Debug message";
+    console.log(`[DEBUG] ${debugText}`);
+    // Optionally return null to not display, or return a component to display
+    return null; // Don't display debug messages in UI, just log them
+  }
 
   if (systemMsg.subtype === "notice") {
     const noticeText = systemMsg.text || systemMsg.message || "System notice";
@@ -616,17 +731,23 @@ export function MessageCard({
       <>
         {contents.map((content: MessageContent, idx: number) => {
           const isLastContent = idx === contents.length - 1;
+          // Use content.id for tool_use, otherwise use idx to ensure unique keys
+          const key = content.type === 'tool_use' ? `tool_use_${(content as any).id}` : `content_${idx}`;
+          
           if (content.type === "thinking") {
-            return <AssistantBlockCard key={idx} title="Thinking" text={content.thinking} showIndicator={isLastContent && showIndicator} isTextBlock={false} />;
+            return <AssistantBlockCard key={key} title="Thinking" text={content.thinking} showIndicator={isLastContent && showIndicator} isTextBlock={false} />;
           }
           if (content.type === "text") {
-            return <AssistantBlockCard key={idx} title="Assistant" text={content.text} showIndicator={isLastContent && showIndicator} isTextBlock={true} />;
+            return <AssistantBlockCard key={key} title="Assistant" text={content.text} showIndicator={isLastContent && showIndicator} isTextBlock={true} />;
           }
           if (content.type === "tool_use") {
             if (content.name === "AskUserQuestion") {
-              return <AskUserQuestionCard key={idx} messageContent={content} permissionRequest={permissionRequest} onPermissionResult={onPermissionResult} />;
+              return <AskUserQuestionCard key={key} messageContent={content} permissionRequest={permissionRequest} onPermissionResult={onPermissionResult} />;
             }
-            return <ToolUseCard key={idx} messageContent={content} showIndicator={isLastContent && showIndicator} permissionRequest={permissionRequest} onPermissionResult={onPermissionResult} />;
+            // Get cwd from store
+            const sessions = useAppStore((state) => state.sessions);
+            const sessionCwd = sessionId ? sessions[sessionId]?.cwd : undefined;
+            return <ToolUseCard key={key} messageContent={content} showIndicator={isLastContent && showIndicator} permissionRequest={permissionRequest} onPermissionResult={onPermissionResult} sessionId={sessionId} cwd={sessionCwd} />;
           }
           return null;
         })}

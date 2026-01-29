@@ -4,6 +4,7 @@
 
 import { readFile, writeFile } from 'fs/promises';
 import { resolve } from 'path';
+import { diffLines } from 'diff';
 import type { ToolDefinition, ToolResult, ToolExecutionContext } from './base-tool.js';
 
 export const EditToolDefinition: ToolDefinition = {
@@ -72,21 +73,50 @@ export async function executeEditTool(
   
   try {
     const fullPath = resolve(context.cwd, args.file_path);
-    const content = await readFile(fullPath, 'utf-8');
+    const oldContent = await readFile(fullPath, 'utf-8');
     
-    if (!content.includes(args.old_string)) {
+    if (!oldContent.includes(args.old_string)) {
       return {
         success: false,
         error: `String not found in file: "${args.old_string.substring(0, 50)}..."`
       };
     }
     
-    const newContent = content.replace(args.old_string, args.new_string);
+    const newContent = oldContent.replace(args.old_string, args.new_string);
     await writeFile(fullPath, newContent, 'utf-8');
+    
+    // Calculate diff statistics
+    const diffChanges = diffLines(oldContent, newContent);
+    let additions = 0;
+    let deletions = 0;
+    
+    for (const change of diffChanges) {
+      if (change.added) {
+        // Count lines (including empty lines, but not the trailing empty line if change ends with newline)
+        const lines = change.value.split('\n');
+        additions += lines.length - (change.value.endsWith('\n') ? 1 : 0);
+      } else if (change.removed) {
+        // Count lines (including empty lines, but not the trailing empty line if change ends with newline)
+        const lines = change.value.split('\n');
+        deletions += lines.length - (change.value.endsWith('\n') ? 1 : 0);
+      }
+    }
+    
+    // Return result with diff snapshot
+    const diffSnapshot = {
+      oldContent,
+      newContent,
+      additions,
+      deletions,
+      filePath: args.file_path
+    };
     
     return {
       success: true,
-      output: `File edited: ${args.file_path}`
+      output: `File edited: ${args.file_path}`,
+      data: {
+        diffSnapshot
+      }
     };
   } catch (error: any) {
     return {

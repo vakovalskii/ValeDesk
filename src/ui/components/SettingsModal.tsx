@@ -50,6 +50,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const [enableDuckDuckGo, setEnableDuckDuckGo] = useState(currentSettings?.enableDuckDuckGo || false);
   const [enableFetchTools, setEnableFetchTools] = useState(currentSettings?.enableFetchTools || false);
   const [enableImageTools, setEnableImageTools] = useState(currentSettings?.enableImageTools ?? false);
+  const [useGitForDiff, setUseGitForDiff] = useState(currentSettings?.useGitForDiff ?? true);
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [showTavilyPassword, setShowTavilyPassword] = useState(false);
   const [showZaiPassword, setShowZaiPassword] = useState(false);
@@ -132,6 +133,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
       setEnableDuckDuckGo(currentSettings.enableDuckDuckGo || false);
       setEnableFetchTools(currentSettings.enableFetchTools || false);
       setEnableImageTools(currentSettings.enableImageTools ?? false);
+      setUseGitForDiff(currentSettings.useGitForDiff ?? true);
     }
     
     // ALWAYS load LLM providers from separate file
@@ -293,6 +295,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
       enableDuckDuckGo,
       enableFetchTools,
       enableImageTools,
+      useGitForDiff,
       llmProviders: llmProviderSettings
     };
     
@@ -332,6 +335,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     setEnableDuckDuckGo(false);
     setEnableFetchTools(false);
     setEnableImageTools(false);
+    setUseGitForDiff(true);
   };
 
   useEffect(() => {
@@ -457,6 +461,8 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
                 setEnableFetchTools={setEnableFetchTools}
                 enableImageTools={enableImageTools}
                 setEnableImageTools={setEnableImageTools}
+                useGitForDiff={useGitForDiff}
+                setUseGitForDiff={setUseGitForDiff}
               />
             ) : activeTab === 'skills' ? (
               <div className="p-6">
@@ -1354,7 +1360,9 @@ function ToolsTab({
   enableFetchTools,
   setEnableFetchTools,
   enableImageTools,
-  setEnableImageTools
+  setEnableImageTools,
+  useGitForDiff,
+  setUseGitForDiff
 }: any) {
   return (
     <div className="px-6 py-4 space-y-6">
@@ -1458,6 +1466,33 @@ function ToolsTab({
             <div className="w-11 h-6 bg-ink-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ink-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
           </div>
         </label>
+
+        {/* Diff Source */}
+        <div className="border-t border-ink-900/10 pt-4 mt-4">
+          <label className="block text-sm font-medium text-ink-700 mb-3">
+            Diff Source
+            <span className="ml-2 text-xs font-normal text-ink-500">Choose how to get old file version for diff</span>
+          </label>
+          <label className="flex items-center justify-between cursor-pointer">
+            <div className="flex-1">
+              <span className="block text-sm font-medium text-ink-700">Use Git for Diff</span>
+              <p className="mt-0.5 text-xs text-ink-500">
+                {useGitForDiff 
+                  ? "Using git HEAD version for old file content (requires git repo)"
+                  : "Using file snapshots for old file content (works without git)"}
+              </p>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={useGitForDiff}
+                onChange={(e) => setUseGitForDiff(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-ink-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ink-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+            </div>
+          </label>
+        </div>
       </div>
     </div>
   );

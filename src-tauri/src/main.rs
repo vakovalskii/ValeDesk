@@ -588,6 +588,65 @@ fn start_sidecar(app: tauri::AppHandle, sidecar_state: &SidecarState) -> Result<
                   continue; // Don't emit to frontend
                 }
                 
+                // Handle file_changes.updated - save to DB before emitting to frontend
+                if event_type == "file_changes.updated" {
+                  if let Some(payload) = event.get("payload") {
+                    if let Some(session_id) = payload.get("sessionId").and_then(|v| v.as_str()) {
+                      if let Some(file_changes) = payload.get("fileChanges").and_then(|v| v.as_array()) {
+                        let state: tauri::State<'_, AppState> = app_handle.state();
+                        let changes: Result<Vec<FileChange>, _> = file_changes.iter()
+                          .map(|v| serde_json::from_value(v.clone()))
+                          .collect();
+                        if let Ok(changes) = changes {
+                          if let Err(e) = state.db.save_file_changes(session_id, &changes) {
+                            eprintln!("[file_changes] Failed to save to DB: {}", e);
+                          }
+                        }
+                      }
+                    }
+                  }
+                  // Continue to emit to frontend
+                }
+                
+                // Handle file_changes.confirmed - update status in DB
+                if event_type == "file_changes.confirmed" {
+                  if let Some(payload) = event.get("payload") {
+                    if let Some(session_id) = payload.get("sessionId").and_then(|v| v.as_str()) {
+                      let state: tauri::State<'_, AppState> = app_handle.state();
+                      // Get current file changes and mark all as confirmed
+                      if let Ok(mut changes) = state.db.get_file_changes(session_id) {
+                        for change in &mut changes {
+                          change.status = Some("confirmed".to_string());
+                        }
+                        if let Err(e) = state.db.save_file_changes(session_id, &changes) {
+                          eprintln!("[file_changes] Failed to update confirmed status in DB: {}", e);
+                        }
+                      }
+                    }
+                  }
+                  // Continue to emit to frontend
+                }
+                
+                // Handle file_changes.rolledback - update in DB
+                if event_type == "file_changes.rolledback" {
+                  if let Some(payload) = event.get("payload") {
+                    if let Some(session_id) = payload.get("sessionId").and_then(|v| v.as_str()) {
+                      if let Some(file_changes) = payload.get("fileChanges").and_then(|v| v.as_array()) {
+                        let state: tauri::State<'_, AppState> = app_handle.state();
+                        let changes: Result<Vec<FileChange>, _> = file_changes.iter()
+                          .map(|v| serde_json::from_value(v.clone()))
+                          .collect();
+                        if let Ok(changes) = changes {
+                          if let Err(e) = state.db.save_file_changes(session_id, &changes) {
+                            eprintln!("[file_changes] Failed to update rollback in DB: {}", e);
+                          }
+                        }
+                      }
+                    }
+                  }
+                  // Continue to emit to frontend
+                }
+                
                 // Only log non-streaming events to reduce noise
                 if event_type != "stream.message" {
                   eprintln!("[sidecar] → {}", event_type);
@@ -710,6 +769,158 @@ fn write_memory(content: String) -> Result<(), String> {
   let path = memory_path()?;
   ensure_parent_dir(&path)?;
   fs::write(&path, content).map_err(|error| format!("[write_memory] Failed to write {}: {error}", path.display()))
+}
+
+#[derive(serde::Deserialize)]
+struct GetFileContentParams {
+  #[serde(rename = "filePath")]
+  file_path: String,
+  cwd: String,
+  #[serde(default = "default_use_git")]
+  use_git: bool,
+}
+
+fn default_use_git() -> bool {
+  true
+}
+
+#[derive(serde::Deserialize)]
+struct SaveFileSnapshotParams {
+  #[serde(rename = "filePath")]
+  file_path: String,
+  cwd: String,
+  content: String,
+}
+
+#[tauri::command]
+fn get_file_old_content(params: GetFileContentParams) -> Result<String, String> {
+  if params.use_git {
+    // Use git (original behavior), but fallback to snapshot if git is not available
+    use std::process::Command;
+    
+    // First, check if this is a git repository
+    let is_git_repo = Command::new("git")
+      .args(&["rev-parse", "--git-dir"])
+      .current_dir(&params.cwd)
+      .output()
+      .map(|result| result.status.success())
+      .unwrap_or(false);
+    
+    if !is_git_repo {
+      // Not a git repo, fallback to snapshot
+      return get_file_snapshot(GetFileContentParams {
+        file_path: params.file_path.clone(),
+        cwd: params.cwd.clone(),
+        use_git: false,
+      });
+    }
+    
+    // Try to get file content from git HEAD
+    eprintln!("[get_file_old_content] Getting from git HEAD: cwd={}, file_path={}", params.cwd, params.file_path);
+    let output = Command::new("git")
+      .args(&["show", &format!("HEAD:{}", params.file_path)])
+      .current_dir(&params.cwd)
+      .output();
+    
+    match output {
+      Ok(result) if result.status.success() => {
+        let content = String::from_utf8(result.stdout)
+          .map_err(|e| format!("[get_file_old_content] Failed to decode git output: {e}"))?;
+        eprintln!("[get_file_old_content] Successfully read {} bytes from git HEAD", content.len());
+        Ok(content)
+      }
+      Ok(_) => {
+        // File doesn't exist in git HEAD (new file) - fallback to snapshot
+        get_file_snapshot(GetFileContentParams {
+          file_path: params.file_path,
+          cwd: params.cwd,
+          use_git: false,
+        })
+      }
+      Err(_) => {
+        // Git command failed, fallback to snapshot
+        get_file_snapshot(GetFileContentParams {
+          file_path: params.file_path,
+          cwd: params.cwd,
+          use_git: false,
+        })
+      }
+    }
+  } else {
+    // Use file snapshot
+    get_file_snapshot(GetFileContentParams {
+      file_path: params.file_path,
+      cwd: params.cwd,
+      use_git: false,
+    })
+  }
+}
+
+#[tauri::command]
+fn get_file_snapshot(params: GetFileContentParams) -> Result<String, String> {
+  use std::path::PathBuf;
+  
+  // Create snapshot directory path: .valedesk/snapshots/relative/path/to/file
+  let snapshot_path = PathBuf::from(&params.cwd)
+    .join(".valedesk")
+    .join("snapshots")
+    .join(&params.file_path);
+  
+  match fs::read_to_string(&snapshot_path) {
+    Ok(content) => Ok(content),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+      // No snapshot exists, return empty string (new file)
+      Ok(String::new())
+    }
+    Err(error) => Err(format!("[get_file_snapshot] Failed to read snapshot: {error}")),
+  }
+}
+
+#[tauri::command]
+fn save_file_snapshot(params: SaveFileSnapshotParams) -> Result<(), String> {
+  use std::path::PathBuf;
+  
+  // Create snapshot directory path: .valedesk/snapshots/relative/path/to/file
+  let snapshot_path = PathBuf::from(&params.cwd)
+    .join(".valedesk")
+    .join("snapshots")
+    .join(&params.file_path);
+  
+  // Create parent directory if it doesn't exist
+  if let Some(parent) = snapshot_path.parent() {
+    fs::create_dir_all(parent)
+      .map_err(|e| format!("[save_file_snapshot] Failed to create directory: {e}"))?;
+  }
+  
+  // Save the content
+  fs::write(&snapshot_path, params.content)
+    .map_err(|e| format!("[save_file_snapshot] Failed to write snapshot: {e}"))
+}
+
+#[tauri::command]
+fn get_file_new_content(params: GetFileContentParams) -> Result<String, String> {
+  let full_path = Path::new(&params.cwd).join(&params.file_path);
+  
+  eprintln!("[get_file_new_content] Reading file: cwd={}, file_path={}, full_path={}", 
+    params.cwd, params.file_path, full_path.display());
+  
+  // Always read from working directory (disk) - this contains the current/new content
+  // If file doesn't exist, return empty string (new file)
+  match fs::read_to_string(&full_path) {
+    Ok(content) => {
+      eprintln!("[get_file_new_content] Successfully read {} bytes from {}", content.len(), full_path.display());
+      Ok(content)
+    }
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+      // File doesn't exist - this is a new file, return empty string
+      eprintln!("[get_file_new_content] File not found: {}, treating as new file", full_path.display());
+      Ok(String::new())
+    }
+    Err(error) => {
+      eprintln!("[get_file_new_content] Error reading {}: {}", full_path.display(), error);
+      Err(format!("[get_file_new_content] Failed to read {}: {error}", full_path.display()))
+    }
+  }
 }
 
 #[tauri::command]
@@ -1820,6 +2031,10 @@ fn main() {
       list_directory,
       read_memory,
       write_memory,
+      get_file_old_content,
+      get_file_new_content,
+      get_file_snapshot,
+      save_file_snapshot,
       open_external_url,
       open_path_in_finder,
       open_file,

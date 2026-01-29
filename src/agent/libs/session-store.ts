@@ -121,6 +121,46 @@ export class SessionStore {
     return this.sessions.get(id);
   }
 
+  /**
+   * Restore session from database if it's not in memory
+   * Returns the session if found, undefined otherwise
+   */
+  restoreSessionFromDb(id: string): Session | undefined {
+    // Check if already in memory
+    if (this.sessions.has(id)) {
+      return this.sessions.get(id);
+    }
+
+    // Try to load from database
+    const row = this.db
+      .prepare(
+        `select id, title, claude_session_id, status, cwd, allowed_tools, last_prompt, model, thread_id
+         from sessions
+         where id = ?`
+      )
+      .get(id) as Record<string, unknown> | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    // Restore session to memory
+    const session: Session = {
+      id: String(row.id),
+      title: String(row.title),
+      claudeSessionId: row.claude_session_id ? String(row.claude_session_id) : undefined,
+      status: row.status as SessionStatus,
+      cwd: row.cwd ? String(row.cwd) : undefined,
+      allowedTools: row.allowed_tools ? String(row.allowed_tools) : undefined,
+      lastPrompt: row.last_prompt ? String(row.last_prompt) : undefined,
+      model: row.model ? String(row.model) : undefined,
+      threadId: row.thread_id ? String(row.thread_id) : undefined,
+      pendingPermissions: new Map()
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
   listSessions(): StoredSession[] {
     const rows = this.db
       .prepare(
@@ -468,6 +508,53 @@ export class SessionStore {
     this.db
       .prepare(`update messages set data = ? where id = ?`)
       .run(JSON.stringify(updatedMessage), targetRow.id);
+  }
+
+  updateMessageByUuid(sessionId: string, uuid: string, updates: Partial<StreamMessage>): void {
+    // Get all messages for this session
+    const rows = this.db
+      .prepare(`select id, data from messages where session_id = ? order by created_at asc`)
+      .all(sessionId) as Array<{ id: string; data: string }>;
+    
+    // Find message with matching uuid
+    for (const row of rows) {
+      const message = JSON.parse(row.data) as any;
+      
+      // Check if uuid matches (can be in uuid field or id field)
+      const messageUuid = message.uuid || message.id;
+      if (messageUuid === uuid) {
+        // For tool_use messages, we need to update the input field specifically
+        if ((message.type === 'tool_use' || (message as any).name) && (updates as any).input) {
+          // Merge the input field instead of replacing the whole message
+          const updatedMessage = {
+            ...message,
+            input: {
+              ...(message as any).input,
+              ...(updates as any).input
+            }
+          };
+          
+          // Save back to database
+          this.db
+            .prepare(`update messages set data = ? where id = ?`)
+            .run(JSON.stringify(updatedMessage), row.id);
+          
+          return;
+        }
+        
+        // For other message types, update normally
+        const updatedMessage = { ...message, ...updates };
+        
+        // Save back to database
+        this.db
+          .prepare(`update messages set data = ? where id = ?`)
+          .run(JSON.stringify(updatedMessage), row.id);
+        
+        return;
+      }
+    }
+    
+    console.warn(`[SessionStore] Message with uuid ${uuid} not found in session ${sessionId}`);
   }
 
   deleteSession(id: string): boolean {

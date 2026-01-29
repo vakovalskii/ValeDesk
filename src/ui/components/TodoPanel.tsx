@@ -5,6 +5,9 @@
 
 import { useState } from "react";
 import type { TodoItem, TodoStatus, FileChange } from "../types";
+import { DiffViewerModal } from "./DiffViewerModal";
+import type { ChangedFile } from "./ChangedFiles";
+import { useAppStore } from "../store/useAppStore";
 
 interface TodoPanelProps {
   todos: TodoItem[];
@@ -30,6 +33,12 @@ export function TodoPanel({
 }: TodoPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAllFiles, setShowAllFiles] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
+  
+  // Get cwd from store
+  const sessions = useAppStore((state) => state.sessions);
+  const cwd = activeSessionId ? sessions[activeSessionId]?.cwd : undefined;
 
   if (!todos || todos.length === 0) return null;
 
@@ -63,6 +72,26 @@ export function TodoPanel({
       onRollbackChanges(activeSessionId);
     }
   };
+
+  // Convert FileChange to ChangedFile format
+  const convertToChangedFile = (change: FileChange): ChangedFile => {
+    return {
+      file_path: change.path,
+      lines_added: change.additions,
+      lines_removed: change.deletions,
+      content_old: undefined,
+      content_new: undefined
+    };
+  };
+
+  const handleViewDiff = (change: FileChange) => {
+    const changedFile = convertToChangedFile(change);
+    setSelectedFile(changedFile);
+    setDiffModalOpen(true);
+  };
+
+  // Convert all fileChanges to ChangedFile[] for navigation
+  const changedFiles: ChangedFile[] = fileChanges.map(convertToChangedFile);
 
   return (
     <div className={`border rounded-lg shadow-sm ${isAllDone ? 'bg-green-50 border-green-200' : 'bg-white border-ink-200'}`}>
@@ -162,11 +191,16 @@ export function TodoPanel({
                       Changed Files ({pendingFileChanges.length})
                     </span>
                     {/* Summary stats */}
-                    {totalAdditions > 0 || totalDeletions > 0 && (
+                    {(totalAdditions > 0 || totalDeletions > 0) && (
                       <span className="text-xs font-mono">
-                        <span className="text-green-600">+{totalAdditions}</span>
+                        {totalAdditions > 0 && (
+                          <span className="text-green-600">+{totalAdditions}</span>
+                        )}
+                        {totalAdditions > 0 && totalDeletions > 0 && (
+                          <span className="text-ink-400 mx-1">·</span>
+                        )}
                         {totalDeletions > 0 && (
-                          <span className="text-red-600 ml-1">-{totalDeletions}</span>
+                          <span className="text-red-600">-{totalDeletions}</span>
                         )}
                       </span>
                     )}
@@ -179,7 +213,7 @@ export function TodoPanel({
                     key={change.path}
                     className="flex items-center justify-between py-1 px-1.5 text-xs bg-white rounded mb-1"
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
                       <svg className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
@@ -187,13 +221,23 @@ export function TodoPanel({
                         {change.path}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0 font-mono">
-                      {change.additions > 0 && (
-                        <span className="text-green-600">+{change.additions}</span>
-                      )}
-                      {change.deletions > 0 && (
-                        <span className="text-red-600">-{change.deletions}</span>
-                      )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="flex items-center gap-1.5 font-mono">
+                        {change.additions > 0 && (
+                          <span className="text-green-600">+{change.additions}</span>
+                        )}
+                        {change.deletions > 0 && (
+                          <span className="text-red-600">-{change.deletions}</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleViewDiff(change)}
+                        className="ml-2 px-2 py-0.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-100 rounded transition-colors flex-shrink-0"
+                        title="View diff"
+                      >
+                        View Diff
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -280,6 +324,21 @@ export function TodoPanel({
           </div>
         </>
       )}
+
+      {/* Diff Viewer Modal */}
+      <DiffViewerModal
+        file={selectedFile}
+        files={changedFiles}
+        cwd={cwd}
+        open={diffModalOpen}
+        onClose={() => {
+          setDiffModalOpen(false);
+          setSelectedFile(null);
+        }}
+        onFileChange={(file) => {
+          setSelectedFile(file);
+        }}
+      />
     </div>
   );
 }

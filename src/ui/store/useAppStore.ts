@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ServerEvent, SessionStatus, StreamMessage, TodoItem, FileChange, MultiThreadTask, LLMModel, LLMProvider, LLMProviderSettings } from "../types";
+import type { ServerEvent, SessionStatus, StreamMessage, TodoItem, FileChange, MultiThreadTask, LLMModel, LLMProvider, LLMProviderSettings, ApiSettings } from "../types";
 import { getPlatform } from "../platform";
 
 export type PermissionRequest = {
@@ -53,6 +53,7 @@ interface AppState {
   llmProviders: LLMProvider[];
   llmModels: LLMModel[];
   llmProviderSettings: LLMProviderSettings | null;
+  apiSettings: ApiSettings | null;
   schedulerDefaultModel: string | null;
   schedulerDefaultTemperature: number | null;
   schedulerDefaultSendTemperature: boolean | null;
@@ -102,6 +103,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   llmProviders: [],
   llmModels: [],
   llmProviderSettings: null,
+  apiSettings: null,
   schedulerDefaultModel: null,
   schedulerDefaultTemperature: null,
   schedulerDefaultSendTemperature: null,
@@ -321,6 +323,147 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         set((state) => {
           const existing = state.sessions[sessionId] ?? createSession(sessionId);
+
+          // Check if this is an update to an existing message (for tool_use with diffSnapshot)
+          const msgAny = message as any;
+          if (msgAny._update && msgAny._updateToolUseId) {
+            const toolUseIdToUpdate = msgAny._updateToolUseId;
+            console.log(`[AppStore] ========== RECEIVED UPDATE EVENT ==========`);
+            console.log(`[AppStore] Tool Use ID to update:`, toolUseIdToUpdate);
+            console.log(`[AppStore] Has message.message:`, !!msgAny.message);
+            console.log(`[AppStore] Has message.message.content:`, !!msgAny.message?.content);
+            console.log(`[AppStore] Content length:`, msgAny.message?.content?.length);
+            console.log(`[AppStore] First content type:`, msgAny.message?.content?.[0]?.type);
+            console.log(`[AppStore] First content ID:`, msgAny.message?.content?.[0]?.id);
+            console.log(`[AppStore] Has diffSnapshot in input:`, !!msgAny.message?.content?.[0]?.input?.diffSnapshot);
+            if (msgAny.message?.content?.[0]?.input?.diffSnapshot) {
+              console.log(`[AppStore] DiffSnapshot details:`, {
+                filePath: msgAny.message.content[0].input.diffSnapshot.filePath,
+                additions: msgAny.message.content[0].input.diffSnapshot.additions,
+                deletions: msgAny.message.content[0].input.diffSnapshot.deletions
+              });
+            }
+            console.log(`[AppStore] ==============================================`);
+            
+            // Find and update existing message
+            const updatedMessages = existing.messages.map((msg: any) => {
+              // Check if this is an assistant message with tool_use content
+              if (msg.type === 'assistant' && msg.message?.content) {
+                const assistantMsg = msg as any;
+                console.log(`[AppStore] Checking assistant message with ${assistantMsg.message.content.length} content items`);
+                console.log(`[AppStore] Looking for tool_use with ID:`, toolUseIdToUpdate);
+                console.log(`[AppStore] Looking for tool_use with ID (type):`, typeof toolUseIdToUpdate);
+                const toolUseIds = assistantMsg.message.content
+                  .filter((c: any) => c.type === 'tool_use')
+                  .map((c: any) => ({ id: c.id, idType: typeof c.id, name: c.name }));
+                console.log(`[AppStore] Available tool_use IDs in this message:`, toolUseIds);
+                console.log(`[AppStore] ID match check:`, toolUseIds.map((t: any) => ({
+                  id: t.id,
+                  matches: t.id === toolUseIdToUpdate,
+                  strictEqual: t.id === toolUseIdToUpdate,
+                  looseEqual: t.id == toolUseIdToUpdate
+                })));
+                const updatedContent = assistantMsg.message.content.map((content: any) => {
+                  // Check if this is the tool_use we need to update
+                  const idMatches = content.type === 'tool_use' && content.id === toolUseIdToUpdate;
+                  if (idMatches) {
+                    console.log(`[AppStore] ✓ FOUND tool_use to update!`);
+                    console.log(`[AppStore] Current content:`, {
+                      id: content.id,
+                      name: content.name,
+                      oldInputKeys: Object.keys(content.input || {}),
+                      hasOldDiffSnapshot: !!(content.input?.diffSnapshot)
+                    });
+                    console.log(`[AppStore] New input data:`, {
+                      newInputKeys: Object.keys(msgAny.message?.content?.[0]?.input || {}),
+                      hasDiffSnapshot: !!(msgAny.message?.content?.[0]?.input?.diffSnapshot)
+                    });
+                    
+                    // Update the tool_use content with new input (merge, not replace)
+                    const newInput = msgAny.message?.content?.[0]?.input || {};
+                    const updatedInput = {
+                      ...content.input,
+                      ...newInput
+                    };
+                    
+                    console.log(`[AppStore] Merged input keys:`, Object.keys(updatedInput));
+                    console.log(`[AppStore] Has diffSnapshot in merged:`, !!updatedInput.diffSnapshot);
+                    
+                    return {
+                      ...content,
+                      input: updatedInput
+                    };
+                  }
+                  return content;
+                });
+                
+                    // Check if any content was updated
+                const wasUpdated = updatedContent.some((c: any, i: number) => {
+                  const oldContent = assistantMsg.message.content[i];
+                  return oldContent && (
+                    JSON.stringify(c.input) !== JSON.stringify(oldContent.input)
+                  );
+                });
+                
+                if (wasUpdated) {
+                  console.log(`[AppStore] ✓ Updated tool_use message in assistant message`);
+                  // Force new object creation for React to detect change
+                  return {
+                    ...assistantMsg,
+                    message: {
+                      ...assistantMsg.message,
+                      content: updatedContent,
+                      // Add timestamp to force React to see this as a new object
+                      _lastUpdated: Date.now()
+                    }
+                  };
+                } else {
+                  console.warn(`[AppStore] ⚠ Tool_use message not updated - no changes detected`);
+                }
+              }
+              return msg;
+            });
+            
+            // Check if we actually updated anything
+            const anyUpdated = updatedMessages.some((msg: any, i: number) => {
+              const oldMsg = existing.messages[i];
+              return oldMsg && JSON.stringify(msg) !== JSON.stringify(oldMsg);
+            });
+            
+            if (!anyUpdated) {
+              console.warn(`[AppStore] ⚠ No messages were updated for tool_use id: ${toolUseIdToUpdate}`);
+              console.log(`[AppStore] Existing messages:`, existing.messages.map((m: any) => ({
+                type: m.type,
+                hasContent: !!(m.message?.content),
+                toolUseIds: m.message?.content?.filter((c: any) => c.type === 'tool_use').map((c: any) => c.id)
+              })));
+            }
+            
+            // Extract token usage from result messages
+            let inputTokens = existing.inputTokens;
+            let outputTokens = existing.outputTokens;
+            if (message.type === "result" && (message as any).usage) {
+              const { input_tokens, output_tokens } = (message as any).usage;
+              if (input_tokens !== undefined) {
+                inputTokens = input_tokens;
+              }
+              if (output_tokens !== undefined) {
+                outputTokens = output_tokens;
+              }
+            }
+
+            return {
+              sessions: {
+                ...state.sessions,
+                [sessionId]: {
+                  ...existing,
+                  messages: updatedMessages,
+                  inputTokens,
+                  outputTokens
+                }
+              }
+            };
+          }
 
           // Extract token usage from result messages
           let inputTokens = existing.inputTokens;
@@ -563,6 +706,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       case "llm.models.checked": {
         const { unavailableModels } = event.payload;
         console.log('[AppStore] LLM models checked, unavailable:', unavailableModels);
+        break;
+      }
+
+      case "settings.loaded": {
+        const { settings } = event.payload;
+        set({ apiSettings: settings });
+        console.log('[AppStore] Settings loaded:', settings);
         break;
       }
 
