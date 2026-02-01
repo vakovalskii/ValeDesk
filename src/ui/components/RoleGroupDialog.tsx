@@ -128,6 +128,8 @@ export function RoleGroupDialog({
   llmModels = []
 }: RoleGroupDialogProps) {
   const llmProviders = useAppStore((s) => s.llmProviders);
+  const schedulerDefaultModel = useAppStore((s) => s.schedulerDefaultModel);
+  const defaultModel = schedulerDefaultModel || apiSettings?.model || "gpt-4";
   const [taskPrompt, setTaskPrompt] = useState("");
   const [shareWebCache, setShareWebCache] = useState(true);
   const [localCwd, setLocalCwd] = useState(cwd);
@@ -188,12 +190,12 @@ export function RoleGroupDialog({
     const title = generateRoleGroupTitle(taskPrompt);
     const tasks = enabledRoles.map((role, index) => ({
       id: `${index + 1}`,
-      model: role.model || apiSettings?.model || "gpt-4",
+      model: role.model || defaultModel,
       prompt: buildRolePrompt(role, taskPrompt),
       roleId: role.id,
       roleName: role.name
     }));
-    const primaryModel = enabledRoles.find(role => role.model)?.model || apiSettings?.model || "gpt-4";
+    const primaryModel = enabledRoles.find(role => role.model)?.model || defaultModel;
     const roleGroupPrompt = buildRoleGroupPrompt(enabledRoles, taskPrompt, localCwd);
 
     const payload: CreateTaskPayload = {
@@ -324,7 +326,7 @@ export function RoleGroupDialog({
                           className="min-w-[220px] rounded-lg border border-ink-900/10 bg-surface-secondary px-3 py-2 text-xs text-ink-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
                         >
                           <option value="">
-                            {apiSettings?.model ? `Default (${apiSettings.model})` : "Default model"}
+                            {defaultModel ? `Default (${defaultModel})` : "Default model"}
                           </option>
                           {allAvailableModels.map(option => (
                             <option key={option.id} value={option.id}>
@@ -336,7 +338,7 @@ export function RoleGroupDialog({
                         <input
                           value={role.model || ""}
                           onChange={(event) => updateRole(role.id, { model: event.target.value })}
-                          placeholder={apiSettings?.model || "Model id"}
+                          placeholder={defaultModel || "Model id"}
                           className="min-w-[220px] rounded-lg border border-ink-900/10 bg-surface-secondary px-3 py-2 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
                         />
                       )}

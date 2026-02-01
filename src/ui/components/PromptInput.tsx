@@ -33,7 +33,12 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
     if (activeSessionId && !trimmedPrompt) return;
 
     if (!activeSessionId) {
-      // Starting new session - can be empty for chat-only mode
+      // Resolve selected model id to API model name (for scheduler default and session.start)
+      const state = useAppStore.getState();
+      const apiModelName = state.llmModels?.find(m => m.id === selectedModel)?.name
+        ?? state.availableModels?.find(m => m.id === selectedModel)?.name
+        ?? selectedModel;
+
       setPendingStart(true);
       
       // Generate title from first 3 words of prompt
@@ -49,15 +54,15 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
           prompt: trimmedPrompt, // Can be empty string
           cwd: cwd.trim() || undefined,
           allowedTools: DEFAULT_ALLOWED_TOOLS,
-          model: selectedModel || undefined,
+          model: apiModelName || selectedModel || undefined,
           temperature: sendTemperature ? selectedTemperature : undefined
         }
       });
-      // Save selected model as default for future sessions
+      // Save API model name as default for future sessions (API expects name, not internal id)
       if (selectedModel) {
         sendEvent({
           type: "scheduler.default_model.set",
-          payload: { modelId: selectedModel }
+          payload: { modelId: apiModelName }
         } as ClientEvent);
       }
       // Save temperature as default for future sessions

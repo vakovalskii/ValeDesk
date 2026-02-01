@@ -374,9 +374,18 @@ function App() {
   const handleCreateRoleGroupTask = useCallback((payload: any) => {
     if (payload?.mode === "role_group") {
       const prompt = payload.roleGroupPrompt || "";
-      const model = payload.roleGroupModel || payload.tasks?.[0]?.model;
+      const state = useAppStore.getState();
+      const model =
+        payload.roleGroupModel ||
+        payload.tasks?.[0]?.model ||
+        state.schedulerDefaultModel ||
+        state.apiSettings?.model;
       if (!prompt.trim()) {
         setGlobalError("Role Group prompt is empty.");
+        return;
+      }
+      if (!model) {
+        setGlobalError("No default model. Set scheduler default model or API model in Settings.");
         return;
       }
       sendEvent({
