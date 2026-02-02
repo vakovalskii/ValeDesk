@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { MultiThreadTask, SessionInfo } from "../types";
+import type { MultiThreadTask, SessionInfo, TaskMode } from "../types";
 
 interface MultiThreadPanelProps {
   multiThreadTasks: Record<string, MultiThreadTask>;
@@ -28,6 +28,12 @@ export function MultiThreadPanel({
   const sortedTasks = useMemo(() => {
     return Object.values(multiThreadTasks).sort((a, b) => b.updatedAt - a.updatedAt);
   }, [multiThreadTasks]);
+
+  const getTaskModeLabel = (mode: TaskMode) => {
+    if (mode === "consensus") return "Consensus";
+    if (mode === "role_group") return "Role Group";
+    return "Different Tasks";
+  };
 
   if (sortedTasks.length === 0) return null;
 
@@ -102,7 +108,7 @@ export function MultiThreadPanel({
               {/* Mode badge */}
               <div className="flex items-center gap-1 mb-2">
                 <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-accent/10 text-accent">
-                  {task.mode === 'consensus' ? 'Consensus' : 'Different Tasks'}
+                  {getTaskModeLabel(task.mode)}
                 </span>
                 {task.shareWebCache && (
                   <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-ink-100 text-ink-600">

@@ -1335,8 +1335,27 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
       Ok(())
     }
 
+    // session.start - ensure model is set (use scheduler default if missing)
+    "session.start" => {
+      let payload = event.get("payload").cloned().unwrap_or(json!({}));
+      let model_empty = payload
+        .get("model")
+        .and_then(|v| v.as_str())
+        .map(|s| s.is_empty())
+        .unwrap_or(true);
+      if model_empty {
+        if let Ok(Some(model_id)) = state.db.get_scheduler_default_model() {
+          let mut payload = payload.as_object().cloned().unwrap_or_default();
+          payload.insert("model".to_string(), json!(model_id));
+          let event_with_model = json!({ "type": "session.start", "payload": payload });
+          return send_to_sidecar(app, state.inner(), &event_with_model);
+        }
+      }
+      send_to_sidecar(app, state.inner(), &event)
+    }
+
     // LLM operations - forward to sidecar
-    "session.start" | "session.stop" | "permission.response" => {
+    "session.stop" | "permission.response" => {
       send_to_sidecar(app, state.inner(), &event)
     }
 

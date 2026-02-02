@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StartSessionModal } from "./components/StartSessionModal";
 import { SessionEditModal } from "./components/SessionEditModal";
 import { TaskDialog } from "./components/TaskDialog";
+import { RoleGroupDialog } from "./components/RoleGroupDialog";
 import { SettingsModal } from "./components/SettingsModal";
 import { FileBrowser } from "./components/FileBrowser";
 import { PromptInput, usePromptActions } from "./components/PromptInput";
@@ -27,6 +28,7 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [showRoleGroupDialog, setShowRoleGroupDialog] = useState(false);
   const [showSessionEditModal, setShowSessionEditModal] = useState(false);
   const [apiSettings, setApiSettings] = useState<ApiSettings | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false); // Track if settings have been loaded from backend
@@ -369,6 +371,38 @@ function App() {
     setShowTaskDialog(false);
   }, [sendEvent]);
 
+  const handleCreateRoleGroupTask = useCallback((payload: any) => {
+    if (payload?.mode === "role_group") {
+      const prompt = payload.roleGroupPrompt || "";
+      const state = useAppStore.getState();
+      const model =
+        payload.roleGroupModel ||
+        payload.tasks?.[0]?.model ||
+        state.schedulerDefaultModel ||
+        state.apiSettings?.model;
+      if (!prompt.trim()) {
+        setGlobalError("Role Group prompt is empty.");
+        return;
+      }
+      if (!model) {
+        setGlobalError("No default model. Set scheduler default model or API model in Settings.");
+        return;
+      }
+      sendEvent({
+        type: "session.start",
+        payload: {
+          title: payload.title || "Role Group",
+          prompt,
+          cwd: payload.cwd,
+          model
+        }
+      });
+    } else {
+      sendEvent({ type: "task.create", payload });
+    }
+    setShowRoleGroupDialog(false);
+  }, [sendEvent, setGlobalError]);
+
   return (
     <div className="flex h-screen bg-surface">
       <Sidebar
@@ -377,6 +411,7 @@ function App() {
         onDeleteSession={handleDeleteSession}
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenTaskDialog={() => setShowTaskDialog(true)}
+        onOpenRoleGroupDialog={() => setShowRoleGroupDialog(true)}
         apiSettings={apiSettings}
       />
 
@@ -593,6 +628,17 @@ function App() {
           cwd={cwd}
           onClose={() => setShowTaskDialog(false)}
           onCreateTask={handleCreateTask}
+          apiSettings={apiSettings}
+          availableModels={availableModels}
+          llmModels={llmModels}
+        />
+      )}
+
+      {showRoleGroupDialog && (
+        <RoleGroupDialog
+          cwd={cwd}
+          onClose={() => setShowRoleGroupDialog(false)}
+          onCreateTask={handleCreateRoleGroupTask}
           apiSettings={apiSettings}
           availableModels={availableModels}
           llmModels={llmModels}

@@ -681,6 +681,23 @@ function handleTaskCreate(event: Extract<ClientEvent, { type: "task.create" }>) 
     webCache.clear();
   }
 
+  if (mode === "role_group") {
+    const roleGroupPrompt = payload.roleGroupPrompt || "";
+    const roleGroupModel = payload.roleGroupModel || payload.tasks?.[0]?.model || "gpt-4";
+    const thread = sessions.createSession({
+      title,
+      cwd,
+      allowedTools,
+      model: roleGroupModel,
+      threadId: "role-group",
+    });
+    handleSessionList();
+    if (roleGroupPrompt.trim()) {
+      startThread(thread.id, roleGroupPrompt);
+    }
+    return;
+  }
+
   const createdThreads: Array<{ threadId: string; model: string; status: "idle" | "running" | "completed" | "error"; createdAt: number; updatedAt: number }> = [];
   const threadIds: string[] = [];
   const now = Date.now();
@@ -702,11 +719,12 @@ function handleTaskCreate(event: Extract<ClientEvent, { type: "task.create" }>) 
       threadIds.push(thread.id);
       createdThreads.push({ threadId: thread.id, model: consensusModel, status: "idle", createdAt: now, updatedAt: now });
     }
-  } else if (mode === "different_tasks" && payload.tasks) {
+  } else if ((mode === "different_tasks" || mode === "role_group") && payload.tasks) {
     const tasks = payload.tasks as any[];
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
-      const threadTitle = `${title} [${i + 1}/${tasks.length}]`;
+      const roleLabel = t.roleName || t.roleId || `${i + 1}/${tasks.length}`;
+      const threadTitle = `${title} [${roleLabel}]`;
       const thread = sessions.createSession({
         title: threadTitle,
         cwd,
@@ -753,7 +771,7 @@ function handleTaskCreate(event: Extract<ClientEvent, { type: "task.create" }>) 
         startThread(threadId, consensusPrompt);
       }
     }
-  } else if (task.mode === "different_tasks" && task.tasks) {
+  } else if ((task.mode === "different_tasks" || task.mode === "role_group") && task.tasks) {
     for (let i = 0; i < task.threadIds.length; i++) {
       const threadId = task.threadIds[i];
       const prompt = task.tasks[i]?.prompt || "";
@@ -783,7 +801,7 @@ function handleTaskStart(event: Extract<ClientEvent, { type: "task.start" }>) {
         startThread(threadId, consensusPrompt);
       }
     }
-  } else if (task.mode === "different_tasks" && task.tasks) {
+  } else if ((task.mode === "different_tasks" || task.mode === "role_group") && task.tasks) {
     for (let i = 0; i < task.threadIds.length; i++) {
       const threadId = task.threadIds[i];
       const prompt = task.tasks[i]?.prompt || "";

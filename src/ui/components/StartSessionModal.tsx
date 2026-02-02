@@ -89,17 +89,17 @@ export function StartSessionModal({
         model.description?.toLowerCase().includes(modelSearch.toLowerCase())
       );
 
-  // Set default model: schedulerDefaultModel > apiSettings.model
+  // Set default model: schedulerDefaultModel (stored as API model name) > apiSettings.model
   useEffect(() => {
     if (!selectedModel) {
-      // Prioritize scheduler default model if set
       if (schedulerDefaultModel) {
-        onModelChange(schedulerDefaultModel);
+        const idByName = allAvailableModels.find(m => m.name === schedulerDefaultModel)?.id;
+        onModelChange(idByName ?? schedulerDefaultModel);
       } else if (apiSettings?.model) {
         onModelChange(apiSettings.model);
       }
     }
-  }, [apiSettings, selectedModel, onModelChange, schedulerDefaultModel]);
+  }, [apiSettings, selectedModel, onModelChange, schedulerDefaultModel, allAvailableModels]);
 
   // Set default temperature from scheduler defaults
   useEffect(() => {
@@ -195,21 +195,22 @@ export function StartSessionModal({
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
-            {/* Set as default for scheduled tasks */}
+            {/* Set as default for scheduled tasks (store API model name, not internal id) */}
             {selectedModel && (
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[10px] text-muted">
-                  {schedulerDefaultModel === selectedModel 
-                    ? "✓ Default for scheduled tasks" 
+                  {schedulerDefaultModel === (allAvailableModels.find(m => m.id === selectedModel)?.name ?? selectedModel)
+                    ? "✓ Default for scheduled tasks"
                     : ""}
                 </span>
-                {schedulerDefaultModel !== selectedModel && (
+                {schedulerDefaultModel !== (allAvailableModels.find(m => m.id === selectedModel)?.name ?? selectedModel) && (
                   <button
                     type="button"
                     onClick={() => {
+                      const apiModelName = allAvailableModels.find(m => m.id === selectedModel)?.name ?? selectedModel;
                       getPlatform().sendClientEvent({
                         type: "scheduler.default_model.set",
-                        payload: { modelId: selectedModel }
+                        payload: { modelId: apiModelName }
                       } as ClientEvent);
                     }}
                     className="text-[10px] text-accent hover:text-accent-hover transition-colors"
