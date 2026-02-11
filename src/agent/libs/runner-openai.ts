@@ -246,7 +246,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
         const guiSettings = loadApiSettings();
         
         if (!guiSettings || !guiSettings.baseUrl) {
-          throw new Error('API settings not configured. Please set Base URL (and API Key) in Settings (⚙️).');
+          throw new Error('API settings not configured. If you added an LLM Provider, make sure to select a provider model (with :: in the name) from the model dropdown. Otherwise, set Base URL and API Key in Settings (⚙️).');
         }
         
         if (!guiSettings.apiKey) {
@@ -758,10 +758,10 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           return;
         }
         
-        // Accumulate token usage
+        // Accumulate token usage (support both OpenAI and llama.cpp field names)
         if (streamMetadata.usage) {
-          totalInputTokens += streamMetadata.usage.prompt_tokens || 0;
-          totalOutputTokens += streamMetadata.usage.completion_tokens || 0;
+          totalInputTokens += streamMetadata.usage.prompt_tokens ?? streamMetadata.usage.input_tokens ?? 0;
+          totalOutputTokens += streamMetadata.usage.completion_tokens ?? streamMetadata.usage.output_tokens ?? 0;
         }
         
         // Log response to file

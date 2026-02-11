@@ -58,7 +58,7 @@ async function fetchOpenRouterModels(apiKey: string): Promise<PartialModel[]> {
     const models = (data.data || []).map((model: any) => ({
       id: model.id,
       name: `${model.name} (${model.id})`,
-      description: model.description || `${model.pricing.prompt}/1M tokens`,
+      description: model.description || (model.pricing ? `${model.pricing.prompt}/1M tokens` : ''),
       contextLength: model.context_length || undefined,
     }));
 

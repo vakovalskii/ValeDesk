@@ -278,10 +278,10 @@ const ToolUseCard = ({
   showIndicator = false,
   permissionRequest,
   onPermissionResult,
-  sessionId,
+  sessionId: _sessionId, // eslint-disable-line @typescript-eslint/no-unused-vars
   cwd
-}: { 
-  messageContent: MessageContent; 
+}: {
+  messageContent: MessageContent;
   showIndicator?: boolean;
   permissionRequest?: PermissionRequest;
   onPermissionResult?: (toolUseId: string, result: PermissionResult) => void;
