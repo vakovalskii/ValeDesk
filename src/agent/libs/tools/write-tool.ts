@@ -53,6 +53,27 @@ export async function executeWriteTool(
     };
   }
   
+  // Reject binary/structured formats that require special libraries
+  const BINARY_EXTENSIONS = [
+    '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt',
+    '.pdf', '.zip', '.tar', '.gz', '.rar', '.7z',
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg',
+    '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv',
+    '.exe', '.dll', '.so', '.dylib', '.wasm',
+    '.sqlite', '.db'
+  ];
+  const ext = args.file_path.toLowerCase().replace(/^.*(\.[^.]+)$/, '$1');
+  if (BINARY_EXTENSIONS.includes(ext)) {
+    const docFormats = ['.docx', '.doc', '.pdf', '.xlsx', '.xls', '.pptx', '.ppt'];
+    const hint = docFormats.includes(ext)
+      ? ` To create ${ext} files, use the \`execute_python\` tool with an appropriate library (e.g. python-docx for .docx, openpyxl for .xlsx, reportlab for .pdf), or use the \`load_skill\` tool to get instructions for the corresponding skill.`
+      : '';
+    return {
+      success: false,
+      error: `write_file only supports text-based formats. Cannot create binary file "${args.file_path}" (${ext}).${hint}`
+    };
+  }
+
   // Security check
   if (!context.isPathSafe(args.file_path)) {
     return {

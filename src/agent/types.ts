@@ -40,6 +40,7 @@ export type ApiSettings = {
   useGitForDiff?: boolean; // Use git for diff (true) or file snapshots (false)
   llmProviders?: LLMProviderSettings; // LLM providers and models configuration
   roleGroupSettings?: RoleGroupSettings; // Default role group configuration
+  requestTimeoutMs?: number; // API request timeout in ms (default: 300000 = 5 min)
 };
 
 export type ModelInfo = {

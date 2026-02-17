@@ -339,7 +339,8 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       };
 
       // Initialize OpenAI client with custom fetch and timeout
-      const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for long operations
+      const guiSettingsForTimeout = loadApiSettings();
+      const REQUEST_TIMEOUT_MS = guiSettingsForTimeout?.requestTimeoutMs || 5 * 60 * 1000; // default 5 minutes
       const client = new OpenAI({
         apiKey: apiKey || 'dummy-key',
         baseURL: baseURL,
