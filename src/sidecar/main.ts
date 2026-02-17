@@ -188,38 +188,69 @@ async function callModelForSummary(
 ): Promise<string> {
   if (!session) throw new Error('No session');
 
-  let apiKey: string;
-  let baseURL: string;
-  let modelName: string;
+  let apiKey = '';
+  let baseURL = '';
+  let modelName = '';
 
+  const llmSettings = llmProviderSettings || loadLLMProviderSettings();
   const isLLMProviderModel = session.model?.includes('::');
+  let resolved = false;
 
   if (isLLMProviderModel && session.model) {
     const [providerId, modelId] = session.model.split('::');
-    // Prefer settings passed from Rust DB, fallback to JSON file
-    const llmSettings = llmProviderSettings || loadLLMProviderSettings();
-    if (!llmSettings) throw new Error('LLM Provider settings not found');
-    const provider = llmSettings.providers.find((p: any) => p.id === providerId);
-    if (!provider) throw new Error(`Provider ${providerId} not found`);
-    apiKey = provider.apiKey;
-    if (provider.type === 'openrouter') {
-      baseURL = 'https://openrouter.ai/api/v1';
-    } else if (provider.type === 'zai') {
-      const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
-      baseURL = `https://api.z.ai/${prefix}/v4`;
-    } else {
-      baseURL = provider.baseUrl || '';
+    if (llmSettings) {
+      const provider = llmSettings.providers.find((p: any) => p.id === providerId);
+      if (provider) {
+        apiKey = provider.apiKey;
+        if (provider.type === 'openrouter') {
+          baseURL = 'https://openrouter.ai/api/v1';
+        } else if (provider.type === 'zai') {
+          const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
+          baseURL = `https://api.z.ai/${prefix}/v4`;
+        } else {
+          baseURL = provider.baseUrl || '';
+        }
+        modelName = modelId;
+        resolved = true;
+      }
     }
-    modelName = modelId;
-  } else {
-    // Prefer settings passed from Rust DB, fallback to JSON file
+  }
+
+  // Fallback: try legacy API settings
+  if (!resolved) {
     const guiSettings = apiSettingsOverride || loadApiSettings();
-    if (!guiSettings || !guiSettings.baseUrl || !guiSettings.model || !guiSettings.apiKey) {
-      throw new Error('API settings not configured');
+    if (guiSettings?.baseUrl && guiSettings?.model && guiSettings?.apiKey) {
+      apiKey = guiSettings.apiKey;
+      baseURL = guiSettings.baseUrl;
+      modelName = guiSettings.model;
+      resolved = true;
     }
-    apiKey = guiSettings.apiKey;
-    baseURL = guiSettings.baseUrl;
-    modelName = guiSettings.model;
+  }
+
+  // Fallback: use first available enabled provider + model
+  if (!resolved && llmSettings) {
+    for (const provider of llmSettings.providers) {
+      if (!provider.enabled) continue;
+      const providerModel = llmSettings.models?.find((m: any) => m.providerId === provider.id && m.enabled);
+      if (!providerModel) continue;
+      apiKey = provider.apiKey;
+      if (provider.type === 'openrouter') {
+        baseURL = 'https://openrouter.ai/api/v1';
+      } else if (provider.type === 'zai') {
+        const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
+        baseURL = `https://api.z.ai/${prefix}/v4`;
+      } else {
+        baseURL = provider.baseUrl || '';
+      }
+      modelName = providerModel.name || providerModel.id;
+      resolved = true;
+      writeOut({ type: "log", level: "info", message: `[Compact] Session provider not found, falling back to ${provider.name}/${modelName}`, context: {} });
+      break;
+    }
+  }
+
+  if (!resolved) {
+    throw new Error('No LLM provider or API settings available for summarization');
   }
 
   const OpenAI = (await import('openai')).default;
