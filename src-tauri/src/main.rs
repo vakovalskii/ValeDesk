@@ -580,6 +580,19 @@ fn start_sidecar(app: tauri::AppHandle, sidecar_state: &SidecarState) -> Result<
                   continue; // Don't emit to frontend
                 }
                 
+                // Intercept session.list from sidecar - replace with full DB list
+                // Sidecar only has in-memory sessions; DB has the complete set
+                if event_type == "session.list" {
+                  let state: tauri::State<'_, AppState> = app_handle.state();
+                  if let Ok(sessions) = state.db.list_sessions() {
+                    let _ = emit_server_event_app(&app_handle, &json!({
+                      "type": "session.list",
+                      "payload": { "sessions": sessions }
+                    }));
+                  }
+                  continue; // Don't forward sidecar's partial list
+                }
+                
                 // Handle scheduler.request events from sidecar
                 if event_type == "scheduler.request" {
                   if let Some(payload) = event.get("payload") {
