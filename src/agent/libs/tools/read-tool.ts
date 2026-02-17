@@ -79,6 +79,17 @@ export async function executeReadTool(
     };
   }
 
+  // Block reading skill script files — they should be executed, not read
+  const normalizedPath = args.file_path.replace(/\\/g, '/');
+  if (normalizedPath.match(/\/skills\/[^/]+\/scripts\//) || normalizedPath.match(/^skills\/[^/]+\/scripts\//)) {
+    return {
+      success: false,
+      error: `🚫 Do not read skill script source code. Execute scripts directly via bash:\n\n` +
+             `bash: cd <skill_directory> && python scripts/<script_name>.py [args]\n\n` +
+             `Use \`load_skill\` with operation "get" to read the skill's SKILL.md instructions.`
+    };
+  }
+
   // Security check
   if (!context.isPathSafe(args.file_path)) {
     return {

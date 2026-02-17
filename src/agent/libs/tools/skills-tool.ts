@@ -3,7 +3,6 @@ import { getEnabledSkills, loadSkillsSettings, Skill } from "../skills-store.js"
 import { 
   readSkillContent, 
   listSkillFiles, 
-  readSkillFile,
   getSkillPath
 } from "../skills-loader.js";
 
@@ -11,30 +10,27 @@ export const SkillsToolDefinition = {
   type: "function" as const,
   function: {
     name: "load_skill",
-    description: `Load a skill to get detailed instructions, scripts, and resources. 
+    description: `Load a skill to get instructions and discover available scripts.
 Use this when you need to perform a specialized task and want to follow best practices.
-Skills provide step-by-step instructions, example code, and guidelines for specific tasks.
+Skills provide step-by-step instructions and ready-to-run scripts.
 
 Available operations:
 - "get": Get the full SKILL.md content with instructions
-- "list_files": List all files in the skill directory  
-- "read_file": Read a specific file from the skill (scripts, references, etc.)
-- "list_available": List all enabled skills`,
+- "list_files": List all files in the skill directory
+- "list_available": List all enabled skills
+
+IMPORTANT: Do NOT read skill script source code. Execute scripts directly via bash (e.g. python <skill_dir>/scripts/foo.py).`,
     parameters: {
       type: "object" as const,
       properties: {
         operation: {
           type: "string",
-          enum: ["get", "list_files", "read_file", "list_available"],
+          enum: ["get", "list_files", "list_available"],
           description: "The operation to perform"
         },
         skill_id: {
           type: "string",
-          description: "The skill identifier (required for get, list_files, read_file)"
-        },
-        file_path: {
-          type: "string",
-          description: "Path to file within skill directory (required for read_file operation)"
+          description: "The skill identifier (required for get, list_files)"
         }
       },
       required: ["operation"]
@@ -51,9 +47,8 @@ export class SkillsTool extends BaseTool {
   
   async execute(
     args: { 
-      operation: "get" | "list_files" | "read_file" | "list_available";
+      operation: "get" | "list_files" | "list_available";
       skill_id?: string;
-      file_path?: string;
     },
     context: ToolExecutionContext
   ): Promise<ToolResult> {
@@ -76,17 +71,8 @@ export class SkillsTool extends BaseTool {
           }
           return this.listSkillFiles(args.skill_id, cwd);
           
-        case "read_file":
-          if (!args.skill_id) {
-            return { success: false, error: "skill_id is required for 'read_file' operation" };
-          }
-          if (!args.file_path) {
-            return { success: false, error: "file_path is required for 'read_file' operation" };
-          }
-          return this.readSkillFile(args.skill_id, args.file_path, cwd);
-          
         default:
-          return { success: false, error: `Unknown operation: ${args.operation}` };
+          return { success: false, error: `Unknown operation: ${args.operation}. Use "get", "list_files", or "list_available".` };
       }
     } catch (error: any) {
       return {
@@ -174,7 +160,7 @@ export class SkillsTool extends BaseTool {
       
       return {
         success: true,
-        output: `## Files in skill "${skillId}":\n\n**Skill directory:** \`${skillDir}\`\n\n${filesList}\n\n**To read these files, use this tool again with:**\n\`\`\`json\n{ "operation": "read_file", "skill_id": "${skillId}", "file_path": "<filename>" }\n\`\`\`\n\n⚠️ Do NOT use the regular \`read_file\` tool - these files are inside the skill directory.\n⚠️ All relative paths in scripts/config must be resolved relative to \`${skillDir}\`, NOT the user's working directory.`
+        output: `## Files in skill "${skillId}":\n\n**Skill directory:** \`${skillDir}\`\n\n${filesList}\n\n⚠️ **Do NOT read skill script source code.** Execute scripts directly via bash:\n\`\`\`bash\ncd ${skillDir} && python scripts/<script_name>.py [args]\n\`\`\`\n\n⚠️ All relative paths must be resolved relative to \`${skillDir}\`, NOT the user's working directory.`
       };
     } catch (error: any) {
       return {
@@ -184,32 +170,6 @@ export class SkillsTool extends BaseTool {
     }
   }
   
-  private async readSkillFile(skillId: string, filePath: string, cwd?: string): Promise<ToolResult> {
-    const enabledSkills = getEnabledSkills();
-    const skill = enabledSkills.find((s: Skill) => s.id === skillId);
-    
-    if (!skill) {
-      return {
-        success: false,
-        error: `Skill "${skillId}" is not enabled or not found.`
-      };
-    }
-    
-    try {
-      const content = await readSkillFile(skillId, filePath, cwd);
-      const skillDir = await getSkillPath(skillId, cwd);
-      
-      return {
-        success: true,
-        output: `## File: ${filePath}\n\n**Full path:** \`${skillDir}/${filePath}\`\n\n\`\`\`\n${content}\n\`\`\``
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error: `Failed to read file: ${error.message}`
-      };
-    }
-  }
 }
 
 /**
@@ -242,10 +202,9 @@ ${skillsList}
 1. When you recognize a task that matches a skill, call \`load_skill\` with operation "get" and the skill_id
 2. Follow the instructions in the skill's SKILL.md
 3. Use operation "list_files" to see available scripts and references
-4. Use operation "read_file" to read specific scripts or reference files
+4. **NEVER read skill script source code** — execute scripts directly via \`bash\` (e.g. \`cd <skill_dir> && python scripts/foo.py\`)
 5. When SKILL.md references relative paths (e.g., \`scripts/foo.py\`), resolve them relative to the **skill directory** shown in the output, NOT relative to the user's working directory
-6. If \`scripts/\` exist in the skill, prefer running or patching them instead of retyping large code blocks
-7. NEVER read .env files directly — if a skill needs API keys or secrets, ask the user to set them as environment variables
+6. NEVER read .env files directly — if a skill needs API keys or secrets, ask the user to set them as environment variables
 
 Skills help you follow best practices and produce consistent, high-quality results.
 `;
