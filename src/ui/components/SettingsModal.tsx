@@ -1657,7 +1657,7 @@ function MemoryModeTab({
           <div className="flex-1">
             <span className="block text-sm font-medium text-ink-700">Enable Memory</span>
             <p className="mt-1 text-xs text-ink-500">
-              Allow agent to store and recall information in memory.md (stored in ~/.valera/)
+              Allow agent to store and recall information in memory.md
             </p>
           </div>
           <div className="relative">
@@ -1701,7 +1701,7 @@ function MemoryModeTab({
               className="w-full h-32 px-3 py-2 text-xs border border-ink-900/20 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all resize-none font-mono"
             />
             <p className="mt-1 text-xs text-ink-500">
-              File: <code className="bg-ink-50 px-1 py-0.5 rounded">~/.valera/memory.md</code>
+              File: <code className="bg-ink-50 px-1 py-0.5 rounded">~/Library/Application Support/ValeDesk/memory.md</code>
             </p>
           </div>
         )}

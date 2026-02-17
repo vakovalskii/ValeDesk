@@ -57,6 +57,7 @@ interface AppState {
   schedulerDefaultModel: string | null;
   schedulerDefaultTemperature: number | null;
   schedulerDefaultSendTemperature: boolean | null;
+  compactingSessionId: string | null;
 
   setPrompt: (prompt: string) => void;
   setCwd: (cwd: string) => void;
@@ -107,6 +108,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   schedulerDefaultModel: null,
   schedulerDefaultTemperature: null,
   schedulerDefaultSendTemperature: null,
+  compactingSessionId: null,
 
   setPrompt: (prompt) => set({ prompt }),
   setCwd: (cwd) => set({ cwd }),
@@ -713,6 +715,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         const { settings } = event.payload;
         set({ apiSettings: settings });
         console.log('[AppStore] Settings loaded:', settings);
+        break;
+      }
+
+      case "session.compacting": {
+        const { sessionId } = event.payload;
+        set({ compactingSessionId: sessionId });
+        break;
+      }
+
+      case "session.compacted": {
+        const { newSessionId } = event.payload;
+        // Clear compacting state
+        set({ compactingSessionId: null });
+        // Navigate to the new (compacted) session
+        get().setActiveSessionId(newSessionId);
         break;
       }
 

@@ -189,7 +189,8 @@ fn emit_server_event_app(app: &tauri::AppHandle, event: &Value) -> Result<(), St
 }
 
 fn memory_path() -> Result<PathBuf, String> {
-  Ok(home_dir()?.join(".valera").join("memory.md"))
+  // Use the same path as the agent tool: ~/Library/Application Support/ValeDesk/memory.md
+  Ok(app_data_dir()?.join("memory.md"))
 }
 
 /// Handle scheduler.request events from sidecar - execute scheduler operations
@@ -1933,58 +1934,44 @@ fn get_old_app_dirs() -> Vec<PathBuf> {
   dirs
 }
 
-/// Migrate ~/.localdesk/ to ~/.valera/
-fn migrate_dot_localdesk() {
+/// Migrate old memory locations to app_data_dir
+fn migrate_old_memory() {
+  let app_dir = match app_data_dir() {
+    Ok(d) => d,
+    Err(_) => return,
+  };
+  
+  let new_memory = app_dir.join("memory.md");
+  
+  // Skip if app_data_dir already has memory.md
+  if new_memory.exists() {
+    return;
+  }
+  
   let home = match home_dir() {
     Ok(h) => h,
     Err(_) => return,
   };
   
-  let old_dir = home.join(".localdesk");
-  let new_dir = home.join(".valera");
+  // Try to migrate from old locations in order of priority
+  let old_locations = [
+    home.join(".valera").join("memory.md"),
+    home.join(".localdesk").join("memory.md"),
+  ];
   
-  // Skip if old dir doesn't exist
-  if !old_dir.exists() {
-    return;
-  }
-  
-  // Skip if new dir already has memory.md (already migrated)
-  let new_memory = new_dir.join("memory.md");
-  if new_memory.exists() {
-    return;
-  }
-  
-  eprintln!("[migration] Found old ~/.localdesk/ data");
-  eprintln!("[migration] Migrating to ~/.valera/");
-  
-  // Create new directory
-  if let Err(e) = fs::create_dir_all(&new_dir) {
-    eprintln!("[migration] Failed to create ~/.valera/: {e}");
-    return;
-  }
-  
-  // Copy memory.md if exists
-  let old_memory = old_dir.join("memory.md");
-  if old_memory.exists() {
-    if let Err(e) = fs::copy(&old_memory, &new_memory) {
-      eprintln!("[migration] Failed to copy memory.md: {e}");
-    } else {
-      eprintln!("[migration] Copied memory.md");
+  for old_memory in old_locations {
+    if old_memory.exists() {
+      eprintln!("[migration] Found old memory at {}", old_memory.display());
+      eprintln!("[migration] Migrating to {}", new_memory.display());
+      
+      if let Err(e) = fs::copy(&old_memory, &new_memory) {
+        eprintln!("[migration] Failed to copy memory.md: {e}");
+      } else {
+        eprintln!("[migration] Memory migration complete!");
+      }
+      return; // Stop after first successful migration
     }
   }
-  
-  // Copy logs directory if exists
-  let old_logs = old_dir.join("logs");
-  let new_logs = new_dir.join("logs");
-  if old_logs.exists() && old_logs.is_dir() {
-    if let Err(e) = copy_dir_recursive(&old_logs, &new_logs) {
-      eprintln!("[migration] Failed to copy logs: {e}");
-    } else {
-      eprintln!("[migration] Copied logs directory");
-    }
-  }
-  
-  eprintln!("[migration] ~/.valera/ migration complete!");
 }
 
 /// Recursively copy a directory
@@ -2007,8 +1994,8 @@ fn main() {
   // Migrate data from old LocalDesk directory if needed
   migrate_from_localdesk();
   
-  // Migrate ~/.localdesk/ to ~/.valera/
-  migrate_dot_localdesk();
+  // Migrate old memory locations to app_data_dir
+  migrate_old_memory();
   
   // Initialize database
   let user_data_dir = app_data_dir().expect("Failed to get app data dir");

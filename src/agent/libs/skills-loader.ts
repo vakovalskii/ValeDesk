@@ -3,28 +3,29 @@ import * as path from "path";
 import { homedir } from "os";
 import { Skill, SkillMetadata, loadSkillsSettings, updateSkillsList } from "./skills-store.js";
 
-const VALERA_DIR = ".valera";
+const WORKSPACE_DIR = ".valedesk";
 const SKILLS_SUBDIR = "skills";
+const GLOBAL_APP_DIR = path.join("Library", "Application Support", "ValeDesk");
 
 /**
  * Get skills directory path.
  * If cwd is provided, use {cwd}/skills/  (project-local)
- * Otherwise, use global ~/.valera/skills/
+ * Otherwise, use global ~/Library/Application Support/ValeDesk/skills/
  */
 function getSkillsDir(cwd?: string): string {
   if (cwd && cwd.trim()) {
     // Project-local: {cwd}/skills/
     return path.join(cwd, SKILLS_SUBDIR);
   }
-  // Global fallback: ~/.valera/skills/
-  return path.join(homedir(), VALERA_DIR, SKILLS_SUBDIR);
+  // Global fallback: ~/Library/Application Support/ValeDesk/skills/
+  return path.join(homedir(), GLOBAL_APP_DIR, SKILLS_SUBDIR);
 }
 
 /**
  * Get global skills directory (fallback when no cwd)
  */
 function getGlobalSkillsDir(): string {
-  return path.join(homedir(), VALERA_DIR, SKILLS_SUBDIR);
+  return path.join(homedir(), GLOBAL_APP_DIR, SKILLS_SUBDIR);
 }
 
 interface GitHubContent {
@@ -203,7 +204,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
 /**
  * Download and cache a skill's full contents
  * @param skillId - The skill ID to download
- * @param cwd - Optional working directory. If provided, skill is saved to {cwd}/.valera/skills/
+ * @param cwd - Optional working directory. If provided, skill is saved to {cwd}/skills/
  */
 export async function downloadSkill(skillId: string, cwd?: string): Promise<string> {
   const settings = loadSkillsSettings();

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ClientEvent } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { SpinnerIcon } from "./SpinnerIcon";
 
 const DEFAULT_ALLOWED_TOOLS = "Read,Edit,Bash";
 const MAX_ROWS = 12;
@@ -100,6 +101,18 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
 export function PromptInput({ sendEvent }: PromptInputProps) {
   const { prompt, setPrompt, isRunning, handleSend, handleStop } = usePromptActions(sendEvent);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const activeSessionId = useAppStore((state) => state.activeSessionId);
+  const sessions = useAppStore((state) => state.sessions);
+  const compactingSessionId = useAppStore((state) => state.compactingSessionId);
+
+  const activeSession = activeSessionId ? sessions[activeSessionId] : undefined;
+  const hasHistory = (activeSession?.messages?.length ?? 0) > 1;
+  const isCompacting = compactingSessionId === activeSessionId;
+
+  const handleCompact = useCallback(() => {
+    if (!activeSessionId || isRunning || isCompacting) return;
+    sendEvent({ type: "session.compact", payload: { sessionId: activeSessionId } });
+  }, [activeSessionId, isRunning, isCompacting, sendEvent]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter to send (without Shift)
@@ -153,6 +166,25 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
             onInput={handleInput}
             ref={promptRef}
           />
+          {hasHistory && !isRunning && (
+            <button
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${isCompacting ? "border-accent/40 text-accent cursor-not-allowed opacity-60" : "border-ink-900/15 text-muted hover:border-accent/40 hover:text-accent"}`}
+              onClick={handleCompact}
+              disabled={isCompacting}
+              title="Compact conversation — summarize history into a new session"
+              aria-label="Compact conversation"
+            >
+              {isCompacting ? (
+                <SpinnerIcon className="h-4 w-4" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 3H5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 15H5" />
+                </svg>
+              )}
+            </button>
+          )}
           <button
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${isRunning ? "bg-error text-white hover:bg-error/90" : "bg-accent text-white hover:bg-accent-hover"}`}
             onClick={isRunning ? handleStop : handleSend}

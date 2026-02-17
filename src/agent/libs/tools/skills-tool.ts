@@ -139,7 +139,7 @@ export class SkillsTool extends BaseTool {
     }
     
     try {
-      // Pass cwd to download skill to workspace/.valera/skills/
+      // Pass cwd to download skill to workspace/skills/
       const content = await readSkillContent(skillId, cwd);
       
       return {

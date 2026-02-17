@@ -63,6 +63,20 @@ function broadcast(event: ServerEvent) {
 }
 
 function emit(event: ServerEvent) {
+  // Handle auto-compact request emitted by the runner on context length exceeded
+  if ((event as any).type === "session.compact_needed") {
+    const { sessionId, nextPrompt } = (event as any).payload;
+    // Find the window currently subscribed to this session
+    const windowIds = sessionManager.getSessionWindows(sessionId);
+    const windowId = windowIds[0] ?? BrowserWindow.getAllWindows()[0]?.id;
+    if (windowId !== undefined) {
+      performCompact(sessionId, windowId, nextPrompt).catch((e) => {
+        console.error('[Compact] Auto-compact error:', e);
+      });
+    }
+    return;
+  }
+
   const isStreamEventMessage =
     event.type === "stream.message" &&
     (event.payload.message as any)?.type === "stream_event";
@@ -274,7 +288,199 @@ Format your response clearly with sections.`;
   }
 }
 
+/**
+ * Makes a single-shot API call to the model using the session's configured provider.
+ * Used for summarization (compact) operations.
+ */
+async function callModelForSummary(session: ReturnType<typeof sessions.getSession>, conversationText: string): Promise<string> {
+  if (!session) throw new Error('No session');
+
+  let apiKey: string;
+  let baseURL: string;
+  let modelName: string;
+
+  const isLLMProviderModel = session.model?.includes('::');
+
+  if (isLLMProviderModel && session.model) {
+    const [providerId, modelId] = session.model.split('::');
+    const llmSettings = loadLLMProviderSettings();
+    if (!llmSettings) throw new Error('LLM Provider settings not found');
+    const provider = llmSettings.providers.find(p => p.id === providerId);
+    if (!provider) throw new Error(`Provider ${providerId} not found`);
+    apiKey = provider.apiKey;
+    if (provider.type === 'openrouter') {
+      baseURL = 'https://openrouter.ai/api/v1';
+    } else if (provider.type === 'zai') {
+      const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
+      baseURL = `https://api.z.ai/${prefix}/v4`;
+    } else {
+      baseURL = provider.baseUrl || '';
+    }
+    modelName = modelId;
+  } else {
+    const guiSettings = loadApiSettings();
+    if (!guiSettings || !guiSettings.baseUrl || !guiSettings.model || !guiSettings.apiKey) {
+      throw new Error('API settings not configured');
+    }
+    apiKey = guiSettings.apiKey;
+    baseURL = guiSettings.baseUrl;
+    modelName = guiSettings.model;
+  }
+
+  const OpenAI = (await import('openai')).default;
+  const client = new OpenAI({ apiKey: apiKey || 'dummy-key', baseURL, dangerouslyAllowBrowser: false, timeout: 60_000, maxRetries: 1 });
+
+  const systemPrompt = `You are a conversation summarizer. Your task is to create a concise summary of the conversation history provided. The summary should:
+- Capture the key topics discussed and decisions made
+- Preserve important context, facts, code snippets, and file paths mentioned
+- Be structured as bullet points grouped by topic
+- Be compact but comprehensive enough to continue the conversation
+
+Output ONLY the summary, no preamble.`;
+
+  const completion = await client.chat.completions.create({
+    model: modelName,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Please summarize this conversation history:\n\n${conversationText}` }
+    ],
+    stream: false
+  });
+
+  return (completion.choices[0]?.message?.content || '').trim();
+}
+
+/**
+ * Performs a compact operation:
+ * 1. Gets the full conversation history of the given session
+ * 2. Calls the model to summarize it
+ * 3. Creates a new session pre-populated with the summary as context
+ * 4. Emits session.compacted event so UI can navigate to the new session
+ * If nextPrompt is provided (auto-compact case), it will be run in the new session automatically.
+ */
+async function performCompact(sessionId: string, windowId: number, nextPrompt?: string): Promise<void> {
+  const session = sessions.getSession(sessionId);
+  if (!session) {
+    console.error('[Compact] Session not found:', sessionId);
+    return;
+  }
+
+  // Signal compacting is in progress
+  sessionManager.emitToWindow(windowId, {
+    type: "session.compacting",
+    payload: { sessionId }
+  });
+
+  // Get full history
+  const history = sessions.getSessionHistory(sessionId);
+  if (!history || history.messages.length === 0) {
+    console.warn('[Compact] No messages to compact for session:', sessionId);
+    return;
+  }
+
+  // Format history as plain text for summarization
+  const lines: string[] = [];
+  for (const msg of history.messages) {
+    if (msg.type === 'user_prompt') {
+      const text = (msg as any).prompt || '';
+      if (text.trim()) lines.push(`User: ${text}`);
+    } else if (msg.type === 'text') {
+      const text = (msg as any).text || '';
+      if (text.trim()) lines.push(`Assistant: ${text}`);
+    }
+  }
+  const conversationText = lines.join('\n\n');
+
+  if (!conversationText.trim()) {
+    console.warn('[Compact] No meaningful content to compact for session:', sessionId);
+    return;
+  }
+
+  // Summarize
+  let summary = '';
+  try {
+    console.log('[Compact] Calling model to summarize session:', sessionId);
+    summary = await callModelForSummary(session, conversationText);
+    console.log('[Compact] Summary generated, length:', summary.length);
+  } catch (e) {
+    console.error('[Compact] Failed to generate summary:', e);
+    summary = `[Summary generation failed. Original conversation had ${lines.length} messages.]`;
+  }
+
+  // Create new session with same settings
+  const newSession = sessions.createSession({
+    title: `${session.title || 'Chat'} (compacted)`,
+    cwd: session.cwd,
+    allowedTools: session.allowedTools,
+    model: session.model,
+    temperature: session.temperature
+  });
+
+  // Record the summary as the first user message (context carrier)
+  const summaryUserMessage = `[Previous conversation summary]\n\n${summary}`;
+  sessions.recordMessage(newSession.id, { type: 'user_prompt', prompt: summaryUserMessage });
+
+  // Broadcast updated session list
+  broadcast({
+    type: "session.list",
+    payload: { sessions: sessions.listSessions() }
+  });
+
+  // Notify requesting window about the compact result
+  sessionManager.emitToWindow(windowId, {
+    type: "session.compacted",
+    payload: { oldSessionId: sessionId, newSessionId: newSession.id }
+  });
+
+  // Auto-compact case: re-run the prompt that caused the error in the new session
+  if (nextPrompt && nextPrompt.trim()) {
+    const ns = sessions.getSession(newSession.id);
+    if (ns) {
+      sessions.updateSession(newSession.id, { status: 'running', lastPrompt: nextPrompt });
+
+      sessionManager.emitToWindow(windowId, {
+        type: "session.status",
+        payload: { sessionId: newSession.id, status: 'running', title: newSession.title, cwd: newSession.cwd, model: newSession.model }
+      });
+
+      emit({
+        type: "stream.user_prompt",
+        payload: { sessionId: newSession.id, prompt: nextPrompt }
+      });
+
+      selectRunner(ns.model)({
+        prompt: nextPrompt,
+        session: ns,
+        resumeSessionId: undefined,
+        onEvent: emit,
+        onSessionUpdate: (updates) => { sessions.updateSession(newSession.id, updates); }
+      }).then((handle) => {
+        runnerHandles.set(newSession.id, handle);
+      }).catch((error) => {
+        sessions.updateSession(newSession.id, { status: 'error' });
+        emit({
+          type: "session.status",
+          payload: { sessionId: newSession.id, status: 'error', title: ns.title, error: String(error) }
+        });
+      });
+    }
+  }
+}
+
 export async function handleClientEvent(event: ClientEvent, windowId: number) {
+  if (event.type === "session.compact") {
+    const { sessionId } = event.payload;
+    // Run async without blocking
+    performCompact(sessionId, windowId).catch((e) => {
+      console.error('[Compact] performCompact error:', e);
+      sessionManager.emitToWindow(windowId, {
+        type: "runner.error",
+        payload: { message: `Compact failed: ${e}` }
+      });
+    });
+    return;
+  }
+
   if (event.type === "session.list") {
     sessionManager.emitToWindow(windowId, {
       type: "session.list",

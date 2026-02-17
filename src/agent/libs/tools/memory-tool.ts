@@ -11,15 +11,15 @@ export interface MemoryToolParams {
   section?: string; // Optional: specific section to delete
 }
 
-const VALERA_DIR = '.valera';
+const VALEDESK_DIR = join('Library', 'Application Support', 'ValeDesk');
 const MEMORY_FILE = 'memory.md';
 
 /**
  * Get memory file path.
- * Always uses global ~/.valera/memory.md for user-level memory.
+ * Always uses global ~/Library/Application Support/ValeDesk/memory.md for user-level memory.
  */
 function getMemoryPath(_cwd?: string): string {
-  return join(homedir(), VALERA_DIR, MEMORY_FILE);
+  return join(homedir(), VALEDESK_DIR, MEMORY_FILE);
 }
 
 export const MemoryToolDefinition = {
@@ -28,7 +28,7 @@ export const MemoryToolDefinition = {
     name: 'manage_memory',
     description: `Manage long-term memory by storing important information in memory.md file.
     
-Memory is stored globally in ~/.valera/memory.md and persists across all projects and sessions.
+Memory is stored globally in ~/Library/Application Support/ValeDesk/memory.md and persists across all projects and sessions.
 
 **BE PROACTIVE**: You should automatically remember important information even if not explicitly asked:
 

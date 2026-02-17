@@ -153,6 +153,8 @@ export type ServerEvent =
   | { type: "session.list"; payload: { sessions: SessionInfo[] } }
   | { type: "session.history"; payload: { sessionId: string; threadId?: string; status: SessionStatus; messages: StreamMessage[]; inputTokens?: number; outputTokens?: number; todos?: TodoItem[]; model?: string; fileChanges?: FileChange[]; hasMore?: boolean; nextCursor?: number; page?: "initial" | "prepend" } }
   | { type: "session.deleted"; payload: { sessionId: string } }
+  | { type: "session.compacting"; payload: { sessionId: string } }
+  | { type: "session.compacted"; payload: { oldSessionId: string; newSessionId: string } }
   | { type: "thread.list"; payload: { sessionId: string; threads: ThreadInfo[] } }
   | { type: "task.created"; payload: { task: MultiThreadTask; threads: ThreadInfo[] } }
   | { type: "task.status"; payload: { taskId: string; status: 'created' | 'running' | 'completed' | 'error' } }
@@ -254,6 +256,7 @@ export type ClientEvent =
   | { type: "session.pin"; payload: { sessionId: string; isPinned: boolean } }
   | { type: "session.update-cwd"; payload: { sessionId: string; cwd: string } }
   | { type: "session.update"; payload: { sessionId: string; model?: string; temperature?: number; sendTemperature?: boolean; title?: string } }
+  | { type: "session.compact"; payload: { sessionId: string } }
   | { type: "session.list" }
   | { type: "session.history"; payload: { sessionId: string; threadId?: string; limit?: number; before?: number } }
   | { type: "permission.response"; payload: { sessionId: string; toolUseId: string; result: PermissionResult } }
