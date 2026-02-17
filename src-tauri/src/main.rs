@@ -1461,6 +1461,46 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
       }
     }
 
+    // session.compact - enrich with session data and messages from DB for sidecar to restore
+    "session.compact" => {
+      let payload = event.get("payload").ok_or_else(|| "[session.compact] missing payload".to_string())?;
+      let session_id = payload.get("sessionId").and_then(|v| v.as_str())
+        .ok_or_else(|| "[session.compact] missing sessionId".to_string())?;
+
+      eprintln!("[session.compact] Looking up session: {}", session_id);
+
+      match state.db.get_session_history(session_id) {
+        Ok(Some(history)) => {
+          eprintln!("[session.compact] Found session: title='{}', messages={}", 
+            history.session.title, history.messages.len());
+
+          let enriched_event = json!({
+            "type": "session.compact",
+            "payload": {
+              "sessionId": session_id,
+              "sessionData": {
+                "title": history.session.title,
+                "cwd": history.session.cwd,
+                "model": history.session.model,
+                "allowedTools": history.session.allowed_tools,
+                "temperature": history.session.temperature
+              },
+              "messages": history.messages
+            }
+          });
+          send_to_sidecar(app, state.inner(), &enriched_event)
+        }
+        Ok(None) => {
+          eprintln!("[session.compact] Session {} NOT FOUND in DB!", session_id);
+          send_to_sidecar(app, state.inner(), &event)
+        }
+        Err(e) => {
+          eprintln!("[session.compact] DB error: {}", e);
+          send_to_sidecar(app, state.inner(), &event)
+        }
+      }
+    }
+
     // Settings - handled in Rust DB (with fallback to sidecar for migration)
     "settings.get" => {
       match state.db.get_api_settings() {

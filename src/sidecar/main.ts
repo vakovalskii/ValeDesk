@@ -1234,7 +1234,28 @@ async function handleClientEvent(event: ClientEvent) {
       handleSkillsSetMarketplace(event);
       return;
     case "session.compact": {
-      const { sessionId } = (event as any).payload;
+      const { sessionId, sessionData, messages: historyMessages } = (event as any).payload;
+      
+      // Restore session in memory if not present (same pattern as session.continue)
+      let compactSession = sessions.getSession(sessionId);
+      if (!compactSession && sessionData) {
+        compactSession = sessions.createSession({
+          id: sessionId,
+          title: sessionData.title || "Restored Session",
+          cwd: sessionData.cwd,
+          model: sessionData.model,
+          allowedTools: sessionData.allowedTools,
+          temperature: sessionData.temperature,
+        });
+        if (historyMessages && Array.isArray(historyMessages)) {
+          for (const msg of historyMessages) {
+            const msgs = (sessions as any).messages.get(sessionId) || [];
+            msgs.push(msg);
+            (sessions as any).messages.set(sessionId, msgs);
+          }
+        }
+      }
+
       void performCompact(sessionId).catch((e) => {
         writeOut({ type: "log", level: "error", message: "[Compact] performCompact error", context: { error: String(e) } });
         sendRunnerError(`Compact failed: ${e}`, sessionId);
