@@ -180,7 +180,12 @@ Format your response clearly with sections.`;
 /**
  * Calls the current session model once (non-streaming) to produce a summary of the conversation.
  */
-async function callModelForSummary(session: ReturnType<typeof sessions.getSession>, conversationText: string): Promise<string> {
+async function callModelForSummary(
+  session: ReturnType<typeof sessions.getSession>,
+  conversationText: string,
+  llmProviderSettings?: any,
+  apiSettingsOverride?: any
+): Promise<string> {
   if (!session) throw new Error('No session');
 
   let apiKey: string;
@@ -191,7 +196,8 @@ async function callModelForSummary(session: ReturnType<typeof sessions.getSessio
 
   if (isLLMProviderModel && session.model) {
     const [providerId, modelId] = session.model.split('::');
-    const llmSettings = loadLLMProviderSettings();
+    // Prefer settings passed from Rust DB, fallback to JSON file
+    const llmSettings = llmProviderSettings || loadLLMProviderSettings();
     if (!llmSettings) throw new Error('LLM Provider settings not found');
     const provider = llmSettings.providers.find((p: any) => p.id === providerId);
     if (!provider) throw new Error(`Provider ${providerId} not found`);
@@ -206,7 +212,8 @@ async function callModelForSummary(session: ReturnType<typeof sessions.getSessio
     }
     modelName = modelId;
   } else {
-    const guiSettings = loadApiSettings();
+    // Prefer settings passed from Rust DB, fallback to JSON file
+    const guiSettings = apiSettingsOverride || loadApiSettings();
     if (!guiSettings || !guiSettings.baseUrl || !guiSettings.model || !guiSettings.apiKey) {
       throw new Error('API settings not configured');
     }
@@ -245,7 +252,7 @@ Output ONLY the summary, no preamble.`;
  * 3. Creates a new session pre-populated with the summary
  * 4. Emits session.compacted so UI can navigate to the new session
  */
-async function performCompact(sessionId: string, nextPrompt?: string): Promise<void> {
+async function performCompact(sessionId: string, nextPrompt?: string, llmProviderSettings?: any, apiSettingsOverride?: any): Promise<void> {
   const session = sessions.getSession(sessionId);
   if (!session) {
     writeOut({ type: "log", level: "error", message: "[Compact] Session not found", context: { sessionId } });
@@ -284,7 +291,7 @@ async function performCompact(sessionId: string, nextPrompt?: string): Promise<v
   let summary = '';
   try {
     writeOut({ type: "log", level: "info", message: "[Compact] Calling model to summarize", context: { sessionId } });
-    summary = await callModelForSummary(session, conversationText);
+    summary = await callModelForSummary(session, conversationText, llmProviderSettings, apiSettingsOverride);
     writeOut({ type: "log", level: "info", message: "[Compact] Summary generated", context: { length: summary.length } });
   } catch (e) {
     writeOut({ type: "log", level: "error", message: "[Compact] Failed to generate summary", context: { error: String(e) } });
@@ -490,7 +497,7 @@ function handleSessionContinue(event: Extract<ClientEvent, { type: "session.cont
   
   // If session not in memory, try to restore from sessionData (provided by Rust)
   if (!session && sessionData) {
-    session = sessions.createSession({
+    session = sessions.restoreSession({
       id: sessionId,
       title: sessionData.title || "Restored Session",
       cwd: sessionData.cwd,
@@ -616,7 +623,7 @@ function handleMessageEdit(event: Extract<ClientEvent, { type: "message.edit" }>
   
   // If session not in memory, try to restore from sessionData (provided by Rust)
   if (!session && sessionData) {
-    session = sessions.createSession({
+    session = sessions.restoreSession({
       id: sessionId,
       title: sessionData.title || "Restored Session",
       cwd: sessionData.cwd,
@@ -1234,12 +1241,12 @@ async function handleClientEvent(event: ClientEvent) {
       handleSkillsSetMarketplace(event);
       return;
     case "session.compact": {
-      const { sessionId, sessionData, messages: historyMessages } = (event as any).payload;
+      const { sessionId, sessionData, messages: historyMessages, llmProviderSettings, apiSettings } = (event as any).payload;
       
       // Restore session in memory if not present (same pattern as session.continue)
       let compactSession = sessions.getSession(sessionId);
       if (!compactSession && sessionData) {
-        compactSession = sessions.createSession({
+        compactSession = sessions.restoreSession({
           id: sessionId,
           title: sessionData.title || "Restored Session",
           cwd: sessionData.cwd,
@@ -1256,7 +1263,7 @@ async function handleClientEvent(event: ClientEvent) {
         }
       }
 
-      void performCompact(sessionId).catch((e) => {
+      void performCompact(sessionId, undefined, llmProviderSettings, apiSettings).catch((e) => {
         writeOut({ type: "log", level: "error", message: "[Compact] performCompact error", context: { error: String(e) } });
         sendRunnerError(`Compact failed: ${e}`, sessionId);
       });

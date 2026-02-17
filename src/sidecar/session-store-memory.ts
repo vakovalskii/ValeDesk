@@ -123,6 +123,37 @@ export class MemorySessionStore {
     return session;
   }
 
+  /**
+   * Restore a session into memory without triggering the sync callback.
+   * Used when Rust provides session data that already exists in DB.
+   */
+  restoreSession(options: {
+    id: string;
+    title: string;
+    cwd?: string;
+    model?: string;
+    allowedTools?: string;
+    temperature?: number;
+    threadId?: string;
+  }): Session {
+    const existing = this.sessions.get(options.id);
+    if (existing) return existing;
+
+    const session: Session = {
+      id: options.id,
+      title: options.title,
+      status: "idle",
+      cwd: options.cwd,
+      allowedTools: options.allowedTools || "",
+      model: options.model,
+      threadId: options.threadId,
+      temperature: options.temperature,
+      pendingPermissions: new Map(),
+    };
+    this.sessions.set(options.id, session);
+    return session;
+  }
+
   getSession(id: string): Session | undefined {
     return this.sessions.get(id);
   }

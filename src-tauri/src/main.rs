@@ -1482,6 +1482,10 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
 
       eprintln!("[session.compact] Looking up session: {}", session_id);
 
+      // Also load LLM provider settings so sidecar can resolve the model
+      let llm_settings = state.db.get_llm_provider_settings().ok();
+      let api_settings = state.db.get_api_settings().ok().flatten();
+
       match state.db.get_session_history(session_id) {
         Ok(Some(history)) => {
           eprintln!("[session.compact] Found session: title='{}', messages={}", 
@@ -1498,7 +1502,9 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
                 "allowedTools": history.session.allowed_tools,
                 "temperature": history.session.temperature
               },
-              "messages": history.messages
+              "messages": history.messages,
+              "llmProviderSettings": llm_settings,
+              "apiSettings": api_settings
             }
           });
           send_to_sidecar(app, state.inner(), &enriched_event)
