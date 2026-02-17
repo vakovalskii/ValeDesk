@@ -66,6 +66,19 @@ export async function executeReadTool(
     };
   }
 
+  // Block reading .env files — they contain secrets (API keys, tokens, passwords)
+  const fileName = args.file_path.split('/').pop()?.toLowerCase() || '';
+  if (fileName === '.env' || fileName.startsWith('.env.')) {
+    return {
+      success: false,
+      error: `🔒 Access denied: Cannot read .env files — they may contain secrets (API keys, tokens, passwords).\n\n` +
+             `If a skill requires environment variables, they should be:\n` +
+             `1. Set in the user's system environment (export VAR=value)\n` +
+             `2. Declared in the skill's dependencies, not read directly from .env files\n\n` +
+             `Ask the user to provide the required values or set them as environment variables.`
+    };
+  }
+
   // Security check
   if (!context.isPathSafe(args.file_path)) {
     return {

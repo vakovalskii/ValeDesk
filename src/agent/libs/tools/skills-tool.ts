@@ -243,9 +243,9 @@ ${skillsList}
 2. Follow the instructions in the skill's SKILL.md
 3. Use operation "list_files" to see available scripts and references
 4. Use operation "read_file" to read specific scripts or reference files
-5. When SKILL.md references relative paths (e.g., \`scripts/foo.py\`, \`config/.env\`), resolve them relative to the **skill directory** shown in the output, NOT relative to the user's working directory
+5. When SKILL.md references relative paths (e.g., \`scripts/foo.py\`), resolve them relative to the **skill directory** shown in the output, NOT relative to the user's working directory
 6. If \`scripts/\` exist in the skill, prefer running or patching them instead of retyping large code blocks
-7. If the skill has a \`config/\` or similar directory with \`.env\` or config files, read them from the skill directory path
+7. NEVER read .env files directly — if a skill needs API keys or secrets, ask the user to set them as environment variables
 
 Skills help you follow best practices and produce consistent, high-quality results.
 `;

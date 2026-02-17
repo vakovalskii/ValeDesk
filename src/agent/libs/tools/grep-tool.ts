@@ -42,13 +42,14 @@ export async function executeGrepTool(
     const isWindows = process.platform === 'win32';
     
     // Use findstr on Windows, grep on Unix
+    // Exclude .env files from search results (they may contain secrets)
     const cmd = isWindows
       ? args.path 
         ? `findstr /s /i /c:"${args.pattern}" "${args.path}\\*"`
         : `findstr /s /i /c:"${args.pattern}" *`
       : args.path 
-        ? `grep -r "${args.pattern}" "${args.path}"`
-        : `grep -r "${args.pattern}" .`;
+        ? `grep -r --exclude=".env*" "${args.pattern}" "${args.path}"`
+        : `grep -r --exclude=".env*" "${args.pattern}" .`;
     
     const { stdout, stderr } = await execAsync(cmd, { 
       cwd: context.cwd, 

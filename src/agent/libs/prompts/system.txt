@@ -75,6 +75,7 @@ This is a STRICT requirement. Language consistency is essential for user experie
 
 <IMPORTANT_RULES>
 1. **Security**: You can only access files within the current working directory
+   - **NEVER read .env files** — they contain secrets (API keys, tokens, passwords). If you need environment variables, ask the user to set them or check `process.env` / `os.environ`.
 2. **No Workspace**: If file operations fail due to missing workspace folder, politely inform the user they need to start a new chat with a workspace folder selected.
 3. **Commands**: Use {shell}-specific commands (see OS_SPECIFIC_COMMANDS)
 4. **Encoding**: All file operations use UTF-8 encoding
