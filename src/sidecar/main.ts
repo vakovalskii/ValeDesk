@@ -177,7 +177,177 @@ Format your response clearly with sections.`;
   sessions.setAbortController(summarySession.id, undefined);
 }
 
+/**
+ * Calls the current session model once (non-streaming) to produce a summary of the conversation.
+ */
+async function callModelForSummary(session: ReturnType<typeof sessions.getSession>, conversationText: string): Promise<string> {
+  if (!session) throw new Error('No session');
+
+  let apiKey: string;
+  let baseURL: string;
+  let modelName: string;
+
+  const isLLMProviderModel = session.model?.includes('::');
+
+  if (isLLMProviderModel && session.model) {
+    const [providerId, modelId] = session.model.split('::');
+    const llmSettings = loadLLMProviderSettings();
+    if (!llmSettings) throw new Error('LLM Provider settings not found');
+    const provider = llmSettings.providers.find((p: any) => p.id === providerId);
+    if (!provider) throw new Error(`Provider ${providerId} not found`);
+    apiKey = provider.apiKey;
+    if (provider.type === 'openrouter') {
+      baseURL = 'https://openrouter.ai/api/v1';
+    } else if (provider.type === 'zai') {
+      const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
+      baseURL = `https://api.z.ai/${prefix}/v4`;
+    } else {
+      baseURL = provider.baseUrl || '';
+    }
+    modelName = modelId;
+  } else {
+    const guiSettings = loadApiSettings();
+    if (!guiSettings || !guiSettings.baseUrl || !guiSettings.model || !guiSettings.apiKey) {
+      throw new Error('API settings not configured');
+    }
+    apiKey = guiSettings.apiKey;
+    baseURL = guiSettings.baseUrl;
+    modelName = guiSettings.model;
+  }
+
+  const OpenAI = (await import('openai')).default;
+  const client = new OpenAI({ apiKey: apiKey || 'dummy-key', baseURL, dangerouslyAllowBrowser: false, timeout: 60_000, maxRetries: 1 });
+
+  const systemPrompt = `You are a conversation summarizer. Your task is to create a concise summary of the conversation history provided. The summary should:
+- Capture the key topics discussed and decisions made
+- Preserve important context, facts, code snippets, and file paths mentioned
+- Be structured as bullet points grouped by topic
+- Be compact but comprehensive enough to continue the conversation
+
+Output ONLY the summary, no preamble.`;
+
+  const completion = await client.chat.completions.create({
+    model: modelName,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Please summarize this conversation history:\n\n${conversationText}` }
+    ],
+    stream: false
+  });
+
+  return (completion.choices[0]?.message?.content || '').trim();
+}
+
+/**
+ * Performs a compact operation on a session:
+ * 1. Gets full conversation history
+ * 2. Summarizes it using the session's model
+ * 3. Creates a new session pre-populated with the summary
+ * 4. Emits session.compacted so UI can navigate to the new session
+ */
+async function performCompact(sessionId: string, nextPrompt?: string): Promise<void> {
+  const session = sessions.getSession(sessionId);
+  if (!session) {
+    writeOut({ type: "log", level: "error", message: "[Compact] Session not found", context: { sessionId } });
+    return;
+  }
+
+  // Signal compacting is in progress
+  emit({ type: "session.compacting", payload: { sessionId } } as any);
+
+  // Get full history
+  const history = sessions.getSessionHistory(sessionId);
+  if (!history || history.messages.length === 0) {
+    writeOut({ type: "log", level: "info", message: "[Compact] No messages to compact", context: { sessionId } });
+    return;
+  }
+
+  // Format history as plain text for summarization
+  const lines: string[] = [];
+  for (const msg of history.messages) {
+    if ((msg as any).type === 'user_prompt') {
+      const text = (msg as any).prompt || '';
+      if (text.trim()) lines.push(`User: ${text}`);
+    } else if ((msg as any).type === 'text') {
+      const text = (msg as any).text || '';
+      if (text.trim()) lines.push(`Assistant: ${text}`);
+    }
+  }
+  const conversationText = lines.join('\n\n');
+
+  if (!conversationText.trim()) {
+    writeOut({ type: "log", level: "info", message: "[Compact] No meaningful content to compact", context: { sessionId } });
+    return;
+  }
+
+  // Summarize
+  let summary = '';
+  try {
+    writeOut({ type: "log", level: "info", message: "[Compact] Calling model to summarize", context: { sessionId } });
+    summary = await callModelForSummary(session, conversationText);
+    writeOut({ type: "log", level: "info", message: "[Compact] Summary generated", context: { length: summary.length } });
+  } catch (e) {
+    writeOut({ type: "log", level: "error", message: "[Compact] Failed to generate summary", context: { error: String(e) } });
+    summary = `[Summary generation failed. Original conversation had ${lines.length} messages.]`;
+  }
+
+  // Create new session with same settings
+  const newSession = sessions.createSession({
+    title: `${session.title || 'Chat'} (compacted)`,
+    cwd: session.cwd,
+    allowedTools: session.allowedTools,
+    model: session.model,
+    temperature: session.temperature,
+  });
+
+  // Record the summary as the first user message (context carrier)
+  const summaryUserMessage = `[Previous conversation summary]\n\n${summary}`;
+  sessions.recordMessage(newSession.id, { type: 'user_prompt', prompt: summaryUserMessage } as any);
+
+  // Broadcast updated session list
+  emit({ type: "session.list", payload: { sessions: sessions.listSessions() } });
+
+  // Notify UI about the compact result
+  emit({ type: "session.compacted", payload: { oldSessionId: sessionId, newSessionId: newSession.id } } as any);
+
+  // Auto-compact case: re-run the prompt that caused the error in the new session
+  if (nextPrompt && nextPrompt.trim()) {
+    const ns = sessions.getSession(newSession.id);
+    if (ns) {
+      sessions.updateSession(newSession.id, { status: 'running', lastPrompt: nextPrompt });
+      emit({
+        type: "session.status",
+        payload: { sessionId: newSession.id, status: 'running', title: newSession.title, cwd: newSession.cwd, model: newSession.model }
+      } as any);
+      emitAndPersist({ type: "stream.user_prompt", payload: { sessionId: newSession.id, prompt: nextPrompt } } as any);
+
+      const runClaude = selectRunner(ns.model);
+      void runClaude({
+        prompt: nextPrompt,
+        session: ns,
+        resumeSessionId: undefined,
+        onEvent: emitAndPersist,
+        onSessionUpdate: (updates: any) => { sessions.updateSession(newSession.id, updates); }
+      } as any)
+        .then((handle: RunnerHandle) => { runnerHandles.set(newSession.id, handle); })
+        .catch((error: any) => {
+          sessions.updateSession(newSession.id, { status: 'error' });
+          sendRunnerError(String(error), newSession.id);
+        });
+    }
+  }
+}
+
 function emitAndPersist(event: ServerEvent) {
+  // Intercept auto-compact trigger from runner
+  if ((event as any).type === "session.compact_needed") {
+    const { sessionId, nextPrompt } = (event as any).payload;
+    void performCompact(sessionId, nextPrompt).catch((e) => {
+      writeOut({ type: "log", level: "error", message: "[Compact] Auto-compact error", context: { error: String(e) } });
+    });
+    return;
+  }
+
   // Mirror the behavior in Electron ipc-handlers.ts:
   // - persist session.status and stream messages to DB
   if (event.type === "session.status") {
@@ -1063,6 +1233,14 @@ async function handleClientEvent(event: ClientEvent) {
     case "skills.set-marketplace":
       handleSkillsSetMarketplace(event);
       return;
+    case "session.compact": {
+      const { sessionId } = (event as any).payload;
+      void performCompact(sessionId).catch((e) => {
+        writeOut({ type: "log", level: "error", message: "[Compact] performCompact error", context: { error: String(e) } });
+        sendRunnerError(`Compact failed: ${e}`, sessionId);
+      });
+      return;
+    }
     default:
       // For now, emit a visible error so UI doesn't silently stall.
       sendRunnerError(`Sidecar: unhandled client event ${event.type}`);

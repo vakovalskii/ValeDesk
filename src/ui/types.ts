@@ -242,6 +242,9 @@ export type ServerEvent =
   // Skills events
   | { type: "skills.loaded"; payload: { skills: Skill[]; marketplaceUrl: string; lastFetched?: number } }
   | { type: "skills.error"; payload: { message: string } }
+  // Compact events
+  | { type: "session.compacting"; payload: { sessionId: string } }
+  | { type: "session.compacted"; payload: { oldSessionId: string; newSessionId: string } }
   // Scheduler events
   | { type: "scheduler.notification"; payload: { title: string; body: string } }
   | { type: "scheduler.task_execute"; payload: { taskId: string; title: string; prompt?: string } }
@@ -282,6 +285,8 @@ export type ClientEvent =
   | { type: "skills.refresh" }
   | { type: "skills.toggle"; payload: { skillId: string; enabled: boolean } }
   | { type: "skills.set-marketplace"; payload: { url: string } }
+  // Compact events
+  | { type: "session.compact"; payload: { sessionId: string } }
   // Scheduler events
   | { type: "scheduler.default_model.get" }
   | { type: "scheduler.default_model.set"; payload: { modelId: string } }
