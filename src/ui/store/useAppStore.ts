@@ -441,16 +441,16 @@ export const useAppStore = create<AppState>((set, get) => ({
               })));
             }
             
-            // Extract token usage from result messages
-            let inputTokens = existing.inputTokens;
-            let outputTokens = existing.outputTokens;
+            // Accumulate token usage from result messages (additive — runner sends per-run totals)
+            let inputTokens = existing.inputTokens ?? 0;
+            let outputTokens = existing.outputTokens ?? 0;
             if (message.type === "result" && (message as any).usage) {
               const { input_tokens, output_tokens } = (message as any).usage;
               if (input_tokens !== undefined) {
-                inputTokens = input_tokens;
+                inputTokens += input_tokens;
               }
               if (output_tokens !== undefined) {
-                outputTokens = output_tokens;
+                outputTokens += output_tokens;
               }
             }
 
@@ -467,16 +467,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             };
           }
 
-          // Extract token usage from result messages
-          let inputTokens = existing.inputTokens;
-          let outputTokens = existing.outputTokens;
+          // Accumulate token usage from result messages (additive — runner sends per-run totals)
+          let inputTokens = existing.inputTokens ?? 0;
+          let outputTokens = existing.outputTokens ?? 0;
           if (message.type === "result" && message.usage) {
             const { input_tokens, output_tokens } = message.usage;
             if (input_tokens !== undefined) {
-              inputTokens = input_tokens;
+              inputTokens += input_tokens;
             }
             if (output_tokens !== undefined) {
-              outputTokens = output_tokens;
+              outputTokens += output_tokens;
             }
           }
 
