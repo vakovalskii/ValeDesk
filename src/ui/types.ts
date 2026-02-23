@@ -174,6 +174,13 @@ export type ApiSettings = {
   llmProviders?: LLMProviderSettings; // LLM providers and models configuration
   roleGroupSettings?: RoleGroupSettings; // Default role group configuration
   requestTimeoutMs?: number; // API request timeout in ms (default: 300000 = 5 min)
+  // FFmpeg
+  enableFfmpegTools?: boolean;
+  ffmpegCdnPreset?: 'ffbinaries' | 'evermeet' | 'custom';
+  ffmpegCustomUrl?: string;
+  ffmpegVersion?: string;
+  ffmpegPath?: string;
+  ffmpegDownloadAsked?: boolean;
 };
 
 export type ModelInfo = {
@@ -250,7 +257,13 @@ export type ServerEvent =
   | { type: "scheduler.notification"; payload: { title: string; body: string } }
   | { type: "scheduler.task_execute"; payload: { taskId: string; title: string; prompt?: string } }
   | { type: "scheduler.default_model.loaded"; payload: { modelId: string | null } }
-  | { type: "scheduler.default_temperature.loaded"; payload: { temperature: number; sendTemperature: boolean } };
+  | { type: "scheduler.default_temperature.loaded"; payload: { temperature: number; sendTemperature: boolean } }
+  // FFmpeg events
+  | { type: "ffmpeg.download.progress"; payload: { downloadId?: string; label?: string; percent: number; loaded: number; total: number } }
+  | { type: "ffmpeg.download.complete"; payload: { path: string; settings?: ApiSettings } }
+  | { type: "ffmpeg.download.error"; payload: { message: string } }
+  | { type: "ffmpeg.removed"; payload: { settings: ApiSettings } }
+  | { type: "ffmpeg.status"; payload: { installed: boolean; path?: string; downloadAsked?: boolean } };
 
 // Client -> Server events
 export type ClientEvent =
@@ -292,4 +305,9 @@ export type ClientEvent =
   | { type: "scheduler.default_model.get" }
   | { type: "scheduler.default_model.set"; payload: { modelId: string } }
   | { type: "scheduler.default_temperature.get" }
-  | { type: "scheduler.default_temperature.set"; payload: { temperature: number; sendTemperature: boolean } };
+  | { type: "scheduler.default_temperature.set"; payload: { temperature: number; sendTemperature: boolean } }
+  // FFmpeg events
+  | { type: "ffmpeg.download.trigger"; payload?: { preset?: string; customUrl?: string; version?: string } }
+  | { type: "ffmpeg.remove" }
+  | { type: "ffmpeg.status.get" }
+  | { type: "ffmpeg.firstrun.asked"; payload: { download: boolean } };

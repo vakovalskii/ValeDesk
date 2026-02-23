@@ -55,6 +55,15 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   const [enableImageTools, setEnableImageTools] = useState(currentSettings?.enableImageTools ?? false);
   const [useGitForDiff, setUseGitForDiff] = useState(currentSettings?.useGitForDiff ?? true);
   const [requestTimeoutMs, setRequestTimeoutMs] = useState(currentSettings?.requestTimeoutMs?.toString() || "300000");
+  // FFmpeg
+  const [enableFfmpegTools, setEnableFfmpegTools] = useState(currentSettings?.enableFfmpegTools ?? false);
+  const [ffmpegCdnPreset, setFfmpegCdnPreset] = useState<'ffbinaries' | 'evermeet' | 'custom'>(currentSettings?.ffmpegCdnPreset || 'ffbinaries');
+  const [ffmpegCustomUrl, setFfmpegCustomUrl] = useState(currentSettings?.ffmpegCustomUrl || "");
+  const [ffmpegVersion, setFfmpegVersion] = useState(currentSettings?.ffmpegVersion || "latest");
+  const [ffmpegPath, setFfmpegPath] = useState<string | undefined>(currentSettings?.ffmpegPath);
+  const [ffmpegInstalled, setFfmpegInstalled] = useState(false);
+  const [ffmpegDownloadProgress, setFfmpegDownloadProgress] = useState<Record<string, { percent: number; label?: string }> | null>(null);
+  const [ffmpegDownloadError, setFfmpegDownloadError] = useState<string | null>(null);
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [showTavilyPassword, setShowTavilyPassword] = useState(false);
   const [showZaiPassword, setShowZaiPassword] = useState(false);
@@ -141,6 +150,11 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
       setEnableFetchTools(currentSettings.enableFetchTools || false);
       setEnableImageTools(currentSettings.enableImageTools ?? false);
       setUseGitForDiff(currentSettings.useGitForDiff ?? true);
+      setEnableFfmpegTools(currentSettings.enableFfmpegTools ?? false);
+      setFfmpegCdnPreset((currentSettings.ffmpegCdnPreset as any) || 'ffbinaries');
+      setFfmpegCustomUrl(currentSettings.ffmpegCustomUrl || "");
+      setFfmpegVersion(currentSettings.ffmpegVersion || "latest");
+      setFfmpegPath(currentSettings.ffmpegPath);
     }
     setRoleGroupSettings(getRoleGroupSettings(currentSettings));
     
@@ -218,6 +232,10 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
   };
 
   // Skills functions
+  const loadFfmpegStatus = useCallback(() => {
+    getPlatform().sendClientEvent({ type: "ffmpeg.status.get" });
+  }, []);
+
   const loadSkills = useCallback(() => {
     setSkillsLoading(true);
     setSkillsError(null);
@@ -258,6 +276,44 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
 
     return () => unsubscribe();
   }, [loadSkills]);
+
+  // FFmpeg events and status
+  useEffect(() => {
+    if (activeTab === "tools") {
+      loadFfmpegStatus();
+    }
+  }, [activeTab, loadFfmpegStatus]);
+
+  useEffect(() => {
+    const unsubscribe = getPlatform().onServerEvent((event: any) => {
+      if (event.type === "ffmpeg.status") {
+        setFfmpegInstalled(event.payload.installed);
+        if (event.payload.path) setFfmpegPath(event.payload.path);
+      } else if (event.type === "ffmpeg.download.progress") {
+        const { downloadId, label, percent } = event.payload;
+        const id = downloadId ?? "ffmpeg";
+        setFfmpegDownloadProgress((prev) => {
+          const next = { ...(prev || {}) };
+          const cur = next[id]?.percent ?? 0;
+          next[id] = { percent: Math.max(cur, percent), label: label ?? id };
+          return next;
+        });
+        setFfmpegDownloadError(null);
+      } else if (event.type === "ffmpeg.download.complete") {
+        setFfmpegDownloadProgress(null);
+        setFfmpegDownloadError(null);
+        setFfmpegInstalled(true);
+        setFfmpegPath(event.payload.path);
+      } else if (event.type === "ffmpeg.download.error") {
+        setFfmpegDownloadProgress(null);
+        setFfmpegDownloadError(event.payload.message);
+      } else if (event.type === "ffmpeg.removed") {
+        setFfmpegInstalled(false);
+        setFfmpegPath(undefined);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleSave = async () => {
     const tempValue = parseFloat(temperature);
@@ -306,7 +362,12 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
       useGitForDiff,
       requestTimeoutMs: parseInt(requestTimeoutMs) || 300000,
       llmProviders: llmProviderSettings,
-      roleGroupSettings
+      roleGroupSettings,
+      enableFfmpegTools,
+      ffmpegCdnPreset,
+      ffmpegCustomUrl: ffmpegCustomUrl.trim() || undefined,
+      ffmpegVersion: ffmpegVersion.trim() || undefined,
+      ffmpegPath
     };
     
     console.log('[SettingsModal] Full settings to save:', settingsToSave);
@@ -347,6 +408,11 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     setEnableImageTools(false);
     setRoleGroupSettings(getRoleGroupSettings(null));
     setUseGitForDiff(true);
+    setEnableFfmpegTools(false);
+    setFfmpegCdnPreset('ffbinaries');
+    setFfmpegCustomUrl("");
+    setFfmpegVersion("latest");
+    setFfmpegPath(undefined);
   };
 
   useEffect(() => {
@@ -498,6 +564,32 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
                 setEnableImageTools={setEnableImageTools}
                 useGitForDiff={useGitForDiff}
                 setUseGitForDiff={setUseGitForDiff}
+                enableFfmpegTools={enableFfmpegTools}
+                setEnableFfmpegTools={setEnableFfmpegTools}
+                ffmpegCdnPreset={ffmpegCdnPreset}
+                setFfmpegCdnPreset={setFfmpegCdnPreset}
+                ffmpegCustomUrl={ffmpegCustomUrl}
+                setFfmpegCustomUrl={setFfmpegCustomUrl}
+                ffmpegVersion={ffmpegVersion}
+                setFfmpegVersion={setFfmpegVersion}
+                ffmpegInstalled={ffmpegInstalled}
+                ffmpegPath={ffmpegPath}
+                ffmpegDownloadProgress={ffmpegDownloadProgress}
+                ffmpegDownloadError={ffmpegDownloadError}
+                onFfmpegDownload={() => {
+                  setFfmpegDownloadError(null);
+                  getPlatform().sendClientEvent({
+                    type: "ffmpeg.download.trigger",
+                    payload: {
+                      preset: ffmpegCdnPreset,
+                      customUrl: ffmpegCustomUrl.trim() || undefined,
+                      version: ffmpegVersion.trim() || undefined
+                    }
+                  });
+                }}
+                onFfmpegRemove={() => {
+                  getPlatform().sendClientEvent({ type: "ffmpeg.remove" });
+                }}
               />
             ) : activeTab === 'skills' ? (
               <div className="p-6">
@@ -1507,7 +1599,21 @@ function ToolsTab({
   enableImageTools,
   setEnableImageTools,
   useGitForDiff,
-  setUseGitForDiff
+  setUseGitForDiff,
+  enableFfmpegTools,
+  setEnableFfmpegTools,
+  ffmpegCdnPreset,
+  setFfmpegCdnPreset,
+  ffmpegCustomUrl,
+  setFfmpegCustomUrl,
+  ffmpegVersion,
+  setFfmpegVersion,
+  ffmpegInstalled,
+  ffmpegPath,
+  ffmpegDownloadProgress,
+  ffmpegDownloadError,
+  onFfmpegDownload,
+  onFfmpegRemove
 }: any) {
   return (
     <div className="px-6 py-4 space-y-6">
@@ -1611,6 +1717,116 @@ function ToolsTab({
             <div className="w-11 h-6 bg-ink-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ink-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
           </div>
         </label>
+
+        {/* FFmpeg Tools */}
+        <label className="flex items-center justify-between cursor-pointer mt-4">
+          <div className="flex-1">
+            <span className="block text-sm font-medium text-ink-700">FFmpeg</span>
+            <p className="mt-0.5 text-xs text-ink-500">
+              ffmpeg, ffprobe, ffplay — media conversion and processing in run_command and skills
+            </p>
+          </div>
+          <div className="relative">
+            <input
+              type="checkbox"
+              checked={enableFfmpegTools}
+              onChange={(e) => setEnableFfmpegTools(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-ink-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ink-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+          </div>
+        </label>
+
+        {enableFfmpegTools && (
+          <div className="mt-3 p-4 rounded-lg border border-ink-900/10 bg-ink-50/50 space-y-3">
+            {ffmpegInstalled && ffmpegPath ? (
+              <div>
+                <p className="text-xs text-green-700 font-medium">FFmpeg installed</p>
+                <p className="text-xs text-ink-600 truncate mt-0.5" title={ffmpegPath}>{ffmpegPath}</p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={onFfmpegDownload}
+                    disabled={ffmpegDownloadProgress !== null && Object.keys(ffmpegDownloadProgress).length > 0}
+                    className="text-xs text-accent hover:underline disabled:opacity-50"
+                  >
+                    Reinstall
+                  </button>
+                  <span className="text-ink-400">|</span>
+                  <button
+                    type="button"
+                    onClick={onFfmpegRemove}
+                    disabled={ffmpegDownloadProgress !== null && Object.keys(ffmpegDownloadProgress).length > 0}
+                    className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-3 items-center flex-wrap">
+                  <label className="text-xs font-medium text-ink-700">Source</label>
+                  <select
+                    value={ffmpegCdnPreset}
+                    onChange={(e) => setFfmpegCdnPreset(e.target.value as 'ffbinaries' | 'evermeet' | 'custom')}
+                    className="rounded-lg border border-ink-900/20 bg-white px-3 py-2 text-xs"
+                  >
+                    <option value="ffbinaries">FFbinaries (Windows, Linux, macOS)</option>
+                    <option value="evermeet">Evermeet (macOS only)</option>
+                    <option value="custom">Custom URL</option>
+                  </select>
+                  {ffmpegCdnPreset === 'custom' && (
+                    <input
+                      type="text"
+                      value={ffmpegCustomUrl}
+                      onChange={(e) => setFfmpegCustomUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="flex-1 min-w-[200px] rounded-lg border border-ink-900/20 bg-white px-3 py-2 text-xs"
+                    />
+                  )}
+                  <input
+                    type="text"
+                    value={ffmpegVersion}
+                    onChange={(e) => setFfmpegVersion(e.target.value)}
+                    placeholder="latest or 6.1"
+                    className="w-24 rounded-lg border border-ink-900/20 bg-white px-3 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={onFfmpegDownload}
+                    disabled={ffmpegDownloadProgress !== null && Object.keys(ffmpegDownloadProgress).length > 0}
+                    className="px-3 py-2 text-xs font-medium text-white bg-accent rounded-lg hover:bg-accent/90 disabled:opacity-50"
+                  >
+                    {ffmpegDownloadProgress && Object.keys(ffmpegDownloadProgress).length > 0
+                      ? (Object.keys(ffmpegDownloadProgress).length === 1
+                        ? `Downloading ${Math.round(Object.values(ffmpegDownloadProgress)[0].percent)}%`
+                        : `Downloading ${Object.values(ffmpegDownloadProgress).map((p) => Math.round(p.percent)).join(' / ')}%`)
+                      : 'Download FFmpeg'}
+                  </button>
+                </div>
+                {ffmpegDownloadProgress && Object.keys(ffmpegDownloadProgress).length > 0 && (
+                  <div className="space-y-3 mt-2">
+                    {Object.entries(ffmpegDownloadProgress).map(([id, { percent, label }]) => (
+                      <div key={id} className="space-y-1">
+                        <p className="text-xs font-medium text-ink-600">{label ?? id}</p>
+                        <div className="w-full h-2 bg-ink-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-accent transition-all duration-150"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {ffmpegDownloadError && (
+                  <p className="text-xs text-red-600">{ffmpegDownloadError}</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Diff Source */}
         <div className="border-t border-ink-900/10 pt-4 mt-4">

@@ -27,6 +27,9 @@ export interface ToolExecutionContext {
   isPathSafe: (path: string) => boolean;
   sessionId?: string;
   onTodosChanged?: (todos: any[]) => void;
+  ffmpegDir?: string;
+  enableFfmpegTools?: boolean;
+  ffmpegDownloadAsked?: boolean;
 }
 
 export abstract class BaseTool {

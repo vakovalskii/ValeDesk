@@ -14,6 +14,10 @@ import { fetchModelsFromProvider, checkModelsAvailability } from "../agent/libs/
 import { loadSkillsSettings, toggleSkill, setMarketplaceUrl } from "../agent/libs/skills-store.js";
 import { fetchSkillsFromMarketplace } from "../agent/libs/skills-loader.js";
 import { webCache } from "../agent/libs/web-cache.js";
+import { downloadFfmpeg } from "../agent/libs/ffmpeg-downloader.js";
+import { getUserDataDir } from "../agent/libs/settings-store.js";
+import { existsSync, readdirSync, rmSync } from "fs";
+import { join } from "path";
 import * as gitUtils from "../agent/git-utils.js";
 
 type RunnerHandle = {
@@ -1179,6 +1183,112 @@ function handleSkillsSetMarketplace(event: Extract<ClientEvent, { type: "skills.
   setMarketplaceUrl(url);
 }
 
+function handleFfmpegStatusGet() {
+  const settings = loadApiSettings();
+  const userDataDir = getUserDataDir();
+  const ffmpegDir = join(userDataDir, "ffmpeg");
+  const exeName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  let installed = false;
+  let path: string | undefined;
+  if (settings?.ffmpegPath && existsSync(join(settings.ffmpegPath, exeName))) {
+    installed = true;
+    path = settings.ffmpegPath;
+  } else if (existsSync(join(ffmpegDir, exeName))) {
+    installed = true;
+    path = ffmpegDir;
+  } else if (existsSync(ffmpegDir)) {
+    function findInDir(dir: string): string | null {
+      try {
+        const items = readdirSync(dir, { withFileTypes: true });
+        for (const item of items) {
+          const full = join(dir, item.name);
+          if (item.isDirectory()) {
+            const found = findInDir(full);
+            if (found) return found;
+          } else if ((item.name === exeName || item.name === "ffmpeg") && item.isFile()) {
+            return dir;
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+    const foundDir = findInDir(ffmpegDir);
+    if (foundDir) {
+      installed = true;
+      path = foundDir;
+    }
+  }
+  emit({
+    type: "ffmpeg.status",
+    payload: { installed, path, downloadAsked: settings?.ffmpegDownloadAsked },
+  } as any);
+}
+
+function handleFfmpegFirstrunAsked(event: Extract<ClientEvent, { type: "ffmpeg.firstrun.asked" }>) {
+  const { download } = event.payload;
+  const settings = loadApiSettings() || ({} as any);
+  settings.ffmpegDownloadAsked = true;
+  if (download) {
+    settings.enableFfmpegTools = true;
+  }
+  saveApiSettings(settings);
+  if (download) {
+    const userDataDir = getUserDataDir();
+    downloadFfmpeg(settings, userDataDir, (loaded, total, percent, downloadId, label) => {
+      emit({ type: "ffmpeg.download.progress", payload: { downloadId: downloadId ?? "ffmpeg", label: label ?? "FFmpeg", loaded, total, percent } } as any);
+    })
+      .then((ffmpegDir) => {
+        const updated = loadApiSettings() || ({} as any);
+        updated.ffmpegPath = ffmpegDir;
+        saveApiSettings(updated);
+        emit({ type: "ffmpeg.download.complete", payload: { path: ffmpegDir, settings: updated } } as any);
+      })
+      .catch((err) => {
+        emit({ type: "ffmpeg.download.error", payload: { message: String(err?.message || err) } } as any);
+      });
+  }
+}
+
+function handleFfmpegDownloadTrigger(event: Extract<ClientEvent, { type: "ffmpeg.download.trigger" }>) {
+  const settings = loadApiSettings();
+  const merged = { ...settings } as any;
+  const payload = (event as any).payload;
+  if (payload?.preset) merged.ffmpegCdnPreset = payload.preset;
+  if (payload?.customUrl !== undefined) merged.ffmpegCustomUrl = payload.customUrl;
+  if (payload?.version !== undefined) merged.ffmpegVersion = payload.version;
+  const userDataDir = getUserDataDir();
+  downloadFfmpeg(merged, userDataDir, (loaded, total, percent, downloadId, label) => {
+    emit({ type: "ffmpeg.download.progress", payload: { downloadId: downloadId ?? "ffmpeg", label: label ?? "FFmpeg", loaded, total, percent } } as any);
+  })
+    .then((ffmpegDir) => {
+      const updated = loadApiSettings() || ({} as any);
+      updated.ffmpegPath = ffmpegDir;
+      saveApiSettings(updated);
+      emit({ type: "ffmpeg.download.complete", payload: { path: ffmpegDir, settings: updated } } as any);
+    })
+    .catch((err) => {
+      emit({ type: "ffmpeg.download.error", payload: { message: String(err?.message || err) } } as any);
+    });
+}
+
+function handleFfmpegRemove() {
+  try {
+    const userDataDir = getUserDataDir();
+    const ffmpegDir = join(userDataDir, "ffmpeg");
+    if (existsSync(ffmpegDir)) {
+      rmSync(ffmpegDir, { recursive: true });
+    }
+    const settings = loadApiSettings() || ({} as any);
+    delete settings.ffmpegPath;
+    saveApiSettings(settings);
+    emit({ type: "ffmpeg.removed", payload: { settings } } as any);
+  } catch (err: unknown) {
+    emit({ type: "ffmpeg.download.error", payload: { message: String(err instanceof Error ? err.message : err) } } as any);
+  }
+}
+
 async function handleClientEvent(event: ClientEvent) {
   switch (event.type) {
     case "session.list":
@@ -1270,6 +1380,18 @@ async function handleClientEvent(event: ClientEvent) {
       return;
     case "skills.set-marketplace":
       handleSkillsSetMarketplace(event);
+      return;
+    case "ffmpeg.status.get":
+      handleFfmpegStatusGet();
+      return;
+    case "ffmpeg.firstrun.asked":
+      handleFfmpegFirstrunAsked(event);
+      return;
+    case "ffmpeg.download.trigger":
+      handleFfmpegDownloadTrigger(event);
+      return;
+    case "ffmpeg.remove":
+      handleFfmpegRemove();
       return;
     case "session.compact": {
       const { sessionId, sessionData, messages: historyMessages, llmProviderSettings, apiSettings } = (event as any).payload;

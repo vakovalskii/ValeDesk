@@ -41,6 +41,13 @@ export type ApiSettings = {
   llmProviders?: LLMProviderSettings; // LLM providers and models configuration
   roleGroupSettings?: RoleGroupSettings; // Default role group configuration
   requestTimeoutMs?: number; // API request timeout in ms (default: 300000 = 5 min)
+  // FFmpeg
+  enableFfmpegTools?: boolean;
+  ffmpegCdnPreset?: 'ffbinaries' | 'evermeet' | 'custom';
+  ffmpegCustomUrl?: string;
+  ffmpegVersion?: string;
+  ffmpegPath?: string;
+  ffmpegDownloadAsked?: boolean;
 };
 
 export type ModelInfo = {
@@ -180,7 +187,13 @@ export type ServerEvent =
   | { type: "skills.loaded"; payload: { skills: Skill[]; marketplaceUrl: string; lastFetched?: number } }
   | { type: "skills.error"; payload: { message: string } }
   // Scheduler IPC (sidecar -> Rust)
-  | { type: "scheduler.request"; payload: { requestId: string; operation: string; params: Record<string, any> } };
+  | { type: "scheduler.request"; payload: { requestId: string; operation: string; params: Record<string, any> } }
+  // FFmpeg events
+  | { type: "ffmpeg.download.progress"; payload: { downloadId?: string; label?: string; percent: number; loaded: number; total: number } }
+  | { type: "ffmpeg.download.complete"; payload: { path: string; settings?: ApiSettings } }
+  | { type: "ffmpeg.download.error"; payload: { message: string } }
+  | { type: "ffmpeg.removed"; payload: { settings: ApiSettings } }
+  | { type: "ffmpeg.status"; payload: { installed: boolean; path?: string; downloadAsked?: boolean } };
 
 // Skill types
 export interface Skill {
@@ -281,4 +294,9 @@ export type ClientEvent =
   | { type: "skills.get" }
   | { type: "skills.refresh" }
   | { type: "skills.toggle"; payload: { skillId: string; enabled: boolean } }
-  | { type: "skills.set-marketplace"; payload: { url: string } };
+  | { type: "skills.set-marketplace"; payload: { url: string } }
+  // FFmpeg events
+  | { type: "ffmpeg.download.trigger"; payload?: { preset?: string; customUrl?: string; version?: string } }
+  | { type: "ffmpeg.remove" }
+  | { type: "ffmpeg.status.get" }
+  | { type: "ffmpeg.firstrun.asked"; payload: { download: boolean } };

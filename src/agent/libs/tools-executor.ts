@@ -243,9 +243,17 @@ export class ToolExecutor {
   private getContext(
     extra?: Partial<ToolExecutionContext>,
   ): ToolExecutionContext {
+    const enableFfmpegTools = this.apiSettings?.enableFfmpegTools ?? false;
+    const ffmpegDir =
+      enableFfmpegTools && this.apiSettings?.ffmpegPath
+        ? this.apiSettings.ffmpegPath
+        : undefined;
     return {
       cwd: this.cwd,
       isPathSafe: this.isPathSafe.bind(this),
+      ffmpegDir,
+      enableFfmpegTools,
+      ffmpegDownloadAsked: this.apiSettings?.ffmpegDownloadAsked,
       ...extra,
     };
   }

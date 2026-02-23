@@ -9,6 +9,7 @@ import { SessionEditModal } from "./components/SessionEditModal";
 import { TaskDialog } from "./components/TaskDialog";
 import { RoleGroupDialog } from "./components/RoleGroupDialog";
 import { SettingsModal } from "./components/SettingsModal";
+import { FirstRunFfmpegModal } from "./components/FirstRunFfmpegModal";
 import { FileBrowser } from "./components/FileBrowser";
 import { PromptInput, usePromptActions } from "./components/PromptInput";
 import { MessageCard } from "./components/EventCard";
@@ -30,6 +31,8 @@ function App() {
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [showRoleGroupDialog, setShowRoleGroupDialog] = useState(false);
   const [showSessionEditModal, setShowSessionEditModal] = useState(false);
+  const [showFirstRunFfmpegModal, setShowFirstRunFfmpegModal] = useState(false);
+  const [ffmpegFirstRunDownloadProgress, setFfmpegFirstRunDownloadProgress] = useState<Record<string, { percent: number; label?: string }> | null>(null);
   const [apiSettings, setApiSettings] = useState<ApiSettings | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false); // Track if settings have been loaded from backend
   const [llmProvidersLoaded, setLlmProvidersLoaded] = useState(false); // Track if LLM providers have been loaded
@@ -128,6 +131,42 @@ function App() {
     if (event.type === "llm.providers.loaded") {
       setLlmProvidersLoaded(true);
     }
+
+    // FFmpeg first-run modal and download progress
+    if (event.type === "ffmpeg.status") {
+      const { installed, downloadAsked } = (event as any).payload;
+      if (!installed && downloadAsked !== true) {
+        setShowFirstRunFfmpegModal(true);
+      }
+    }
+    if (event.type === "ffmpeg.download.progress") {
+      const { downloadId, label, percent } = (event as any).payload;
+      const id = downloadId ?? "ffmpeg";
+      setFfmpegFirstRunDownloadProgress((prev) => {
+        const next = { ...(prev || {}) };
+        const cur = next[id]?.percent ?? 0;
+        next[id] = { percent: Math.max(cur, percent), label: label ?? id };
+        return next;
+      });
+    }
+    if (event.type === "ffmpeg.download.complete") {
+      setShowFirstRunFfmpegModal(false);
+      setFfmpegFirstRunDownloadProgress(null);
+      const payload = (event as any).payload;
+      const settings = payload?.settings;
+      if (settings) {
+        setApiSettings(settings);
+        sendEvent({ type: "settings.save", payload: { settings } } as any);
+      }
+    }
+    if (event.type === "ffmpeg.removed") {
+      const payload = (event as any).payload;
+      const settings = payload?.settings;
+      if (settings) {
+        setApiSettings(settings);
+        sendEvent({ type: "settings.save", payload: { settings } } as any);
+      }
+    }
     
     // Scheduler notifications are now handled natively by Rust
     if (event.type === "scheduler.notification") {
@@ -151,6 +190,7 @@ function App() {
       sendEvent({ type: "llm.providers.get" });
       sendEvent({ type: "scheduler.default_model.get" });
       sendEvent({ type: "scheduler.default_temperature.get" });
+      sendEvent({ type: "ffmpeg.status.get" });
     }
   }, [connected, sendEvent]);
 
@@ -642,6 +682,20 @@ function App() {
           apiSettings={apiSettings}
           availableModels={availableModels}
           llmModels={llmModels}
+        />
+      )}
+
+      {showFirstRunFfmpegModal && (
+        <FirstRunFfmpegModal
+          open={showFirstRunFfmpegModal}
+          onClose={() => {
+            setShowFirstRunFfmpegModal(false);
+            setFfmpegFirstRunDownloadProgress(null);
+          }}
+          onDownload={() => {
+            // Backend handles via ffmpeg.firstrun.asked - progress will come via events
+          }}
+          downloadProgress={ffmpegFirstRunDownloadProgress}
         />
       )}
 

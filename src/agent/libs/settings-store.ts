@@ -9,7 +9,7 @@ const require = (process as any).pkg
 
 const SETTINGS_FILE = "api-settings.json";
 
-function getUserDataDir(): string {
+export function getUserDataDir(): string {
   const envDir = process.env.VALERA_USER_DATA_DIR;
   if (envDir && envDir.trim()) return envDir;
 

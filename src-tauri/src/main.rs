@@ -1200,7 +1200,7 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
     .ok_or_else(|| "[client_event] Missing event.type".to_string())?;
 
   // Log user actions (skip noisy events)
-  let noisy = ["session.list", "session.history", "settings.get", "models.get", "llm.providers.get", "skills.get"];
+  let noisy = ["session.list", "session.history", "settings.get", "models.get", "llm.providers.get", "skills.get", "ffmpeg.status.get"];
   if !noisy.contains(&event_type) {
     eprintln!("[event] {}", event_type);
   }
