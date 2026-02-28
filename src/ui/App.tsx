@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { useIPC } from "./hooks/useIPC";
 import { useAppStore } from "./store/useAppStore";
-import type { ServerEvent, ApiSettings } from "./types";
+import type { ServerEvent, ApiSettings, ClientEvent } from "./types";
 import { I18nProvider, useI18n, mapSystemLocaleToSupported } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StartSessionModalWithActions } from "./components/StartSessionModal";
@@ -25,6 +25,7 @@ function AppHeader({
   autoScrollEnabled,
   setAutoScrollEnabled,
   apiSettings,
+  setApiSettings,
   sendEvent,
   activeSession,
   showFileBrowser,
@@ -36,7 +37,7 @@ function AppHeader({
   setAutoScrollEnabled: (v: boolean) => void;
   apiSettings: ApiSettings | null;
   setApiSettings: (s: ApiSettings | null) => void;
-  sendEvent: (e: unknown) => void;
+  sendEvent: (e: ClientEvent) => void;
   activeSession: { cwd?: string; title?: string } | undefined;
   showFileBrowser: boolean;
   setShowFileBrowser: (v: boolean) => void;
