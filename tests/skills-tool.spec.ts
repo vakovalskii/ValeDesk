@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { join } from "path";
+import { tmpdir } from "os";
 
 const enabledSkills = [
   {
@@ -30,7 +32,7 @@ vi.mock("../src/agent/libs/skills-loader.js", () => ({
   readSkillContent: async () => "## Skill Content",
   listSkillFiles: async () => ["SKILL.md", "script.js"],
   readSkillFile: async () => "file contents",
-  getSkillPath: async () => "/tmp/skills/skill-1"
+  getSkillPath: async () => join(tmpdir(), "skills", "skill-1")
 }));
 
 describe("skills tool", () => {

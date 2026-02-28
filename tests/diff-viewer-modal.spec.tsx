@@ -1,9 +1,12 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { join } from "path";
 import { renderWithI18n } from "./test-utils";
 import { DiffViewerModal } from "../src/ui/components/DiffViewerModal";
 import type { ChangedFile } from "../src/ui/components/ChangedFiles";
+
+const TEST_CWD = join(process.cwd(), "test");
 
 // Создаем мок для invoke функции
 const mockInvoke = vi.fn();
@@ -49,7 +52,7 @@ describe("DiffViewerModal", () => {
         file={null}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -62,7 +65,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={false}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -81,14 +84,14 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledTimes(2);
-      expect(mockInvoke).toHaveBeenNthCalledWith(1, "get-file-old-content", mockFile.file_path, "/test", true);
-      expect(mockInvoke).toHaveBeenNthCalledWith(2, "get-file-new-content", mockFile.file_path, "/test");
+      expect(mockInvoke).toHaveBeenNthCalledWith(1, "get-file-old-content", mockFile.file_path, TEST_CWD, true);
+      expect(mockInvoke).toHaveBeenNthCalledWith(2, "get-file-new-content", mockFile.file_path, TEST_CWD);
     });
   });
 
@@ -112,7 +115,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -137,7 +140,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -156,7 +159,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -176,7 +179,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -196,7 +199,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -224,7 +227,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -238,7 +241,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={false}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -248,7 +251,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
