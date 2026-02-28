@@ -46,8 +46,8 @@ describe("DiffViewerModal", () => {
     vi.clearAllMocks();
   });
 
-  it("не рендерится когда file равен null", () => {
-    const { container } = renderWithI18n(
+  it("не рендерится когда file равен null", async () => {
+    renderWithI18n(
       <DiffViewerModal
         file={null}
         open={true}
@@ -56,7 +56,13 @@ describe("DiffViewerModal", () => {
       />
     );
 
-    expect(container.firstChild).toBeNull();
+    // Ждём готовности i18n (исчезновение overlay "Please Wait")
+    await waitFor(() => {
+      expect(screen.queryByText("Please Wait")).not.toBeInTheDocument();
+    });
+
+    // DiffViewerModal с file=null возвращает null — dialog не рендерится
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("не загружает содержимое когда modal закрыт", async () => {
