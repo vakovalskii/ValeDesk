@@ -3,6 +3,7 @@ import type { ApiSettings, CreateTaskPayload, LLMModel, ModelInfo, RoleGroupRole
 import { getPlatform } from "../platform";
 import { useAppStore } from "../store/useAppStore";
 import { getRoleGroupSettings } from "../role-group";
+import { useI18n } from "../i18n";
 
 function generateRoleGroupTitle(prompt: string): string {
   const trimmed = prompt.trim();
@@ -127,6 +128,7 @@ export function RoleGroupDialog({
   availableModels,
   llmModels = []
 }: RoleGroupDialogProps) {
+  const { t } = useI18n();
   const llmProviders = useAppStore((s) => s.llmProviders);
   const schedulerDefaultModel = useAppStore((s) => s.schedulerDefaultModel);
   const defaultModel = schedulerDefaultModel || apiSettings?.model || "gpt-4";
@@ -219,31 +221,31 @@ export function RoleGroupDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/20 px-4 py-8 backdrop-blur-sm">
       <div className="w-full max-w-3xl rounded-2xl border border-ink-900/5 bg-surface p-6 shadow-elevated max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <div className="text-base font-semibold text-ink-800">Create Role Group Task</div>
-          <button className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" onClick={onClose} aria-label="Close">
+          <div className="text-base font-semibold text-ink-800">{t("roleGroupDialog.title")}</div>
+          <button className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" onClick={onClose} aria-label={t("roleGroupDialog.close")}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
         <p className="mt-2 text-sm text-muted">
-          Launch a group of agents with specialized roles to cover all perspectives.
+          {t("roleGroupDialog.description")}
         </p>
 
         <div className="mt-5 grid gap-4">
           <div className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted">Task Title</span>
+            <span className="text-xs font-medium text-muted">{t("roleGroupDialog.taskTitle")}</span>
             <div className="rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800">
               {generateRoleGroupTitle(taskPrompt)}
             </div>
           </div>
 
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted">Task Description</span>
+            <span className="text-xs font-medium text-muted">{t("roleGroupDialog.taskDescription")}</span>
             <textarea
               rows={4}
               className="w-full rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-3 text-sm text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
-              placeholder="Describe the task for all roles..."
+              placeholder={t("roleGroupDialog.taskDescriptionPlaceholder")}
               value={taskPrompt}
               onChange={(event) => setTaskPrompt(event.target.value)}
             />
@@ -251,13 +253,13 @@ export function RoleGroupDialog({
 
           <label className="grid gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted">Workspace Folder</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 font-medium">Optional</span>
+              <span className="text-xs font-medium text-muted">{t("roleGroupDialog.workspaceFolder")}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 font-medium">{t("roleGroupDialog.optional")}</span>
             </div>
             <div className="flex gap-2">
               <input
                 className="flex-1 rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800 placeholder:text-muted-light focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
-                placeholder="Leave empty to work without file access"
+                placeholder={t("roleGroupDialog.workspacePlaceholder")}
                 value={localCwd}
                 onChange={(event) => setLocalCwd(event.target.value)}
               />
@@ -266,12 +268,12 @@ export function RoleGroupDialog({
                 onClick={handleSelectDirectory}
                 className="rounded-xl border border-ink-900/10 bg-surface px-3 py-2 text-sm text-ink-700 hover:bg-surface-tertiary transition-colors"
               >
-                Browse...
+                {t("roleGroupDialog.browse")}
               </button>
             </div>
             {recentCwds.length > 0 && (
               <div className="mt-2 grid gap-2 w-full">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-light">Recent</div>
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-light">{t("roleGroupDialog.recent")}</div>
                 <div className="flex flex-wrap gap-2 w-full min-w-0">
                   {recentCwds.map((path) => (
                     <button
@@ -291,13 +293,13 @@ export function RoleGroupDialog({
 
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted">Roles</span>
+              <span className="text-xs font-medium text-muted">{t("roleGroupDialog.roles")}</span>
               <button
                 type="button"
                 onClick={() => setRoles(getRoleGroupSettings(apiSettings).roles)}
                 className="text-xs text-ink-600 hover:text-ink-800"
               >
-                Reset to defaults
+                {t("roleGroupDialog.resetToDefaults")}
               </button>
             </div>
             <div className="space-y-3">
@@ -318,7 +320,7 @@ export function RoleGroupDialog({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-muted">Model</span>
+                      <span className="text-xs font-medium text-muted">{t("roleGroupDialog.model")}</span>
                       {allAvailableModels.length > 0 ? (
                         <select
                           value={role.model || ""}
@@ -326,7 +328,7 @@ export function RoleGroupDialog({
                           className="min-w-[220px] rounded-lg border border-ink-900/10 bg-surface-secondary px-3 py-2 text-xs text-ink-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
                         >
                           <option value="">
-                            {defaultModel ? `Default (${defaultModel})` : "Default model"}
+                            {defaultModel ? t("settings.defaultWithModel", { model: defaultModel }) : t("roleGroupDialog.defaultModel")}
                           </option>
                           {allAvailableModels.map(option => (
                             <option key={option.id} value={option.id}>
@@ -338,7 +340,7 @@ export function RoleGroupDialog({
                         <input
                           value={role.model || ""}
                           onChange={(event) => updateRole(role.id, { model: event.target.value })}
-                          placeholder={defaultModel || "Model id"}
+                          placeholder={defaultModel || t("settings.modelId")}
                           className="min-w-[220px] rounded-lg border border-ink-900/10 bg-surface-secondary px-3 py-2 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
                         />
                       )}
@@ -346,7 +348,7 @@ export function RoleGroupDialog({
                   </div>
 
                   <div className="mt-3 grid gap-1.5">
-                    <span className="text-xs font-medium text-muted">Role Prompt</span>
+                    <span className="text-xs font-medium text-muted">{t("roleGroupDialog.rolePrompt")}</span>
                     <textarea
                       rows={3}
                       value={role.prompt}
@@ -366,7 +368,7 @@ export function RoleGroupDialog({
               onChange={(event) => setShareWebCache(event.target.checked)}
               className="h-4 w-4 rounded border-ink-900/20 text-accent focus:ring-accent/40"
             />
-            Share web cache between roles
+            {t("roleGroupDialog.shareWebCache")}
           </label>
         </div>
 
@@ -375,7 +377,7 @@ export function RoleGroupDialog({
             className="rounded-lg border border-ink-900/10 px-4 py-2 text-sm text-ink-600 hover:bg-surface-tertiary"
             onClick={onClose}
           >
-            Cancel
+            {t("roleGroupDialog.cancel")}
           </button>
           <button
             onClick={handleCreateTask}
@@ -384,7 +386,7 @@ export function RoleGroupDialog({
               isValid ? "bg-accent hover:bg-accent/90" : "bg-ink-300 cursor-not-allowed"
             }`}
           >
-            Create Role Group
+            {t("roleGroupDialog.createRoleGroup")}
           </button>
         </div>
       </div>

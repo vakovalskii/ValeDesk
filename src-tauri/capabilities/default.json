@@ -1,16 +1,12 @@
 {
-    "$schema": "../gen/schemas/desktop-schema.json",
-    "identifier": "default",
-    "description": "Default capabilities for the app",
-    "windows": [
-        "main"
-    ],
-    "permissions": [
-        "core:event:allow-listen",
-        "core:event:allow-unlisten",
-        "core:event:allow-emit",
-        "core:window:allow-show",
-        "core:webview:allow-internal-toggle-devtools",
-        "notification:default"
-    ]
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for the app",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "i18n:default",
+    "locale:default"
+  ]
 }

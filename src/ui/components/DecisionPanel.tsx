@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import { useI18n } from "../i18n";
 import type { PermissionRequest } from "../store/useAppStore";
 
 type AskUserQuestionInput = {
@@ -19,6 +20,7 @@ export function DecisionPanel({
   request: PermissionRequest;
   onSubmit: (result: PermissionResult) => void;
 }) {
+  const { t } = useI18n();
   const input = request.input as AskUserQuestionInput | null;
   const questions = input?.questions ?? [];
   const [selectedOptions, setSelectedOptions] = useState<Record<number, string[]>>({});
@@ -117,7 +119,7 @@ export function DecisionPanel({
               <input
                 type="text"
                 className="mt-1 w-full rounded-xl border border-ink-900/10 bg-surface px-3 py-2 text-sm text-ink-700 focus:border-info/50 focus:outline-none"
-                placeholder="Type your answer..."
+                placeholder={t("eventCard.typeYourAnswer")}
                 value={otherInputs[qIndex] ?? ""}
                 onChange={(e) => setOtherInputs((prev) => ({ ...prev, [qIndex]: e.target.value }))}
               />

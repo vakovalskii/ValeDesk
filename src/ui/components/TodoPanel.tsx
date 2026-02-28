@@ -8,6 +8,7 @@ import type { TodoItem, TodoStatus, FileChange } from "../types";
 import { DiffViewerModal } from "./DiffViewerModal";
 import type { ChangedFile } from "./ChangedFiles";
 import { useAppStore } from "../store/useAppStore";
+import { useI18n } from "../i18n";
 
 interface TodoPanelProps {
   todos: TodoItem[];
@@ -31,6 +32,7 @@ export function TodoPanel({
   onConfirmChanges,
   onRollbackChanges
 }: TodoPanelProps) {
+  const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAllFiles, setShowAllFiles] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
@@ -234,9 +236,9 @@ export function TodoPanel({
                         type="button"
                         onClick={() => handleViewDiff(change)}
                         className="ml-2 px-2 py-0.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-100 rounded transition-colors flex-shrink-0"
-                        title="View diff"
+                        title={t("todoPanel.viewDiff")}
                       >
-                        View Diff
+                        {t("todoPanel.viewDiff")}
                       </button>
                     </div>
                   </div>

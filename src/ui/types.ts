@@ -174,6 +174,7 @@ export type ApiSettings = {
   llmProviders?: LLMProviderSettings; // LLM providers and models configuration
   roleGroupSettings?: RoleGroupSettings; // Default role group configuration
   requestTimeoutMs?: number; // API request timeout in ms (default: 300000 = 5 min)
+  locale?: string; // UI language (e.g. 'en', 'ru')
 };
 
 export type ModelInfo = {

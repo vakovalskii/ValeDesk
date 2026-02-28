@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { LLMModel } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { useI18n } from "../i18n";
 
 interface SessionEditModalProps {
   currentModel?: string;
@@ -20,6 +21,7 @@ export function SessionEditModal({
   onSave,
   onClose
 }: SessionEditModalProps) {
+  const { t } = useI18n();
   const llmProviders = useAppStore((s) => s.llmProviders);
   const [model, setModel] = useState(currentModel || '');
   const [temperature, setTemperature] = useState(currentTemperature ?? 0.3);
@@ -50,7 +52,7 @@ export function SessionEditModal({
       const found = enabledModels.find(m => m.id === model);
       return found ? found.name : model.split('::').pop() || model;
     }
-    return "Select model...";
+    return t("sessionEditModal.selectModel");
   })();
 
   const handleSave = () => {
@@ -76,7 +78,7 @@ export function SessionEditModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/20 px-4 py-8 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-ink-900/5 bg-surface p-6 shadow-elevated">
         <div className="flex items-center justify-between">
-          <div className="text-base font-semibold text-ink-800">Edit Session</div>
+          <div className="text-base font-semibold text-ink-800">{t("sessionEditModal.title")}</div>
           <button 
             className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" 
             onClick={onClose}
@@ -106,7 +108,7 @@ export function SessionEditModal({
 
           {/* Model selector */}
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted">Model</span>
+            <span className="text-xs font-medium text-muted">{t("sessionEditModal.model")}</span>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button className="flex items-center justify-between rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-accent/20 transition-colors">
@@ -127,14 +129,14 @@ export function SessionEditModal({
                       type="text"
                       value={modelSearch}
                       onChange={(e) => setModelSearch(e.target.value)}
-                      placeholder="Search models..."
+                      placeholder={t("sessionEditModal.searchModels")}
                       className="w-full px-3 py-2 text-sm border border-ink-900/10 rounded-lg bg-surface-secondary focus:outline-none focus:ring-1 focus:ring-accent/20"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                   <div className="max-h-60 overflow-y-auto">
                     {filteredModels.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted">No models found</div>
+                      <div className="px-3 py-2 text-sm text-muted">{t("sessionEditModal.noModelsFound")}</div>
                     ) : (
                       filteredModels.map((m) => (
                         <DropdownMenu.Item

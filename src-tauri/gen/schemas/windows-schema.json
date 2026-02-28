@@ -2355,6 +2355,90 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
+          "description": "Default permissions for the i18n plugin.\n#### This default permission set includes:\n\n- `allow-load-translations`\n- `allow-translate`\n- `allow-get-locale`\n- `allow-set-locale`\n- `allow-get-available-locales`",
+          "type": "string",
+          "const": "i18n:default",
+          "markdownDescription": "Default permissions for the i18n plugin.\n#### This default permission set includes:\n\n- `allow-load-translations`\n- `allow-translate`\n- `allow-get-locale`\n- `allow-set-locale`\n- `allow-get-available-locales`"
+        },
+        {
+          "description": "Enables the get_available_locales command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:allow-get-available-locales",
+          "markdownDescription": "Enables the get_available_locales command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_locale command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:allow-get-locale",
+          "markdownDescription": "Enables the get_locale command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_translations command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:allow-load-translations",
+          "markdownDescription": "Enables the load_translations command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_locale command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:allow-set-locale",
+          "markdownDescription": "Enables the set_locale command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the translate command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:allow-translate",
+          "markdownDescription": "Enables the translate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_available_locales command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:deny-get-available-locales",
+          "markdownDescription": "Denies the get_available_locales command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_locale command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:deny-get-locale",
+          "markdownDescription": "Denies the get_locale command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_translations command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:deny-load-translations",
+          "markdownDescription": "Denies the load_translations command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_locale command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:deny-set-locale",
+          "markdownDescription": "Denies the set_locale command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the translate command without any pre-configured scope.",
+          "type": "string",
+          "const": "i18n:deny-translate",
+          "markdownDescription": "Denies the translate command without any pre-configured scope."
+        },
+        {
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-get-locale`",
+          "type": "string",
+          "const": "locale:default",
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-get-locale`"
+        },
+        {
+          "description": "Enables the get_locale command without any pre-configured scope.",
+          "type": "string",
+          "const": "locale:allow-get-locale",
+          "markdownDescription": "Enables the get_locale command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_locale command without any pre-configured scope.",
+          "type": "string",
+          "const": "locale:deny-get-locale",
+          "markdownDescription": "Denies the get_locale command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures which\nnotification features are by default exposed.\n\n#### Granted Permissions\n\nIt allows all notification related features.\n\n\n#### This default permission set includes:\n\n- `allow-is-permission-granted`\n- `allow-request-permission`\n- `allow-notify`\n- `allow-register-action-types`\n- `allow-register-listener`\n- `allow-cancel`\n- `allow-get-pending`\n- `allow-remove-active`\n- `allow-get-active`\n- `allow-check-permissions`\n- `allow-show`\n- `allow-batch`\n- `allow-list-channels`\n- `allow-delete-channel`\n- `allow-create-channel`\n- `allow-permission-state`",
           "type": "string",
           "const": "notification:default",

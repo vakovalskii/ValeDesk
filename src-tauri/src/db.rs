@@ -656,7 +656,8 @@ pub struct ApiSettings {
     pub enable_memory: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_todos: Option<bool>,
-    // Add other settings as needed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
 }
 
 // ============ Database methods for Providers ============
@@ -1146,5 +1147,54 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let changed = conn.execute("DELETE FROM scheduled_tasks WHERE id = ?1", [id])?;
         Ok(changed > 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn api_settings_locale_roundtrip() {
+        let db = Database::new(Path::new(":memory:")).unwrap();
+        let settings = ApiSettings {
+            base_url: Some("https://api.example.com".to_string()),
+            api_key: Some("sk-test".to_string()),
+            permission_mode: None,
+            web_search_provider: None,
+            tavily_api_key: None,
+            enable_memory: None,
+            enable_todos: None,
+            locale: Some("ru".to_string()),
+        };
+
+        db.save_api_settings(&settings).unwrap();
+
+        let loaded = db.get_api_settings().unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.locale, Some("ru".to_string()));
+    }
+
+    #[test]
+    fn api_settings_without_locale() {
+        let db = Database::new(Path::new(":memory:")).unwrap();
+        let settings = ApiSettings {
+            base_url: None,
+            api_key: None,
+            permission_mode: None,
+            web_search_provider: None,
+            tavily_api_key: None,
+            enable_memory: None,
+            enable_todos: None,
+            locale: None,
+        };
+
+        db.save_api_settings(&settings).unwrap();
+
+        let loaded = db.get_api_settings().unwrap();
+        assert!(loaded.is_some());
+        assert_eq!(loaded.unwrap().locale, None);
     }
 }
