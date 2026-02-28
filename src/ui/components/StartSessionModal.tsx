@@ -325,7 +325,7 @@ export function StartSessionModal({
               }}
             />
             <div className="text-xs text-muted text-center">
-              Press <span className="font-medium text-ink-700">{typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? '⌘ + Enter' : 'Ctrl + Enter'}</span> to start
+              {t("startSessionModal.pressToStart")} <span className="font-medium text-ink-700">{typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? '⌘ + Enter' : 'Ctrl + Enter'}</span> {t("startSessionModal.toStart")}
             </div>
           </label>
           <button

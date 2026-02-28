@@ -81,6 +81,7 @@ const SessionResult = ({ message, fileChanges, sessionId, onConfirmChanges, onRo
   onConfirmChanges?: (sessionId: string) => void;
   onRollbackChanges?: (sessionId: string) => void;
 }) => {
+  const { t } = useI18n();
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ChangedFile | null>(null);
   
@@ -88,7 +89,7 @@ const SessionResult = ({ message, fileChanges, sessionId, onConfirmChanges, onRo
   const sessions = useAppStore((state) => state.sessions);
   const cwd = sessionId ? sessions[sessionId]?.cwd : undefined;
 
-  const formatMinutes = (ms: number | undefined) => typeof ms !== "number" ? "-" : `${(ms / 60000).toFixed(2)} min`;
+  const formatMinutes = (ms: number | undefined) => typeof ms !== "number" ? "-" : t("eventCard.durationMin", { value: (ms / 60000).toFixed(2) });
   const formatUsd = (usd: number | undefined) => typeof usd !== "number" ? "-" : usd.toFixed(2);
   const formatMillions = (tokens: number | undefined) => typeof tokens !== "number" ? "-" : `${(tokens / 1_000_000).toFixed(3)}m`;
 
@@ -121,18 +122,18 @@ const SessionResult = ({ message, fileChanges, sessionId, onConfirmChanges, onRo
   return (
     <>
       <div className="flex flex-col gap-2 mt-4">
-        <div className="header text-accent">Session Result</div>
+        <div className="header text-accent">{t("eventCard.sessionResult")}</div>
         <div className="flex flex-col rounded-xl px-4 py-3 border border-ink-900/10 bg-surface-secondary space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-[14px]">
-            <span className="font-normal">Duration</span>
+            <span className="font-normal">{t("eventCard.duration")}</span>
             <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{formatMinutes(message.duration_ms)}</span>
-            <span className="font-normal">API</span>
+            <span className="font-normal">{t("eventCard.api")}</span>
             <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{formatMinutes(message.duration_api_ms)}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[14px]">
-            <span className="font-normal">Tokens</span>
-            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">input:{formatMillions(message.usage?.input_tokens)}</span>
-            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">output:{formatMillions(message.usage?.output_tokens)}</span>
+            <span className="font-normal">{t("eventCard.tokens")}</span>
+            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{t("eventCard.inputTokens", { value: formatMillions(message.usage?.input_tokens) })}</span>
+            <span className="inline-flex items-center rounded-full bg-surface-tertiary px-2.5 py-0.5 text-ink-700 text-[13px]">{t("eventCard.outputTokens", { value: formatMillions(message.usage?.output_tokens) })}</span>
             {hasCost && (
               <span className="inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-accent text-[13px]">
                 ${formatUsd(message.total_cost_usd)}

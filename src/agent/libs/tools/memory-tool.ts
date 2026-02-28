@@ -18,7 +18,7 @@ const MEMORY_FILE = 'memory.md';
  * Get memory file path.
  * Always uses global ~/Library/Application Support/ValeDesk/memory.md for user-level memory.
  */
-function getMemoryPath(_cwd?: string): string {
+export function getMemoryPath(_cwd?: string): string {
   return join(homedir(), VALEDESK_DIR, MEMORY_FILE);
 }
 

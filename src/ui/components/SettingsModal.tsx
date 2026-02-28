@@ -842,7 +842,7 @@ function LLMModelsTab({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-ink-600">
-                      {enabledModelsCount}/{providerModels.length} models
+                      {t("settings.enabledModelsCount", { enabled: enabledModelsCount, total: providerModels.length })}
                     </span>
                     <button
                       onClick={(e) => {
@@ -1134,9 +1134,11 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
         {t('settings.addProvider')}
       </button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+      <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/50" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[100] -translate-x-1/2 -translate-y-1/2 w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl">
+          <div className="p-6">
             <h3 className="text-lg font-semibold text-ink-900 mb-4">{t('settings.addProviderTitle')}</h3>
             
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -1329,8 +1331,9 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
               )}
             </form>
           </div>
-        </div>
-      )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </>
   );
 }

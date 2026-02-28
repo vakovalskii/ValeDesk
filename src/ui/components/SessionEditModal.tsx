@@ -79,8 +79,10 @@ export function SessionEditModal({
       <div className="w-full max-w-md rounded-2xl border border-ink-900/5 bg-surface p-6 shadow-elevated">
         <div className="flex items-center justify-between">
           <div className="text-base font-semibold text-ink-800">{t("sessionEditModal.title")}</div>
-          <button 
-            className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" 
+          <button
+            type="button"
+            aria-label={t("sessionEditModal.close")}
+            className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors"
             onClick={onClose}
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -90,19 +92,19 @@ export function SessionEditModal({
         </div>
         
         <p className="mt-2 text-sm text-muted">
-          Change model and settings for this session.
+          {t("sessionEditModal.description")}
         </p>
 
         <div className="mt-5 grid gap-4">
           {/* Title */}
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted">Session Title</span>
+            <span className="text-xs font-medium text-muted">{t("sessionEditModal.sessionTitle")}</span>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800 placeholder:text-muted-light focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20"
-              placeholder="Session title..."
+              placeholder={t("sessionEditModal.sessionTitlePlaceholder")}
             />
           </label>
 
@@ -164,7 +166,7 @@ export function SessionEditModal({
           <div className="grid gap-1.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-muted">Temperature</span>
+                <span className="text-xs font-medium text-muted">{t("sessionEditModal.temperature")}</span>
                 <label className="flex items-center gap-1 cursor-pointer">
                   <input
                     type="checkbox"
@@ -172,7 +174,7 @@ export function SessionEditModal({
                     onChange={(e) => setSendTemperature(e.target.checked)}
                     className="w-3 h-3 rounded border-ink-300 text-accent focus:ring-accent/20"
                   />
-                  <span className="text-[10px] text-muted">send</span>
+                  <span className="text-[10px] text-muted">{t("sessionEditModal.send")}</span>
                 </label>
               </div>
               <span className="text-xs text-ink-600 font-mono">{temperature.toFixed(1)}</span>
@@ -195,7 +197,7 @@ export function SessionEditModal({
               />
             </div>
             <p className="text-[10px] text-muted-light">
-              Disable for models like GPT-5 that don't support temperature.
+              {t("sessionEditModal.temperatureDesc")}
             </p>
           </div>
         </div>
@@ -205,13 +207,13 @@ export function SessionEditModal({
             onClick={onClose}
             className="flex-1 px-4 py-2.5 text-sm font-medium text-ink-600 bg-ink-50 rounded-xl hover:bg-ink-100 transition-colors"
           >
-            Cancel
+            {t("sessionEditModal.cancel")}
           </button>
           <button
             onClick={handleSave}
             className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-ink-800 rounded-xl hover:bg-ink-900 transition-colors"
           >
-            Save Changes
+            {t("sessionEditModal.saveChanges")}
           </button>
         </div>
       </div>
