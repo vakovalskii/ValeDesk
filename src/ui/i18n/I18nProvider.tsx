@@ -182,6 +182,15 @@ export function I18nProvider({
   return (
     <I18nContext.Provider value={value}>
       {children}
+      {!isReady && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink-900/80 backdrop-blur-sm"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span className="text-lg font-medium text-white">Please Wait</span>
+        </div>
+      )}
     </I18nContext.Provider>
   );
 }
