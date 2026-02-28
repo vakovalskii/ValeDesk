@@ -7,12 +7,23 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import enLocale from "../../../locales/en.json";
 import {
   getDefaultLocale,
   getSupportedLocales,
   mapSystemLocaleToSupported,
 } from "./localeUtils";
 import type { I18nContextValue } from "./types";
+
+function toDict(data: Record<string, unknown>): Record<string, string> {
+  const dict: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (k !== "_version" && typeof v === "string") dict[k] = v;
+  }
+  return dict;
+}
+
+const enDict = toDict(enLocale as Record<string, unknown>);
 
 function hasTauriApi(): boolean {
   return typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== "undefined";
@@ -71,31 +82,23 @@ export function I18nProvider({
   );
 
   const loadElectronTranslations = useCallback(async (loc: string) => {
+    if (!hasTauriApi() && loc === "en") {
+      setElectronTranslations(enDict);
+      return;
+    }
     try {
       const base = (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL) ?? "/";
       const url = `${base}locales/${loc}.json`;
       const res = await fetch(url);
       if (res.ok) {
-        const data = (await res.json()) as Record<string, string>;
-        const dict: Record<string, string> = {};
-        for (const [k, v] of Object.entries(data)) {
-          if (k !== "_version" && typeof v === "string") dict[k] = v;
-        }
-        setElectronTranslations(dict);
+        const data = (await res.json()) as Record<string, unknown>;
+        setElectronTranslations(toDict(data));
       } else {
-        const fallbackUrl = `${base}locales/en.json`;
-        const fallbackRes = await fetch(fallbackUrl);
-        if (fallbackRes.ok) {
-          const data = (await fallbackRes.json()) as Record<string, string>;
-          const dict: Record<string, string> = {};
-          for (const [k, v] of Object.entries(data)) {
-            if (k !== "_version" && typeof v === "string") dict[k] = v;
-          }
-          setElectronTranslations(dict);
-        }
+        setElectronTranslations(enDict);
       }
     } catch (e) {
       console.warn("[i18n] Failed to load locale:", loc, e);
+      setElectronTranslations(enDict);
     }
   }, []);
 
