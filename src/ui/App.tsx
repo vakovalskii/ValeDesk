@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { useIPC } from "./hooks/useIPC";
 import { useAppStore } from "./store/useAppStore";
-import type { ServerEvent, ApiSettings, ClientEvent } from "./types";
+import type { ServerEvent, ApiSettings, ClientEvent, LLMModel } from "./types";
 import { I18nProvider, useI18n, mapSystemLocaleToSupported } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StartSessionModalWithActions } from "./components/StartSessionModal";
@@ -159,6 +159,114 @@ function AppEmptyState() {
   );
 }
 
+type AppModalsProps = {
+  showStartModal: boolean;
+  setShowStartModal: (v: boolean) => void;
+  showTaskDialog: boolean;
+  setShowTaskDialog: (v: boolean) => void;
+  showRoleGroupDialog: boolean;
+  setShowRoleGroupDialog: (v: boolean) => void;
+  showSettingsModal: boolean;
+  setShowSettingsModal: (v: boolean) => void;
+  showSessionEditModal: boolean;
+  setShowSessionEditModal: (v: boolean) => void;
+  activeSessionId: string | null;
+  activeSession: { model?: string; temperature?: number; title?: string } | undefined;
+  sendEvent: (e: ClientEvent) => void;
+  cwd: string;
+  prompt: string;
+  pendingStart: boolean;
+  setCwd: (v: string) => void;
+  setPrompt: (v: string) => void;
+  apiSettings: ApiSettings | null;
+  availableModels: Array<{ id: string; name: string; description?: string }>;
+  selectedModel: string | null;
+  setSelectedModel: (v: string | null) => void;
+  llmModels: LLMModel[];
+  selectedTemperature: number;
+  setSelectedTemperature: (v: number) => void;
+  sendTemperature: boolean;
+  setSendTemperature: (v: boolean) => void;
+  handleSaveSettings: (s: ApiSettings) => void;
+  handleCreateTask: (payload: any) => void;
+  handleCreateRoleGroupTask: (payload: any) => void;
+};
+
+export function AppModals(props: AppModalsProps) {
+  const { isReady } = useI18n();
+  return (
+    <>
+      {props.showStartModal && isReady && (
+        <StartSessionModalWithActions
+          sendEvent={props.sendEvent}
+          cwd={props.cwd}
+          prompt={props.prompt}
+          pendingStart={props.pendingStart}
+          onCwdChange={props.setCwd}
+          onPromptChange={props.setPrompt}
+          onClose={() => props.setShowStartModal(false)}
+          apiSettings={props.apiSettings}
+          availableModels={props.availableModels}
+          selectedModel={props.selectedModel}
+          onModelChange={props.setSelectedModel}
+          llmModels={props.llmModels}
+          temperature={props.selectedTemperature}
+          onTemperatureChange={props.setSelectedTemperature}
+          sendTemperature={props.sendTemperature}
+          onSendTemperatureChange={props.setSendTemperature}
+        />
+      )}
+      {props.showTaskDialog && isReady && (
+        <TaskDialog
+          cwd={props.cwd}
+          onClose={() => props.setShowTaskDialog(false)}
+          onCreateTask={props.handleCreateTask}
+          apiSettings={props.apiSettings}
+          availableModels={props.availableModels}
+          llmModels={props.llmModels}
+        />
+      )}
+      {props.showRoleGroupDialog && isReady && (
+        <RoleGroupDialog
+          cwd={props.cwd}
+          onClose={() => props.setShowRoleGroupDialog(false)}
+          onCreateTask={props.handleCreateRoleGroupTask}
+          apiSettings={props.apiSettings}
+          availableModels={props.availableModels}
+          llmModels={props.llmModels}
+        />
+      )}
+      {props.showSettingsModal && isReady && (
+        <SettingsModal
+          currentSettings={props.apiSettings}
+          onSave={props.handleSaveSettings}
+          onClose={() => props.setShowSettingsModal(false)}
+        />
+      )}
+      {props.showSessionEditModal && isReady && props.activeSessionId && props.activeSession && (
+        <SessionEditModal
+          currentModel={props.activeSession.model}
+          currentTemperature={props.activeSession.temperature}
+          currentTitle={props.activeSession.title}
+          llmModels={props.llmModels}
+          onSave={(updates) => {
+            if (props.activeSessionId) {
+              props.sendEvent({
+                type: "session.update",
+                payload: {
+                  sessionId: props.activeSessionId,
+                  ...updates
+                }
+              });
+            }
+          }}
+          onClose={() => props.setShowSessionEditModal(false)}
+        />
+      )}
+    </>
+  );
+}
+
 function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -186,6 +294,7 @@ function App() {
   const llmModels = useAppStore((s) => s.llmModels);
 
   const sessions = useAppStore((s) => s.sessions);
+  const sessionsLoaded = useAppStore((s) => s.sessionsLoaded);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const showStartModal = useAppStore((s) => s.showStartModal);
   const setShowStartModal = useAppStore((s) => s.setShowStartModal);
@@ -334,10 +443,14 @@ function App() {
     
     // Check if we have any enabled models from LLM providers (enabled !== false)
     const hasEnabledModels = llmModels.some(m => m.enabled !== false);
+    const hasNoSessions = sessionsLoaded && Object.keys(sessions).length === 0;
     
-    // If we have enabled models from LLM providers, we're good - don't open Settings
+    // If we have enabled models from LLM providers, show Start when no sessions
     if (hasEnabledModels) {
       console.log('[App] LLM providers with enabled models found:', llmModels.length, 'models');
+      if (hasNoSessions) {
+        setShowStartModal(true);
+      }
       return;
     }
     
@@ -361,8 +474,11 @@ function App() {
       setShowSettingsModal(true);
     } else {
       console.log('[App] Valid API key found');
+      if (hasNoSessions) {
+        setShowStartModal(true);
+      }
     }
-  }, [apiSettings, settingsLoaded, llmProvidersLoaded, llmModels, setShowStartModal]);
+  }, [apiSettings, settingsLoaded, llmProvidersLoaded, llmModels, sessions, sessionsLoaded, setShowStartModal]);
 
   useEffect(() => {
     if (!activeSessionId || !connected) return;
@@ -694,75 +810,38 @@ function App() {
         <PromptInput sendEvent={sendEvent} />
       </main>
 
-      {showStartModal && (
-        <StartSessionModalWithActions
-          sendEvent={sendEvent}
-          cwd={cwd}
-          prompt={prompt}
-          pendingStart={pendingStart}
-          onCwdChange={setCwd}
-          onPromptChange={setPrompt}
-          onClose={() => setShowStartModal(false)}
-          apiSettings={apiSettings}
-          availableModels={availableModels}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          llmModels={llmModels}
-          temperature={selectedTemperature}
-          onTemperatureChange={setSelectedTemperature}
-          sendTemperature={sendTemperature}
-          onSendTemperatureChange={setSendTemperature}
-        />
-      )}
-
-      {showTaskDialog && (
-        <TaskDialog
-          cwd={cwd}
-          onClose={() => setShowTaskDialog(false)}
-          onCreateTask={handleCreateTask}
-          apiSettings={apiSettings}
-          availableModels={availableModels}
-          llmModels={llmModels}
-        />
-      )}
-
-      {showRoleGroupDialog && (
-        <RoleGroupDialog
-          cwd={cwd}
-          onClose={() => setShowRoleGroupDialog(false)}
-          onCreateTask={handleCreateRoleGroupTask}
-          apiSettings={apiSettings}
-          availableModels={availableModels}
-          llmModels={llmModels}
-        />
-      )}
-
-      {showSettingsModal && (
-        <SettingsModal
-          currentSettings={apiSettings}
-          onSave={handleSaveSettings}
-          onClose={() => setShowSettingsModal(false)}
-        />
-      )}
-
-      {showSessionEditModal && activeSessionId && activeSession && (
-        <SessionEditModal
-          currentModel={activeSession.model}
-          currentTemperature={activeSession.temperature}
-          currentTitle={activeSession.title}
-          llmModels={llmModels}
-          onSave={(updates) => {
-            sendEvent({
-              type: "session.update",
-              payload: {
-                sessionId: activeSessionId,
-                ...updates
-              }
-            });
-          }}
-          onClose={() => setShowSessionEditModal(false)}
-        />
-      )}
+      <AppModals
+        showStartModal={showStartModal}
+        setShowStartModal={setShowStartModal}
+        showTaskDialog={showTaskDialog}
+        setShowTaskDialog={setShowTaskDialog}
+        showRoleGroupDialog={showRoleGroupDialog}
+        setShowRoleGroupDialog={setShowRoleGroupDialog}
+        showSettingsModal={showSettingsModal}
+        setShowSettingsModal={setShowSettingsModal}
+        showSessionEditModal={showSessionEditModal}
+        setShowSessionEditModal={setShowSessionEditModal}
+        activeSessionId={activeSessionId}
+        activeSession={activeSession}
+        sendEvent={sendEvent}
+        cwd={cwd}
+        prompt={prompt}
+        pendingStart={pendingStart}
+        setCwd={setCwd}
+        setPrompt={setPrompt}
+        apiSettings={apiSettings}
+        availableModels={availableModels}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        llmModels={llmModels}
+        selectedTemperature={selectedTemperature}
+        setSelectedTemperature={setSelectedTemperature}
+        sendTemperature={sendTemperature}
+        setSendTemperature={setSendTemperature}
+        handleSaveSettings={handleSaveSettings}
+        handleCreateTask={handleCreateTask}
+        handleCreateRoleGroupTask={handleCreateRoleGroupTask}
+      />
 
       {globalError && (
         <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-error/20 bg-error-light px-4 py-3 shadow-lg">
