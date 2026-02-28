@@ -79,6 +79,7 @@ ensure-tools:
 	@$(MAKE) --no-print-directory ensure-tauri-cli
 
 dev-sidecar: ensure-tools
+	@npm run copy:locales
 	@npm run transpile:sidecar
 ifdef OS
 	@powershell -ExecutionPolicy ByPass -File ./scripts/setup_sidecar_mock.ps1

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ClientEvent } from "../types";
 import { useAppStore } from "../store/useAppStore";
+import { useI18n } from "../i18n";
 import { SpinnerIcon } from "./SpinnerIcon";
 
 const DEFAULT_ALLOWED_TOOLS = "Read,Edit,Bash";
@@ -13,6 +14,7 @@ interface PromptInputProps {
 }
 
 export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
+  const { t } = useI18n();
   const prompt = useAppStore((state) => state.prompt);
   const cwd = useAppStore((state) => state.cwd);
   const activeSessionId = useAppStore((state) => state.activeSessionId);
@@ -76,7 +78,7 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
       } as ClientEvent);
     } else {
       if (activeSession?.status === "running") {
-        setGlobalError("Session is still running. Please wait for it to finish.");
+        setGlobalError(t("promptInput.sessionStillRunning"));
         return;
       }
       sendEvent({ type: "session.continue", payload: { sessionId: activeSessionId, prompt: trimmedPrompt } });
@@ -99,6 +101,7 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
 }
 
 export function PromptInput({ sendEvent }: PromptInputProps) {
+  const { t } = useI18n();
   const { prompt, setPrompt, isRunning, handleSend, handleStop } = usePromptActions(sendEvent);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const activeSessionId = useAppStore((state) => state.activeSessionId);
@@ -159,7 +162,7 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
           <textarea
             rows={1}
             className="flex-1 resize-none bg-transparent py-1.5 text-sm text-ink-800 placeholder:text-muted focus:outline-none"
-            placeholder="Describe what you want agent to handle..."
+            placeholder={t("promptInput.placeholder")}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -171,8 +174,8 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${isCompacting ? "border-accent/40 text-accent cursor-not-allowed opacity-60" : "border-ink-900/15 text-muted hover:border-accent/40 hover:text-accent"}`}
               onClick={handleCompact}
               disabled={isCompacting}
-              title="Compact conversation — summarize history into a new session"
-              aria-label="Compact conversation"
+              title={t("promptInput.compactTitle")}
+              aria-label={t("promptInput.compactAriaLabel")}
             >
               {isCompacting ? (
                 <SpinnerIcon className="h-4 w-4" />
@@ -188,7 +191,7 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
           <button
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${isRunning ? "bg-error text-white hover:bg-error/90" : "bg-accent text-white hover:bg-accent-hover"}`}
             onClick={isRunning ? handleStop : handleSend}
-            aria-label={isRunning ? "Stop session" : "Send prompt"}
+            aria-label={isRunning ? t("promptInput.stopSession") : t("promptInput.sendPrompt")}
           >
             {isRunning ? (
               <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>
@@ -198,7 +201,7 @@ export function PromptInput({ sendEvent }: PromptInputProps) {
           </button>
         </div>
         <div className="mt-2 px-2 text-xs text-muted text-center">
-          Press <span className="font-medium text-ink-700">Enter</span> to send • <span className="font-medium text-ink-700">Shift + Enter</span> for new line
+          {t("promptInput.keyboardHint")}
         </div>
       </div>
     </section>

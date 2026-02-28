@@ -10,7 +10,9 @@ const resetStore = () => {
     historyRequested: new Set(),
     globalError: null,
     schedulerDefaultTemperature: null,
-    schedulerDefaultSendTemperature: null
+    schedulerDefaultSendTemperature: null,
+    showStartModal: false,
+    sessionsLoaded: false
   }, true);
 };
 
@@ -101,5 +103,59 @@ describe("scheduler default temperature initial state", () => {
     const state = useAppStore.getState();
     expect(state.schedulerDefaultTemperature).toBeNull();
     expect(state.schedulerDefaultSendTemperature).toBeNull();
+  });
+});
+
+describe("session.list and showStartModal (first launch fix)", () => {
+  beforeEach(resetStore);
+
+  it("does NOT set showStartModal to true when sessions list is empty (first launch)", () => {
+    expect(useAppStore.getState().showStartModal).toBe(false);
+
+    useAppStore.getState().handleServerEvent({
+      type: "session.list",
+      payload: { sessions: [] }
+    } as any);
+
+    expect(useAppStore.getState().showStartModal).toBe(false);
+  });
+
+  it("sets showStartModal to false when sessions list has items", () => {
+    useAppStore.setState({ showStartModal: true });
+
+    useAppStore.getState().handleServerEvent({
+      type: "session.list",
+      payload: {
+        sessions: [{ id: "s1", title: "Test", status: "idle", createdAt: 1, updatedAt: 1 }]
+      }
+    } as any);
+
+    expect(useAppStore.getState().showStartModal).toBe(false);
+  });
+
+  it("sets sessionsLoaded to true after session.list", () => {
+    useAppStore.getState().handleServerEvent({
+      type: "session.list",
+      payload: { sessions: [] }
+    } as any);
+
+    expect(useAppStore.getState().sessionsLoaded).toBe(true);
+  });
+
+  it("session.deleted: sets showStartModal to true when last session is removed", () => {
+    useAppStore.getState().handleServerEvent({
+      type: "session.list",
+      payload: {
+        sessions: [{ id: "s1", title: "Test", status: "idle", createdAt: 1, updatedAt: 1 }]
+      }
+    } as any);
+    expect(useAppStore.getState().showStartModal).toBe(false);
+
+    useAppStore.getState().handleServerEvent({
+      type: "session.deleted",
+      payload: { sessionId: "s1" }
+    } as any);
+
+    expect(useAppStore.getState().showStartModal).toBe(true);
   });
 });

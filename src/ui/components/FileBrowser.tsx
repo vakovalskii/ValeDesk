@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPlatform } from "../platform";
 import { dirnameFsPath, isPathWithin, normalizeFsPath } from "../platform/fs-path";
+import { useI18n } from "../i18n";
 
 type FileItem = {
   name: string;
@@ -15,6 +16,7 @@ type FileBrowserProps = {
 };
 
 export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
+  const { t } = useI18n();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPath, setCurrentPath] = useState(cwd);
@@ -78,7 +80,7 @@ export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
           <svg className="w-4 h-4 text-ink-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
-          <span className="text-sm font-medium text-ink-700">Files</span>
+          <span className="text-sm font-medium text-ink-700">{t("fileBrowser.files")}</span>
         </div>
         <button
           onClick={onClose}
@@ -97,7 +99,7 @@ export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
             onClick={goUp}
             disabled={currentPath === cwd}
             className="p-1 text-ink-600 hover:text-ink-900 hover:bg-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Go up"
+            title={t("fileBrowser.goUp")}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -114,7 +116,7 @@ export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
             onChange={(e) => setShowHidden(e.target.checked)}
             className="rounded border-ink-300"
           />
-          Show hidden files
+          {t("fileBrowser.showHiddenFiles")}
         </label>
       </div>
 
@@ -122,19 +124,19 @@ export function FileBrowser({ cwd, onClose }: FileBrowserProps) {
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <div className="text-sm text-muted">Loading...</div>
+            <div className="text-sm text-muted">{t("fileBrowser.loading")}</div>
           </div>
         ) : visibleFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 px-4 text-center">
             <div className="text-sm text-muted">
-              {files.length === 0 ? 'Empty directory' : 'No visible files'}
+              {files.length === 0 ? t("fileBrowser.emptyDirectory") : t("fileBrowser.noVisibleFiles")}
             </div>
             {!showHidden && files.length > 0 && (
               <button
                 onClick={() => setShowHidden(true)}
                 className="mt-2 text-xs text-accent hover:underline"
               >
-                Show hidden files
+                {t("fileBrowser.showHiddenFiles")}
               </button>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../i18n";
 import type { MultiThreadTask, SessionInfo, TaskMode } from "../types";
 
 interface MultiThreadTaskItemProps {
@@ -18,6 +19,7 @@ export function MultiThreadTaskItem({
   sendEvent,
   isActive = false
 }: MultiThreadTaskItemProps) {
+  const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
   
   const threads = task.threadIds.map(id => sessions[id]).filter(Boolean);
@@ -67,7 +69,7 @@ export function MultiThreadTaskItem({
             {/* Status indicator */}
             <span className="flex-shrink-0">
               {isCreated && (
-                <span className="w-3.5 h-3.5 rounded-full bg-warning" title="Ready to start" />
+                <span className="w-3.5 h-3.5 rounded-full bg-warning" title={t("multiThreadPanel.readyToStart")} />
               )}
               {isRunning && (
                 <span className="w-3.5 h-3.5 rounded-full bg-info animate-pulse" />
@@ -193,7 +195,7 @@ export function MultiThreadTaskItem({
                 onDeleteTask(task.id);
               }}
               className="text-xs text-muted hover:text-error transition-colors ml-auto"
-              title="Remove task"
+              title={t("multiThreadPanel.removeTask")}
             >
               Delete
             </button>

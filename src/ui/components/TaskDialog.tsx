@@ -3,6 +3,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ApiSettings, CreateTaskPayload, TaskMode, ThreadTask, ModelInfo, LLMModel } from "../types";
 import { getPlatform } from "../platform";
 import { useAppStore } from "../store/useAppStore";
+import { useI18n } from "../i18n";
 
 // Helper function to generate task title automatically (max 3 words)
 function generateTaskTitle(
@@ -53,6 +54,7 @@ export function TaskDialog({
   availableModels,
   llmModels = []
 }: TaskDialogProps) {
+  const { t } = useI18n();
   const llmProviders = useAppStore((s) => s.llmProviders);
   const [mode, setMode] = useState<TaskMode>("consensus");
   const [shareWebCache, setShareWebCache] = useState(true);
@@ -157,25 +159,25 @@ export function TaskDialog({
     ? consensusPrompt.trim() !== ""
     : tasks.some(t => t.model && t.prompt.trim() !== "");
 
-  const displayConsensusModel = consensusModel || apiSettings?.model || "Select model...";
+  const displayConsensusModel = consensusModel || apiSettings?.model || t("taskDialog.selectModel");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/20 px-4 py-8 backdrop-blur-sm">
       <div className="w-full max-w-2xl rounded-2xl border border-ink-900/5 bg-surface p-6 shadow-elevated max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <div className="text-base font-semibold text-ink-800">Create Multi-Thread Task</div>
-          <button className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" onClick={onClose} aria-label="Close">
+          <div className="text-base font-semibold text-ink-800">{t("taskDialog.title")}</div>
+          <button className="rounded-full p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-700 transition-colors" onClick={onClose} aria-label={t("taskDialog.close")}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <p className="mt-2 text-sm text-muted">Create a task with multiple threads running in parallel. Each thread works independently with its own model and prompt.</p>
+        <p className="mt-2 text-sm text-muted">{t("taskDialog.description")}</p>
 
         <div className="mt-5 grid gap-4">
           {/* Auto-generated Title */}
           <div className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted">Task Title</span>
+            <span className="text-xs font-medium text-muted">{t("taskDialog.taskTitle")}</span>
             <div className="rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800">
               {generateTaskTitle(mode, tasks, consensusPrompt, consensusModel, consensusQuantity)}
             </div>
@@ -183,7 +185,7 @@ export function TaskDialog({
 
           {/* Mode Selection */}
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-muted">Execution Mode</span>
+            <span className="text-xs font-medium text-muted">{t("taskDialog.executionMode")}</span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -194,8 +196,8 @@ export function TaskDialog({
                     : "border-ink-900/10 bg-surface-secondary text-muted hover:border-ink-900/20"
                 }`}
               >
-                <div className="font-medium">Consensus Mode</div>
-                <div className="text-xs mt-1">Same task, N models → find best answer</div>
+                <div className="font-medium">{t("taskDialog.consensusMode")}</div>
+                <div className="text-xs mt-1">{t("taskDialog.consensusModeDesc")}</div>
               </button>
               <button
                 type="button"
@@ -206,8 +208,8 @@ export function TaskDialog({
                     : "border-ink-900/10 bg-surface-secondary text-muted hover:border-ink-900/20"
                 }`}
               >
-                <div className="font-medium">Different Tasks</div>
-                <div className="text-xs mt-1">Different tasks, different models</div>
+                <div className="font-medium">{t("taskDialog.differentTasks")}</div>
+                <div className="text-xs mt-1">{t("taskDialog.differentTasksDesc")}</div>
               </button>
             </div>
           </label>
@@ -215,13 +217,13 @@ export function TaskDialog({
           {/* Workspace Folder */}
           <label className="grid gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted">Workspace Folder</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 font-medium">Optional</span>
+              <span className="text-xs font-medium text-muted">{t("taskDialog.workspaceFolder")}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 font-medium">{t("startSessionModal.optional")}</span>
             </div>
             <div className="flex gap-2">
               <input
                 className="flex-1 rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800 placeholder:text-muted-light focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
-                placeholder="Leave empty to work without file access"
+                placeholder={t("taskDialog.workspacePlaceholder")}
                 value={localCwd}
                 onChange={(e) => setLocalCwd(e.target.value)}
               />
@@ -230,15 +232,15 @@ export function TaskDialog({
                 onClick={handleSelectDirectory}
                 className="rounded-xl border border-ink-900/10 bg-surface px-3 py-2 text-sm text-ink-700 hover:bg-surface-tertiary transition-colors"
               >
-                Browse...
+                {t("taskDialog.browse")}
               </button>
             </div>
             <p className="text-[11px] text-muted-light">
-              💡 Choose a folder to enable file operations (read, write, edit, bash commands)
+              {t("taskDialog.workspaceTip")}
             </p>
             {recentCwds.length > 0 && (
               <div className="mt-2 grid gap-2 w-full">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-light">Recent</div>
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-light">{t("taskDialog.recent")}</div>
                 <div className="flex flex-wrap gap-2 w-full min-w-0">
                   {recentCwds.map((path) => (
                     <button
@@ -261,7 +263,7 @@ export function TaskDialog({
             <>
               {/* Model */}
               <label className="grid gap-1.5">
-                <span className="text-xs font-medium text-muted">Model for All Threads</span>
+                <span className="text-xs font-medium text-muted">{t("taskDialog.modelForAllThreads")}</span>
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger className="w-full rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors text-left flex items-center justify-between">
                     <span className="truncate">{displayConsensusModel}</span>
@@ -272,7 +274,7 @@ export function TaskDialog({
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className="z-50 min-w-[300px] max-w-[400px] rounded-xl border border-ink-900/10 bg-white p-1 shadow-lg max-h-60 overflow-y-auto" sideOffset={8}>
                       {allAvailableModels.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-muted">No models available. Check your API settings.</div>
+                        <div className="px-3 py-2 text-sm text-muted">{t("taskDialog.noModelsAvailable")}</div>
                       ) : (
                         allAvailableModels.map((model) => (
                           <DropdownMenu.Item
@@ -294,7 +296,7 @@ export function TaskDialog({
 
               {/* Quantity */}
               <label className="grid gap-1.5">
-                <span className="text-xs font-medium text-muted">Number of Threads</span>
+                <span className="text-xs font-medium text-muted">{t("taskDialog.numberOfThreads")}</span>
                 <input
                   type="number"
                   min="2"
@@ -303,16 +305,16 @@ export function TaskDialog({
                   onChange={(e) => setConsensusQuantity(Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
                   className="rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2.5 text-sm text-ink-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
                 />
-                <p className="text-[11px] text-muted-light">Multiple threads will work on the same task independently</p>
+                <p className="text-[11px] text-muted-light">{t("taskDialog.threadsDesc")}</p>
               </label>
 
               {/* Prompt */}
               <label className="grid gap-1.5">
-                <span className="text-xs font-medium text-muted">Task Description</span>
+                <span className="text-xs font-medium text-muted">{t("taskDialog.taskDescription")}</span>
                 <textarea
                   rows={4}
                   className="rounded-xl border border-ink-900/10 bg-surface-secondary p-3 text-sm text-ink-800 placeholder:text-muted-light focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors resize-none"
-                  placeholder="Describe the task for all threads..."
+                  placeholder={t("taskDialog.taskDescriptionPlaceholder")}
                   value={consensusPrompt}
                   onChange={(e) => setConsensusPrompt(e.target.value)}
                 />
@@ -326,7 +328,7 @@ export function TaskDialog({
                   onChange={(e) => setAutoSummary(e.target.checked)}
                   className="rounded border-ink-900/20 bg-surface-secondary text-accent focus:ring-accent/20"
                 />
-                <span className="text-sm text-ink-700">Auto-generate summary after all threads complete</span>
+                <span className="text-sm text-ink-700">{t("taskDialog.autoSummary")}</span>
               </label>
             </>
           )}
@@ -337,24 +339,24 @@ export function TaskDialog({
               {tasks.map((task, index) => (
                 <div key={task.id} className="rounded-xl border border-ink-900/10 bg-surface-secondary p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-muted">Thread {index + 1}</span>
+                    <span className="text-xs font-medium text-muted">{t("taskDialog.threadLabel", { index: index + 1 })}</span>
                     {tasks.length > 1 && (
                       <button
                         type="button"
                         onClick={() => handleRemoveTask(index)}
                         className="text-xs text-error hover:text-error-dark transition-colors"
                       >
-                        Remove
+                        {t("taskDialog.remove")}
                       </button>
                     )}
                   </div>
 
                   {/* Model */}
                   <label className="grid gap-1.5">
-                    <span className="text-xs font-medium text-muted">Model</span>
+                    <span className="text-xs font-medium text-muted">{t("taskDialog.model")}</span>
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger className="w-full rounded-xl border border-ink-900/10 bg-surface-tertiary px-3 py-2 text-sm text-ink-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors text-left flex items-center justify-between">
-                        <span className="truncate">{task.model || "Select model..."}</span>
+                        <span className="truncate">{task.model || t("taskDialog.selectModel")}</span>
                         <svg className="w-4 h-4 text-muted shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
@@ -362,7 +364,7 @@ export function TaskDialog({
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content className="z-50 min-w-[300px] max-w-[400px] rounded-xl border border-ink-900/10 bg-white p-1 shadow-lg max-h-60 overflow-y-auto" sideOffset={8}>
                           {allAvailableModels.length === 0 ? (
-                            <div className="px-3 py-2 text-sm text-muted">No models available. Check your API settings.</div>
+                            <div className="px-3 py-2 text-sm text-muted">{t("taskDialog.noModelsAvailable")}</div>
                           ) : (
                             allAvailableModels.map((model) => (
                               <DropdownMenu.Item
@@ -384,11 +386,11 @@ export function TaskDialog({
 
                   {/* Prompt */}
                   <label className="grid gap-1.5 mt-3">
-                    <span className="text-xs font-medium text-muted">Task</span>
+                    <span className="text-xs font-medium text-muted">{t("taskDialog.task")}</span>
                     <textarea
                       rows={3}
                       className="rounded-xl border border-ink-900/10 bg-surface-tertiary p-3 text-sm text-ink-800 placeholder:text-muted-light focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors resize-none"
-                      placeholder="Describe the task for this thread..."
+                      placeholder={t("taskDialog.taskPlaceholder")}
                       value={task.prompt}
                       onChange={(e) => handleTaskPromptChange(index, e.target.value)}
                     />
@@ -402,7 +404,7 @@ export function TaskDialog({
                   onClick={handleAddTask}
                   className="rounded-xl border border-dashed border-ink-900/20 bg-surface-secondary px-4 py-3 text-sm text-muted hover:border-accent hover:text-accent transition-colors"
                 >
-                  + Add Another Thread
+                  {t("taskDialog.addAnotherThread")}
                 </button>
               )}
             </div>
@@ -416,7 +418,7 @@ export function TaskDialog({
               onChange={(e) => setShareWebCache(e.target.checked)}
               className="rounded border-ink-900/20 bg-surface-secondary text-accent focus:ring-accent/20"
             />
-            <span className="text-sm text-ink-700">Share web cache between threads</span>
+            <span className="text-sm text-ink-700">{t("taskDialog.shareWebCache")}</span>
           </label>
 
           {/* Create Button */}
@@ -425,7 +427,7 @@ export function TaskDialog({
             onClick={handleCreateTask}
             disabled={!isValid}
           >
-            Create Task
+            {t("taskDialog.createTask")}
           </button>
         </div>
       </div>

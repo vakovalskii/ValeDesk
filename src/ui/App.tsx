@@ -2,21 +2,270 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { useIPC } from "./hooks/useIPC";
 import { useAppStore } from "./store/useAppStore";
-import type { ServerEvent, ApiSettings } from "./types";
+import type { ServerEvent, ApiSettings, ClientEvent, LLMModel } from "./types";
+import { I18nProvider, useI18n, mapSystemLocaleToSupported } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
-import { StartSessionModal } from "./components/StartSessionModal";
+import { StartSessionModalWithActions } from "./components/StartSessionModal";
 import { SessionEditModal } from "./components/SessionEditModal";
 import { TaskDialog } from "./components/TaskDialog";
 import { RoleGroupDialog } from "./components/RoleGroupDialog";
 import { SettingsModal } from "./components/SettingsModal";
 import { FileBrowser } from "./components/FileBrowser";
-import { PromptInput, usePromptActions } from "./components/PromptInput";
+import { PromptInput } from "./components/PromptInput";
 import { MessageCard } from "./components/EventCard";
 import { AppFooter } from "./components/AppFooter";
 import { TodoPanel } from "./components/TodoPanel";
 import MDContent from "./render/markdown";
 import { getPlatform } from "./platform";
 import { basenameFsPath } from "./platform/fs-path";
+
+function AppHeader({
+  activeSessionId,
+  setShowSessionEditModal,
+  autoScrollEnabled,
+  setAutoScrollEnabled,
+  apiSettings,
+  setApiSettings,
+  sendEvent,
+  activeSession,
+  showFileBrowser,
+  setShowFileBrowser,
+}: {
+  activeSessionId: string | null;
+  setShowSessionEditModal: (v: boolean) => void;
+  autoScrollEnabled: boolean;
+  setAutoScrollEnabled: (v: boolean) => void;
+  apiSettings: ApiSettings | null;
+  setApiSettings: (s: ApiSettings | null) => void;
+  sendEvent: (e: ClientEvent) => void;
+  activeSession: { cwd?: string; title?: string } | undefined;
+  showFileBrowser: boolean;
+  setShowFileBrowser: (v: boolean) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div
+      className="relative z-[60] flex items-center justify-between h-12 min-h-[48px] border-b border-ink-900/10 bg-surface-cream select-none px-4 gap-2"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
+      <div className="flex items-center gap-2 flex-shrink-0" />
+      <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title ?? t("app.defaultTitle")}</span>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {activeSessionId && (
+          <button
+            onClick={() => setShowSessionEditModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-ink-900/5 border border-ink-900/10 text-ink-600 rounded-lg hover:bg-ink-100 transition-colors"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            title={t("app.editSessionSettings")}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        )}
+        <button
+          onClick={() => setAutoScrollEnabled(!autoScrollEnabled)}
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+            autoScrollEnabled ? "bg-info/10 border-info/30 text-info" : "bg-ink-900/5 border-ink-900/10 text-ink-500"
+          }`}
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          title={autoScrollEnabled ? t("app.autoScrollEnabled") : t("app.autoScrollDisabled")}
+        >
+          <svg className={`w-4 h-4 transition-transform ${autoScrollEnabled ? "text-info" : "text-ink-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+          <span>{t("app.autoScroll")}</span>
+        </button>
+        {!activeSession?.cwd && activeSessionId && (
+          <button
+            onClick={async () => {
+              try {
+                const result = await getPlatform().selectDirectory();
+                if (result && activeSessionId) {
+                  sendEvent({ type: "session.update-cwd", payload: { sessionId: activeSessionId, cwd: result } });
+                }
+              } catch (error) {
+                console.error("[App] selectDirectory failed", { error });
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 border border-accent/30 text-accent rounded-lg hover:bg-accent/20 transition-colors"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            title={t("app.setWorkspaceFolderTitle")}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            {t("app.setWorkspaceFolder")}
+          </button>
+        )}
+        {activeSession?.cwd && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowFileBrowser(!showFileBrowser)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono bg-white border rounded-l-lg transition-colors max-w-xs ${
+                showFileBrowser ? "text-accent border-accent/30 bg-accent/5" : "text-ink-600 border-ink-900/10 hover:bg-ink-50 hover:text-ink-900"
+              }`}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              title={activeSession.cwd}
+            >
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span className="truncate">{basenameFsPath(activeSession.cwd)}</span>
+            </button>
+            <button
+              onClick={() => {
+                void getPlatform().invoke("open-path-in-finder", activeSession.cwd).catch((error) => console.error("[App] open-path-in-finder failed", { error, path: activeSession.cwd }));
+              }}
+              className="flex items-center justify-center w-8 h-8 text-ink-600 bg-white border border-l-0 border-ink-900/10 rounded-r-lg hover:bg-ink-50 hover:text-ink-900 transition-colors"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              title={t("app.openInFileManager")}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </button>
+          </div>
+        )}
+        <button
+          onClick={() => {
+            const newMode = apiSettings?.permissionMode === "ask" ? "default" : "ask";
+            const newSettings = { ...apiSettings, permissionMode: newMode } as ApiSettings;
+            sendEvent({ type: "settings.save", payload: { settings: newSettings } });
+            setApiSettings(newSettings);
+          }}
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+            apiSettings?.permissionMode === "ask" ? "bg-ink-100 border-ink-300 text-ink-700" : "bg-success/10 border-success/30 text-success"
+          }`}
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          title={apiSettings?.permissionMode === "ask" ? t("app.askBeforeEachTool") : t("app.autoExecuteTools")}
+        >
+          <span className={`w-2 h-2 rounded-full ${apiSettings?.permissionMode === "ask" ? "bg-ink-400" : "bg-success"}`}></span>
+          {apiSettings?.permissionMode === "ask" ? t("app.askMode") : t("app.autoMode")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AppEmptyState() {
+  const { t } = useI18n();
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="text-lg font-medium text-ink-700">{t("app.noMessagesYet")}</div>
+      <p className="mt-2 text-sm text-muted">{t("app.startConversation")}</p>
+    </div>
+  );
+}
+
+type AppModalsProps = {
+  showStartModal: boolean;
+  setShowStartModal: (v: boolean) => void;
+  showTaskDialog: boolean;
+  setShowTaskDialog: (v: boolean) => void;
+  showRoleGroupDialog: boolean;
+  setShowRoleGroupDialog: (v: boolean) => void;
+  showSettingsModal: boolean;
+  setShowSettingsModal: (v: boolean) => void;
+  showSessionEditModal: boolean;
+  setShowSessionEditModal: (v: boolean) => void;
+  activeSessionId: string | null;
+  activeSession: { model?: string; temperature?: number; title?: string } | undefined;
+  sendEvent: (e: ClientEvent) => void;
+  cwd: string;
+  prompt: string;
+  pendingStart: boolean;
+  setCwd: (v: string) => void;
+  setPrompt: (v: string) => void;
+  apiSettings: ApiSettings | null;
+  availableModels: Array<{ id: string; name: string; description?: string }>;
+  selectedModel: string | null;
+  setSelectedModel: (v: string | null) => void;
+  llmModels: LLMModel[];
+  selectedTemperature: number;
+  setSelectedTemperature: (v: number) => void;
+  sendTemperature: boolean;
+  setSendTemperature: (v: boolean) => void;
+  handleSaveSettings: (s: ApiSettings) => void;
+  handleCreateTask: (payload: any) => void;
+  handleCreateRoleGroupTask: (payload: any) => void;
+};
+
+export function AppModals(props: AppModalsProps) {
+  const { isReady } = useI18n();
+  return (
+    <>
+      {props.showStartModal && isReady && (
+        <StartSessionModalWithActions
+          sendEvent={props.sendEvent}
+          cwd={props.cwd}
+          prompt={props.prompt}
+          pendingStart={props.pendingStart}
+          onCwdChange={props.setCwd}
+          onPromptChange={props.setPrompt}
+          onClose={() => props.setShowStartModal(false)}
+          apiSettings={props.apiSettings}
+          availableModels={props.availableModels}
+          selectedModel={props.selectedModel}
+          onModelChange={props.setSelectedModel}
+          llmModels={props.llmModels}
+          temperature={props.selectedTemperature}
+          onTemperatureChange={props.setSelectedTemperature}
+          sendTemperature={props.sendTemperature}
+          onSendTemperatureChange={props.setSendTemperature}
+        />
+      )}
+      {props.showTaskDialog && isReady && (
+        <TaskDialog
+          cwd={props.cwd}
+          onClose={() => props.setShowTaskDialog(false)}
+          onCreateTask={props.handleCreateTask}
+          apiSettings={props.apiSettings}
+          availableModels={props.availableModels}
+          llmModels={props.llmModels}
+        />
+      )}
+      {props.showRoleGroupDialog && isReady && (
+        <RoleGroupDialog
+          cwd={props.cwd}
+          onClose={() => props.setShowRoleGroupDialog(false)}
+          onCreateTask={props.handleCreateRoleGroupTask}
+          apiSettings={props.apiSettings}
+          availableModels={props.availableModels}
+          llmModels={props.llmModels}
+        />
+      )}
+      {props.showSettingsModal && isReady && (
+        <SettingsModal
+          currentSettings={props.apiSettings}
+          onSave={props.handleSaveSettings}
+          onClose={() => props.setShowSettingsModal(false)}
+        />
+      )}
+      {props.showSessionEditModal && isReady && props.activeSessionId && props.activeSession && (
+        <SessionEditModal
+          currentModel={props.activeSession.model}
+          currentTemperature={props.activeSession.temperature}
+          currentTitle={props.activeSession.title}
+          llmModels={props.llmModels}
+          onSave={(updates) => {
+            if (props.activeSessionId) {
+              props.sendEvent({
+                type: "session.update",
+                payload: {
+                  sessionId: props.activeSessionId,
+                  ...updates
+                }
+              });
+            }
+          }}
+          onClose={() => props.setShowSessionEditModal(false)}
+        />
+      )}
+    </>
+  );
+}
 
 function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -33,6 +282,7 @@ function App() {
   const [apiSettings, setApiSettings] = useState<ApiSettings | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false); // Track if settings have been loaded from backend
   const [llmProvidersLoaded, setLlmProvidersLoaded] = useState(false); // Track if LLM providers have been loaded
+  const [systemLocale, setSystemLocale] = useState<string | null>(null);
   const partialUpdateScheduledRef = useRef(false);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const setSelectedModel = useAppStore((s) => s.setSelectedModel);
@@ -44,6 +294,7 @@ function App() {
   const llmModels = useAppStore((s) => s.llmModels);
 
   const sessions = useAppStore((s) => s.sessions);
+  const sessionsLoaded = useAppStore((s) => s.sessionsLoaded);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const showStartModal = useAppStore((s) => s.showStartModal);
   const setShowStartModal = useAppStore((s) => s.setShowStartModal);
@@ -136,7 +387,6 @@ function App() {
   }, [handleServerEvent, handlePartialMessages]);
 
   const { connected, sendEvent } = useIPC(onEvent);
-  const { handleStartFromModal } = usePromptActions(sendEvent);
 
   const activeSession = activeSessionId ? sessions[activeSessionId] : undefined;
   const messages = activeSession?.messages ?? [];
@@ -154,6 +404,38 @@ function App() {
     }
   }, [connected, sendEvent]);
 
+  // Detect system locale for first-run (Tauri: getLocale, Electron: navigator.language)
+  useEffect(() => {
+    if (typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== "undefined") {
+      import("tauri-plugin-locale-api")
+        .then(({ getLocale }) => getLocale())
+        .then((loc) => setSystemLocale(mapSystemLocaleToSupported(loc)))
+        .catch(() => setSystemLocale("en"));
+    } else {
+      setSystemLocale(mapSystemLocaleToSupported(navigator.language));
+    }
+  }, []);
+
+  // Persist system locale on first run when no saved locale exists
+  const hasPersistedInitialLocale = useRef(false);
+  useEffect(() => {
+    if (
+      !settingsLoaded ||
+      hasPersistedInitialLocale.current ||
+      apiSettings?.locale != null
+    )
+      return;
+    if (systemLocale) {
+      hasPersistedInitialLocale.current = true;
+      const newSettings: ApiSettings = {
+        ...(apiSettings ?? { apiKey: "", baseUrl: "", model: "" }),
+        locale: systemLocale,
+      };
+      sendEvent({ type: "settings.save", payload: { settings: newSettings } });
+      setApiSettings(newSettings);
+    }
+  }, [settingsLoaded, apiSettings, systemLocale, sendEvent]);
+
   // Check if API key or LLM providers are configured on first load
   useEffect(() => {
     // Wait until both settings AND llm providers are loaded from backend
@@ -161,10 +443,14 @@ function App() {
     
     // Check if we have any enabled models from LLM providers (enabled !== false)
     const hasEnabledModels = llmModels.some(m => m.enabled !== false);
+    const hasNoSessions = sessionsLoaded && Object.keys(sessions).length === 0;
     
-    // If we have enabled models from LLM providers, we're good - don't open Settings
+    // If we have enabled models from LLM providers, show Start when no sessions
     if (hasEnabledModels) {
       console.log('[App] LLM providers with enabled models found:', llmModels.length, 'models');
+      if (hasNoSessions) {
+        setShowStartModal(true);
+      }
       return;
     }
     
@@ -188,8 +474,11 @@ function App() {
       setShowSettingsModal(true);
     } else {
       console.log('[App] Valid API key found');
+      if (hasNoSessions) {
+        setShowStartModal(true);
+      }
     }
-  }, [apiSettings, settingsLoaded, llmProvidersLoaded, llmModels, setShowStartModal]);
+  }, [apiSettings, settingsLoaded, llmProvidersLoaded, llmModels, sessions, sessionsLoaded, setShowStartModal]);
 
   useEffect(() => {
     if (!activeSessionId || !connected) return;
@@ -357,6 +646,26 @@ function App() {
     setApiSettings(settings);
   }, [sendEvent]);
 
+  const effectiveLocale =
+    apiSettings?.locale ??
+    systemLocale ??
+    mapSystemLocaleToSupported(navigator.language);
+
+  const handleLocaleChange = useCallback(
+    (locale: string) => {
+      const newSettings: ApiSettings = {
+        ...(apiSettings ?? {
+          apiKey: "",
+          baseUrl: "",
+          model: "",
+        }),
+        locale,
+      };
+      handleSaveSettings(newSettings);
+    },
+    [apiSettings, handleSaveSettings]
+  );
+
   const handleConfirmChanges = useCallback((sessionId: string) => {
     sendEvent({ type: "file_changes.confirm", payload: { sessionId } });
   }, [sendEvent]);
@@ -404,6 +713,10 @@ function App() {
   }, [sendEvent, setGlobalError]);
 
   return (
+    <I18nProvider
+      initialLocale={effectiveLocale}
+      onLocaleChange={handleLocaleChange}
+    >
     <div className="flex h-screen bg-surface">
       <Sidebar
         connected={connected}
@@ -416,128 +729,23 @@ function App() {
       />
 
       <main className="flex flex-1 flex-col ml-[280px] bg-surface-cream overflow-hidden">
-        <div 
-          className="flex items-center justify-between h-12 min-h-[48px] border-b border-ink-900/10 bg-surface-cream select-none px-4 gap-2"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        >
-          <div className="flex items-center gap-2 flex-shrink-0" />
-          <span className="text-sm font-medium text-ink-700 truncate flex-shrink min-w-0">{activeSession?.title || "ValeDesk"}</span>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Edit session button */}
-            {activeSessionId && (
-              <button
-                onClick={() => setShowSessionEditModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-ink-900/5 border border-ink-900/10 text-ink-600 rounded-lg hover:bg-ink-100 transition-colors"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                title="Edit session settings"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
-            )}
-            {/* Auto scroll toggle */}
-            <button
-              onClick={() => setAutoScrollEnabled(!autoScrollEnabled)}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                autoScrollEnabled
-                  ? 'bg-info/10 border-info/30 text-info'
-                  : 'bg-ink-900/5 border-ink-900/10 text-ink-500'
-              }`}
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              title={autoScrollEnabled ? 'Auto scroll enabled' : 'Auto scroll disabled'}
-            >
-              <svg className={`w-4 h-4 transition-transform ${autoScrollEnabled ? 'text-info' : 'text-ink-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-              <span>Auto Scroll</span>
-            </button>
-            {!activeSession?.cwd && activeSessionId && (
-              <button
-                onClick={async () => {
-                  try {
-                    const result = await getPlatform().selectDirectory();
-                    if (result && activeSessionId) {
-                      sendEvent({ type: "session.update-cwd", payload: { sessionId: activeSessionId, cwd: result } });
-                    }
-                  } catch (error) {
-                    console.error("[App] selectDirectory failed", { error });
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent/10 border border-accent/30 text-accent rounded-lg hover:bg-accent/20 transition-colors"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                title="Set workspace folder to enable file operations"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-                Set Workspace Folder
-              </button>
-            )}
-            {activeSession?.cwd && (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setShowFileBrowser(!showFileBrowser)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono bg-white border rounded-l-lg transition-colors max-w-xs ${
-                    showFileBrowser 
-                      ? 'text-accent border-accent/30 bg-accent/5' 
-                      : 'text-ink-600 border-ink-900/10 hover:bg-ink-50 hover:text-ink-900'
-                  }`}
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                  title={activeSession.cwd}
-                >
-                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
-                  <span className="truncate">{basenameFsPath(activeSession.cwd)}</span>
-                </button>
-                <button
-                  onClick={() => {
-                    void getPlatform()
-                      .invoke('open-path-in-finder', activeSession.cwd)
-                      .catch((error) => console.error('[App] open-path-in-finder failed', { error, path: activeSession.cwd }));
-                  }}
-                  className="flex items-center justify-center w-8 h-8 text-ink-600 bg-white border border-l-0 border-ink-900/10 rounded-r-lg hover:bg-ink-50 hover:text-ink-900 transition-colors"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-                  title="Open in file manager"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </button>
-              </div>
-            )}
-            <button
-              onClick={() => {
-                const newMode = apiSettings?.permissionMode === 'ask' ? 'default' : 'ask';
-                const newSettings = { ...apiSettings, permissionMode: newMode } as ApiSettings;
-                sendEvent({ type: 'settings.save', payload: { settings: newSettings } });
-                setApiSettings(newSettings);
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                apiSettings?.permissionMode === 'ask'
-                  ? 'bg-ink-100 border-ink-300 text-ink-700'
-                  : 'bg-success/10 border-success/30 text-success'
-              }`}
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              title={apiSettings?.permissionMode === 'ask' ? 'Ask before each tool' : 'Auto-execute tools'}
-            >
-              <span className={`w-2 h-2 rounded-full ${
-                apiSettings?.permissionMode === 'ask' ? 'bg-ink-400' : 'bg-success'
-              }`}></span>
-              {apiSettings?.permissionMode === 'ask' ? 'Ask Mode' : 'Auto Mode'}
-            </button>
-          </div>
-        </div>
+        <AppHeader
+          activeSessionId={activeSessionId}
+          setShowSessionEditModal={setShowSessionEditModal}
+          autoScrollEnabled={autoScrollEnabled}
+          setAutoScrollEnabled={setAutoScrollEnabled}
+          apiSettings={apiSettings}
+          setApiSettings={setApiSettings}
+          sendEvent={sendEvent}
+          activeSession={activeSession}
+          showFileBrowser={showFileBrowser}
+          setShowFileBrowser={setShowFileBrowser}
+        />
 
         <div ref={messagesContainerRef} id="messages-container" className={`flex-1 overflow-y-auto overflow-x-hidden px-8 pt-6 min-w-0 ${activeSession?.todos && activeSession.todos.length > 0 ? 'pb-4' : 'pb-40'}`}>
           <div className="mx-auto w-full max-w-4xl min-w-0">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="text-lg font-medium text-ink-700">No messages yet</div>
-                <p className="mt-2 text-sm text-muted">Start a conversation with Claude Code</p>
-              </div>
+              <AppEmptyState />
             ) : (
               messages.map((msg, idx) => (
                 <MessageCard
@@ -602,75 +810,38 @@ function App() {
         <PromptInput sendEvent={sendEvent} />
       </main>
 
-      {showStartModal && (
-        <StartSessionModal
-          cwd={cwd}
-          prompt={prompt}
-          pendingStart={pendingStart}
-          onCwdChange={setCwd}
-          onPromptChange={setPrompt}
-          onStart={handleStartFromModal}
-          onClose={() => setShowStartModal(false)}
-          apiSettings={apiSettings}
-          availableModels={availableModels}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          llmModels={llmModels}
-          temperature={selectedTemperature}
-          onTemperatureChange={setSelectedTemperature}
-          sendTemperature={sendTemperature}
-          onSendTemperatureChange={setSendTemperature}
-        />
-      )}
-
-      {showTaskDialog && (
-        <TaskDialog
-          cwd={cwd}
-          onClose={() => setShowTaskDialog(false)}
-          onCreateTask={handleCreateTask}
-          apiSettings={apiSettings}
-          availableModels={availableModels}
-          llmModels={llmModels}
-        />
-      )}
-
-      {showRoleGroupDialog && (
-        <RoleGroupDialog
-          cwd={cwd}
-          onClose={() => setShowRoleGroupDialog(false)}
-          onCreateTask={handleCreateRoleGroupTask}
-          apiSettings={apiSettings}
-          availableModels={availableModels}
-          llmModels={llmModels}
-        />
-      )}
-
-      {showSettingsModal && (
-        <SettingsModal
-          currentSettings={apiSettings}
-          onSave={handleSaveSettings}
-          onClose={() => setShowSettingsModal(false)}
-        />
-      )}
-
-      {showSessionEditModal && activeSessionId && activeSession && (
-        <SessionEditModal
-          currentModel={activeSession.model}
-          currentTemperature={activeSession.temperature}
-          currentTitle={activeSession.title}
-          llmModels={llmModels}
-          onSave={(updates) => {
-            sendEvent({
-              type: "session.update",
-              payload: {
-                sessionId: activeSessionId,
-                ...updates
-              }
-            });
-          }}
-          onClose={() => setShowSessionEditModal(false)}
-        />
-      )}
+      <AppModals
+        showStartModal={showStartModal}
+        setShowStartModal={setShowStartModal}
+        showTaskDialog={showTaskDialog}
+        setShowTaskDialog={setShowTaskDialog}
+        showRoleGroupDialog={showRoleGroupDialog}
+        setShowRoleGroupDialog={setShowRoleGroupDialog}
+        showSettingsModal={showSettingsModal}
+        setShowSettingsModal={setShowSettingsModal}
+        showSessionEditModal={showSessionEditModal}
+        setShowSessionEditModal={setShowSessionEditModal}
+        activeSessionId={activeSessionId}
+        activeSession={activeSession}
+        sendEvent={sendEvent}
+        cwd={cwd}
+        prompt={prompt}
+        pendingStart={pendingStart}
+        setCwd={setCwd}
+        setPrompt={setPrompt}
+        apiSettings={apiSettings}
+        availableModels={availableModels}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        llmModels={llmModels}
+        selectedTemperature={selectedTemperature}
+        setSelectedTemperature={setSelectedTemperature}
+        sendTemperature={sendTemperature}
+        setSendTemperature={setSendTemperature}
+        handleSaveSettings={handleSaveSettings}
+        handleCreateTask={handleCreateTask}
+        handleCreateRoleGroupTask={handleCreateRoleGroupTask}
+      />
 
       {globalError && (
         <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-error/20 bg-error-light px-4 py-3 shadow-lg">
@@ -692,6 +863,7 @@ function App() {
 
       <AppFooter />
     </div>
+    </I18nProvider>
   );
 }
 

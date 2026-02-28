@@ -198,7 +198,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ sessions: nextSessions, sessionsLoaded: true });
 
         const hasSessions = event.payload.sessions.length > 0;
-        set({ showStartModal: !hasSessions });
+        if (hasSessions) {
+          set({ showStartModal: false });
+        }
 
         if (!hasSessions) {
           get().setActiveSessionId(null);

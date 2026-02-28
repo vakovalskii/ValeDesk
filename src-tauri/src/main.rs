@@ -2084,6 +2084,8 @@ fn main() {
 
   tauri::Builder::default()
     .plugin(tauri_plugin_notification::init())
+    .plugin(tauri_plugin_i18n::init(None))
+    .plugin(tauri_plugin_locale::init())
     .manage(app_state)
     .setup(|app| {
       // Start scheduler service

@@ -29,7 +29,7 @@ describe("memory tool", () => {
   });
 
   it("creates, appends, reads, and deletes memory", async () => {
-    const { executeMemoryTool } = await import("../src/agent/libs/tools/memory-tool.ts");
+    const { executeMemoryTool, getMemoryPath } = await import("../src/agent/libs/tools/memory-tool.ts");
     const ctx = { cwd: "" };
 
     const create = await executeMemoryTool({
@@ -61,7 +61,7 @@ describe("memory tool", () => {
     }, ctx);
     expect(del.success).toBe(true);
 
-    const memoryPath = join(tempHome, ".valera", "memory.md");
+    const memoryPath = getMemoryPath();
     const content = await readFile(memoryPath, "utf-8");
     expect(content).toContain("City: Orenburg");
     expect(content).not.toContain("Language: Russian");

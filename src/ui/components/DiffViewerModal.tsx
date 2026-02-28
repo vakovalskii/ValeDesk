@@ -4,6 +4,7 @@ import { diffLines as computeDiffLines } from "diff";
 import type { ChangedFile } from "./ChangedFiles";
 import { getPlatform } from "../platform";
 import { useAppStore } from "../store/useAppStore";
+import { useI18n } from "../i18n";
 
 // Check which platform is being used
 const isTauri = typeof (window as any).__TAURI__ !== "undefined";
@@ -27,6 +28,7 @@ interface DiffLineItem {
 }
 
 export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileChange }: DiffViewerModalProps) {
+  const { t } = useI18n();
   const [oldContent, setOldContent] = useState<string>("");
   const [newContent, setNewContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -394,8 +396,8 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
                     onClick={handlePreviousFile}
                     disabled={!hasPreviousFile}
                     className="p-1.5 text-ink-400 hover:text-ink-600 disabled:text-ink-300 disabled:cursor-not-allowed transition-colors rounded hover:bg-ink-900/5"
-                    aria-label="Previous file"
-                    title="Previous file"
+                    aria-label={t("diffViewer.previousFile")}
+                    title={t("diffViewer.previousFile")}
                   >
                     <svg
                       className="w-5 h-5"
@@ -418,8 +420,8 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
                     onClick={handleNextFile}
                     disabled={!hasNextFile}
                     className="p-1.5 text-ink-400 hover:text-ink-600 disabled:text-ink-300 disabled:cursor-not-allowed transition-colors rounded hover:bg-ink-900/5"
-                    aria-label="Next file"
-                    title="Next file"
+                    aria-label={t("diffViewer.nextFile")}
+                    title={t("diffViewer.nextFile")}
                   >
                     <svg
                       className="w-5 h-5"
@@ -444,8 +446,8 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
                     onClick={handlePreviousChange}
                     disabled={!hasPreviousChange}
                     className="p-1.5 text-ink-400 hover:text-ink-600 disabled:text-ink-300 disabled:cursor-not-allowed transition-colors rounded hover:bg-ink-900/5"
-                    aria-label="Previous change"
-                    title="Previous change block"
+                    aria-label={t("diffViewer.previousChange")}
+                    title={t("diffViewer.previousChange")}
                   >
                     <svg
                       className="w-5 h-5"
@@ -468,8 +470,8 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
                     onClick={handleNextChange}
                     disabled={!hasNextChange}
                     className="p-1.5 text-ink-400 hover:text-ink-600 disabled:text-ink-300 disabled:cursor-not-allowed transition-colors rounded hover:bg-ink-900/5"
-                    aria-label="Next change"
-                    title="Next change block"
+                    aria-label={t("diffViewer.nextChange")}
+                    title={t("diffViewer.nextChange")}
                   >
                     <svg
                       className="w-5 h-5"
@@ -494,7 +496,7 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
             <Dialog.Close asChild>
               <button
                 className="text-ink-400 hover:text-ink-600 transition-colors shrink-0 ml-4"
-                aria-label="Close"
+                aria-label={t("diffViewer.close")}
               >
                 <svg
                   className="w-6 h-6"

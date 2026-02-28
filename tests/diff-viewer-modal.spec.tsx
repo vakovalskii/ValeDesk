@@ -1,8 +1,12 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { join } from "path";
+import { renderWithI18n } from "./test-utils";
 import { DiffViewerModal } from "../src/ui/components/DiffViewerModal";
 import type { ChangedFile } from "../src/ui/components/ChangedFiles";
+
+const TEST_CWD = join(process.cwd(), "test");
 
 // Создаем мок для invoke функции
 const mockInvoke = vi.fn();
@@ -42,26 +46,32 @@ describe("DiffViewerModal", () => {
     vi.clearAllMocks();
   });
 
-  it("не рендерится когда file равен null", () => {
-    const { container } = render(
+  it("не рендерится когда file равен null", async () => {
+    renderWithI18n(
       <DiffViewerModal
         file={null}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
-    expect(container.firstChild).toBeNull();
+    // Ждём готовности i18n (исчезновение overlay "Please Wait")
+    await waitFor(() => {
+      expect(screen.queryByText("Please Wait")).not.toBeInTheDocument();
+    });
+
+    // DiffViewerModal с file=null возвращает null — dialog не рендерится
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("не загружает содержимое когда modal закрыт", async () => {
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={false}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -75,19 +85,19 @@ describe("DiffViewerModal", () => {
       .mockResolvedValueOnce(mockOldContent)
       .mockResolvedValueOnce(mockNewContent);
 
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledTimes(2);
-      expect(mockInvoke).toHaveBeenNthCalledWith(1, "get-file-old-content", mockFile.file_path, "/test", true);
-      expect(mockInvoke).toHaveBeenNthCalledWith(2, "get-file-new-content", mockFile.file_path, "/test");
+      expect(mockInvoke).toHaveBeenNthCalledWith(1, "get-file-old-content", mockFile.file_path, TEST_CWD, true);
+      expect(mockInvoke).toHaveBeenNthCalledWith(2, "get-file-new-content", mockFile.file_path, TEST_CWD);
     });
   });
 
@@ -106,12 +116,12 @@ describe("DiffViewerModal", () => {
       .mockReturnValueOnce(oldPromise)
       .mockReturnValueOnce(newPromise);
 
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -131,12 +141,12 @@ describe("DiffViewerModal", () => {
       .mockResolvedValueOnce(mockOldContent)
       .mockRejectedValueOnce(new Error("Permission denied"));
 
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -150,12 +160,12 @@ describe("DiffViewerModal", () => {
       .mockRejectedValueOnce(new Error("File not found"))
       .mockResolvedValueOnce(mockNewContent);
 
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -170,12 +180,12 @@ describe("DiffViewerModal", () => {
       .mockResolvedValueOnce(mockOldContent)
       .mockResolvedValueOnce(mockNewContent);
 
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={vi.fn()}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -190,12 +200,12 @@ describe("DiffViewerModal", () => {
       .mockResolvedValueOnce(mockOldContent)
       .mockResolvedValueOnce(mockNewContent);
 
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -218,12 +228,12 @@ describe("DiffViewerModal", () => {
       .mockResolvedValueOnce(mockOldContent)
       .mockResolvedValueOnce(mockNewContent);
 
-    const { rerender } = render(
+    const { rerender } = renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -237,7 +247,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={false}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -247,7 +257,7 @@ describe("DiffViewerModal", () => {
         file={mockFile}
         open={true}
         onClose={mockOnClose}
-        cwd="/test"
+        cwd={TEST_CWD}
       />
     );
 
@@ -257,7 +267,7 @@ describe("DiffViewerModal", () => {
   });
 
   it("не загружает содержимое когда cwd не передан", async () => {
-    render(
+    renderWithI18n(
       <DiffViewerModal
         file={mockFile}
         open={true}

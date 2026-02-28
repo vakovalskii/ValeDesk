@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { MultiThreadTask, SessionInfo, TaskMode } from "../types";
+import { useI18n } from "../i18n";
 
 interface TaskItemProps {
   task: MultiThreadTask;
@@ -23,6 +24,7 @@ export function TaskItem({
   isCollapsed = false,
   onToggleCollapse
 }: TaskItemProps) {
+  const { t } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
 
@@ -99,7 +101,7 @@ export function TaskItem({
 
             {/* Status indicator */}
             {isCreated && (
-              <span className="w-2 h-2 rounded-full bg-warning flex-shrink-0" title="Ready to start" />
+              <span className="w-2 h-2 rounded-full bg-warning flex-shrink-0" title={t("taskItem.readyToStart")} />
             )}
             {isRunning && (
               <span className="w-2 h-2 rounded-full bg-info animate-pulse flex-shrink-0" />
@@ -139,7 +141,7 @@ export function TaskItem({
                   sendEvent({ type: 'task.start', payload: { taskId: task.id } });
                 }}
                 className="text-xs font-medium px-2 py-1 bg-warning text-white rounded hover:bg-warning/80 transition-colors"
-                title="Start all threads"
+                title={t("sidebar.startAllThreads")}
               >
                 ▶ Start
               </button>
@@ -149,7 +151,7 @@ export function TaskItem({
               <DropdownMenu.Trigger asChild>
                 <button
                   className="p-1 text-ink-400 hover:text-ink-600 transition-colors"
-                  title="More options"
+                  title={t("taskItem.moreOptions")}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
