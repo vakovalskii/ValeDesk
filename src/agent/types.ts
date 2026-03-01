@@ -50,7 +50,7 @@ export type ModelInfo = {
 };
 
 // LLM Provider types
-export type LLMProviderType = 'openai' | 'openrouter' | 'zai' | 'claude-code';
+export type LLMProviderType = 'openai' | 'openrouter' | 'zai' | 'ollama' | 'claude-code';
 
 export type ZaiApiUrlPrefix = 'default' | 'coding';
 

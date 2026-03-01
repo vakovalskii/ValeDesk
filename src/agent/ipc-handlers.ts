@@ -314,6 +314,8 @@ async function callModelForSummary(session: ReturnType<typeof sessions.getSessio
         } else if (provider.type === 'zai') {
           const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
           baseURL = `https://api.z.ai/${prefix}/v4`;
+        } else if (provider.type === 'ollama') {
+          baseURL = provider.baseUrl || 'http://localhost:11434/v1';
         } else {
           baseURL = provider.baseUrl || '';
         }
@@ -346,6 +348,8 @@ async function callModelForSummary(session: ReturnType<typeof sessions.getSessio
       } else if (provider.type === 'zai') {
         const prefix = provider.zaiApiPrefix === 'coding' ? 'api/coding/paas' : 'api/paas';
         baseURL = `https://api.z.ai/${prefix}/v4`;
+      } else if (provider.type === 'ollama') {
+        baseURL = provider.baseUrl || 'http://localhost:11434/v1';
       } else {
         baseURL = provider.baseUrl || '';
       }
