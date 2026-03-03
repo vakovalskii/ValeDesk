@@ -5,7 +5,7 @@ import { useI18n } from "../i18n";
 import { FilePreviewPanel } from "./FilePreviewPanel";
 
 // --- Thumbnail request queue (max N concurrent IPC calls) ---
-const THUMB_CONCURRENCY = 3;
+const THUMB_CONCURRENCY = 1;
 let _thumbActive = 0;
 const _thumbQueue: Array<() => void> = [];
 
@@ -74,7 +74,7 @@ function FileThumbnail({ path }: { path: string }) {
         }
         if (triedRef.current) return;
 
-        // Debounce: wait 80ms to skip rapidly scrolled-past items
+        // Debounce: wait 200ms to skip rapidly scrolled-past items
         if (debounceTimer !== null) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           if (triedRef.current) return;

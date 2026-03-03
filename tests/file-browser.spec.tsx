@@ -1,6 +1,6 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithI18n } from "./test-utils";
 import { FileBrowser } from "../src/ui/components/FileBrowser";
 
@@ -454,6 +454,181 @@ describe("FileBrowser", () => {
         const img = document.querySelector('img[src="' + dataUrl + '"]');
         expect(img).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("throttling и дебаунс thumbnail-запросов", () => {
+    // Контролируемый observer: сохраняет callback и target,
+    // но НЕ вызывает его автоматически — тест делает это вручную
+    let savedCb: IntersectionObserverCallback | null = null;
+    let savedEl: Element | null = null;
+
+    class ControllableObserver {
+      constructor(cb: IntersectionObserverCallback) { savedCb = cb; }
+      observe = (el: Element) => { savedEl = el; };
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+    }
+
+    // Хелпер: симулировать вход/уход элемента из viewport
+    const triggerVisible = () =>
+      savedCb!([{ isIntersecting: true,  target: savedEl! } as IntersectionObserverEntry], {} as any);
+    const triggerHidden = () =>
+      savedCb!([{ isIntersecting: false, target: savedEl! } as IntersectionObserverEntry], {} as any);
+
+    beforeEach(() => {
+      savedCb = null;
+      savedEl = null;
+      globalThis.IntersectionObserver = ControllableObserver as any;
+    });
+
+    it("НЕ вызывает get-thumbnail в первые 199ms после появления в viewport", async () => {
+      const imgOnly = [{ name: "debounce-test.jpg", path: `${CWD}/debounce-test.jpg`, isDirectory: false, size: 512 }];
+      mockInvoke.mockResolvedValueOnce(imgOnly).mockResolvedValue("data:image/webp;base64,A");
+
+      renderWithI18n(<FileBrowser cwd={CWD} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("debounce-test.jpg")).toBeInTheDocument();
+        expect(savedCb).not.toBeNull();
+      });
+
+      mockInvoke.mockClear();
+
+      // Симулируем появление в viewport
+      act(() => { triggerVisible(); });
+
+      // Немедленно после triggerVisible — IPC ещё не должен быть вызван
+      expect(mockInvoke).not.toHaveBeenCalledWith("get-thumbnail", expect.anything(), expect.anything());
+    });
+
+    it("вызывает get-thumbnail после истечения дебаунса 200ms", async () => {
+      const imgOnly = [{ name: "debounce-fire.jpg", path: `${CWD}/debounce-fire.jpg`, isDirectory: false, size: 512 }];
+      mockInvoke.mockResolvedValueOnce(imgOnly).mockResolvedValue("data:image/webp;base64,A");
+
+      renderWithI18n(<FileBrowser cwd={CWD} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("debounce-fire.jpg")).toBeInTheDocument();
+        expect(savedCb).not.toBeNull();
+      });
+
+      mockInvoke.mockClear();
+      mockInvoke.mockResolvedValue("data:image/webp;base64,A");
+
+      // Входим в viewport и ждём дебаунс
+      act(() => { triggerVisible(); });
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("get-thumbnail", `${CWD}/debounce-fire.jpg`, 64);
+      }, { timeout: 500 });
+    });
+
+    it("отменяет запрос если элемент ушёл из вьюпорта до истечения дебаунса", async () => {
+      const imgOnly = [{ name: "cancel-test.jpg", path: `${CWD}/cancel-test.jpg`, isDirectory: false, size: 512 }];
+      mockInvoke.mockResolvedValueOnce(imgOnly).mockResolvedValue("data:image/webp;base64,A");
+
+      renderWithI18n(<FileBrowser cwd={CWD} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("cancel-test.jpg")).toBeInTheDocument();
+        expect(savedCb).not.toBeNull();
+      });
+
+      mockInvoke.mockClear();
+      mockInvoke.mockResolvedValue("data:image/webp;base64,A");
+
+      // Элемент входит в viewport — дебаунс стартует (200ms)
+      act(() => { triggerVisible(); });
+
+      // Сразу уходит из viewport — дебаунс должен отмениться
+      act(() => { triggerHidden(); });
+
+      // Ждём дольше чем дебаунс — IPC не должен вызваться
+      await new Promise(r => setTimeout(r, 300));
+      expect(mockInvoke).not.toHaveBeenCalledWith("get-thumbnail", expect.anything(), expect.anything());
+    });
+
+    it("не вызывает get-thumbnail повторно для одного элемента", async () => {
+      const imgOnly = [{ name: "no-repeat.jpg", path: `${CWD}/no-repeat.jpg`, isDirectory: false, size: 512 }];
+      mockInvoke.mockResolvedValueOnce(imgOnly).mockResolvedValue("data:image/webp;base64,A");
+
+      renderWithI18n(<FileBrowser cwd={CWD} onClose={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("no-repeat.jpg")).toBeInTheDocument();
+        expect(savedCb).not.toBeNull();
+      });
+
+      mockInvoke.mockClear();
+      mockInvoke.mockResolvedValue("data:image/webp;base64,A");
+
+      // Первый вход → ждём IPC
+      act(() => { triggerVisible(); });
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("get-thumbnail", `${CWD}/no-repeat.jpg`, 64);
+      }, { timeout: 500 });
+
+      const firstCount = mockInvoke.mock.calls.filter(c => c[0] === "get-thumbnail").length;
+      expect(firstCount).toBe(1);
+
+      mockInvoke.mockClear();
+
+      // Второй вход в viewport — triedRef уже true
+      act(() => { triggerVisible(); });
+      await new Promise(r => setTimeout(r, 300));
+
+      expect(mockInvoke).not.toHaveBeenCalledWith("get-thumbnail", expect.anything(), expect.anything());
+    });
+
+    it("при concurrency=1 второй запрос ждёт завершения первого", async () => {
+      // Используем TriggeringObserver — оба элемента сразу видны в viewport
+      class TriggeringObserver {
+        constructor(private cb: IntersectionObserverCallback) {}
+        observe = (el: Element) => {
+          this.cb([{ isIntersecting: true, target: el } as IntersectionObserverEntry], this as any);
+        };
+        disconnect = vi.fn();
+        unobserve = vi.fn();
+      }
+      globalThis.IntersectionObserver = TriggeringObserver as any;
+
+      const twoImages = [
+        { name: "queue-a.jpg", path: `${CWD}/queue-a.jpg`, isDirectory: false, size: 100 },
+        { name: "queue-b.jpg", path: `${CWD}/queue-b.jpg`, isDirectory: false, size: 100 },
+      ];
+
+      let resolveFirst!: (v: string) => void;
+      const firstPromise = new Promise<string>(r => { resolveFirst = r; });
+
+      mockInvoke
+        .mockResolvedValueOnce(twoImages)  // list-directory
+        .mockReturnValueOnce(firstPromise) // get-thumbnail queue-a.jpg — зависает
+        .mockResolvedValue("data:image/webp;base64,B"); // get-thumbnail queue-b.jpg
+
+      renderWithI18n(<FileBrowser cwd={CWD} onClose={vi.fn()} />);
+
+      await waitFor(() => expect(screen.getByText("queue-a.jpg")).toBeInTheDocument());
+
+      // После дебаунса (200ms) — ждём первый вызов
+      await waitFor(() => {
+        const calls = mockInvoke.mock.calls.filter(c => c[0] === "get-thumbnail");
+        expect(calls.length).toBe(1);
+        expect(calls[0][1]).toBe(`${CWD}/queue-a.jpg`);
+      }, { timeout: 500 });
+
+      // b.jpg ещё в очереди — не вызван
+      const beforeResolve = mockInvoke.mock.calls.filter(c => c[0] === "get-thumbnail").length;
+      expect(beforeResolve).toBe(1);
+
+      // Резолвим первый — очередь должна выпустить второй
+      resolveFirst("data:image/webp;base64,A");
+
+      await waitFor(() => {
+        const calls = mockInvoke.mock.calls.filter(c => c[0] === "get-thumbnail");
+        expect(calls.length).toBe(2);
+        expect(calls[1][1]).toBe(`${CWD}/queue-b.jpg`);
+      }, { timeout: 500 });
     });
   });
 });
