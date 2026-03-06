@@ -13,6 +13,7 @@ import { app } from "electron";
 import path from "path";
 const { join } = path;
 import { promises as fs } from "fs";
+import { homedir } from "os";
 import { sessionManager } from "./session-manager.js";
 import * as gitUtils from "./git-utils.js";
 import type { CreateTaskPayload, ThreadTask } from "./types.js";
@@ -24,6 +25,8 @@ import { fetchSkillsFromMarketplace } from "./libs/skills-loader.js";
 import {
   MiniWorkflowStore,
   buildReplayPrompt,
+  buildStepPrompt,
+  getLlmSteps,
   checkDistillability,
   buildConciseHistory,
   assembleWorkflow,
@@ -130,7 +133,7 @@ function getLlmConnection(model?: string): { client: OpenAI; modelName: string }
 
 // ─── Distill: 3-step LLM chain ───
 
-async function llmCall(client: OpenAI, modelName: string, system: string, user: string): Promise<any> {
+async function llmCall(client: OpenAI, modelName: string, system: string, user: string): Promise<{ data: any; usage: { input_tokens: number; output_tokens: number } }> {
   const response = await client.chat.completions.create({
     model: modelName,
     temperature: 0.1,
@@ -142,53 +145,81 @@ async function llmCall(client: OpenAI, modelName: string, system: string, user: 
   const text = response.choices?.[0]?.message?.content || "";
   const jsonRaw = extractJsonObject(text);
   if (!jsonRaw) throw new Error("LLM returned non-JSON response");
-  return JSON.parse(jsonRaw);
+  const usage = {
+    input_tokens: response.usage?.prompt_tokens || 0,
+    output_tokens: response.usage?.completion_tokens || 0
+  };
+  return { data: JSON.parse(jsonRaw), usage };
 }
 
-async function distillChain(input: { sessionId: string; cwd?: string; history: any[]; model?: string }): Promise<{ status: "success"; workflow: any } | { status: "not_suitable"; reason: string }> {
+type DistillUsage = { input_tokens: number; output_tokens: number };
+type DistillChainResult =
+  | { status: "success"; workflow: any; usage: DistillUsage }
+  | { status: "not_suitable"; reason: string; usage: DistillUsage };
+
+async function distillChain(input: { sessionId: string; cwd?: string; history: any[]; model?: string; previousErrors?: string[] }): Promise<DistillChainResult> {
   const { client, modelName } = getLlmConnection(input.model);
   const conciseHistory = buildConciseHistory(input.history as any);
+  const totalUsage: DistillUsage = { input_tokens: 0, output_tokens: 0 };
+
+  const addUsage = (u: DistillUsage) => {
+    totalUsage.input_tokens += u.input_tokens;
+    totalUsage.output_tokens += u.output_tokens;
+  };
+
+  // If retrying after validation errors, prepend context
+  const retryContext = input.previousErrors?.length
+    ? `\n\nВНИМАНИЕ: предыдущая попытка дистилляции завершилась ошибками валидации. Исправь их:\n${input.previousErrors.map((e, i) => `${i + 1}. ${e}`).join("\n")}\n`
+    : "";
 
   // Step 1: Identify result
   console.log("[Distill] Step 1: Identifying session result...");
-  const step1 = await llmCall(
+  const step1r = await llmCall(
     client, modelName,
     DISTILL_STEP1_SYSTEM,
-    buildDistillStep1User(input.sessionId, input.cwd || "", conciseHistory)
+    buildDistillStep1User(input.sessionId, input.cwd || "", conciseHistory) + retryContext
   );
+  addUsage(step1r.usage);
+  const step1 = step1r.data;
   console.log("[Distill] Step 1 result:", JSON.stringify(step1).slice(0, 500));
 
   if (!step1.result_clear) {
-    return { status: "not_suitable", reason: step1.reason || "Результат сессии не определён однозначно." };
+    return { status: "not_suitable", reason: step1.reason || "Результат сессии не определён однозначно.", usage: totalUsage };
   }
 
   // Step 2: Extract variables
   console.log("[Distill] Step 2: Extracting variables...");
-  const step2 = await llmCall(
+  const step2r = await llmCall(
     client, modelName,
     DISTILL_STEP2_SYSTEM,
     buildDistillStep2User(input.sessionId, input.cwd || "", conciseHistory, step1)
   );
+  addUsage(step2r.usage);
+  const step2 = step2r.data;
   console.log("[Distill] Step 2 result:", JSON.stringify(step2).slice(0, 500));
 
   // Step 3: Build chain of prompts
   console.log("[Distill] Step 3: Building prompt chain...");
-  const step3 = await llmCall(
+  const step3r = await llmCall(
     client, modelName,
     DISTILL_STEP3_SYSTEM,
     buildDistillStep3User(input.sessionId, input.cwd || "", conciseHistory, step1, step2)
   );
+  addUsage(step3r.usage);
+  const step3 = step3r.data;
   console.log("[Distill] Step 3 result:", JSON.stringify(step3).slice(0, 500));
 
   // Step 4: Scriptify deterministic steps
   console.log("[Distill] Step 4: Scriptifying deterministic steps...");
   let step4: any = null;
   try {
-    step4 = await llmCall(
+    const step4r = await llmCall(
       client, modelName,
       DISTILL_STEP4_SYSTEM,
       buildDistillStep4User(step3.chain || [], step2.variables || [], conciseHistory)
     );
+    addUsage(step4r.usage);
+    step4 = step4r.data;
     const scriptCount = step4?.scripts?.length || 0;
     const llmCount = step4?.kept_as_llm?.length || 0;
     console.log(`[Distill] Step 4 result: ${scriptCount} scripted, ${llmCount} kept as LLM`);
@@ -199,8 +230,8 @@ async function distillChain(input: { sessionId: string; cwd?: string; history: a
   // Assemble final workflow
   console.log("[Distill] Assembling workflow...");
   const workflow = assembleWorkflow(step3, step2, input.sessionId, input.cwd, step4);
-  console.log("[Distill] Workflow assembled:", workflow.id, workflow.name);
-  return { status: "success", workflow };
+  console.log(`[Distill] Workflow assembled: ${workflow.id} ${workflow.name} | Tokens: ${totalUsage.input_tokens} in / ${totalUsage.output_tokens} out`);
+  return { status: "success", workflow, usage: totalUsage };
 }
 
 // Broadcast function for events without sessionId (session.list, models.loaded, etc.)
@@ -855,14 +886,29 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
 
   if (event.type === "open.path") {
     let filePath = event.payload.path;
+    const sessionId = sessionManager.getWindowSession(windowId);
+    const session = sessionId ? sessions.getSession(sessionId) : undefined;
+    const cwd = session?.cwd || process.cwd();
+
     // Resolve relative paths against the active session's cwd
     if (filePath && !path.isAbsolute(filePath)) {
-      const sessionId = sessionManager.getWindowSession(windowId);
-      const session = sessionId ? sessions.getSession(sessionId) : undefined;
-      const cwd = session?.cwd || process.cwd();
       filePath = path.resolve(cwd, filePath);
     }
-    shell.openPath(filePath);
+
+    // Security: only allow paths inside the session workspace or user home
+    const normalized = path.normalize(filePath);
+    const home = homedir();
+    const normalizedCwd = path.normalize(cwd);
+    const normalizedHome = path.normalize(home);
+    const insideWorkspace = normalized.startsWith(normalizedCwd + path.sep) || normalized === normalizedCwd;
+    const insideHome = normalized.startsWith(normalizedHome + path.sep);
+    console.log(`[open.path] path=${normalized} cwd=${normalizedCwd} home=${normalizedHome} insideWorkspace=${insideWorkspace} insideHome=${insideHome}`);
+    if (!insideWorkspace && !insideHome) {
+      console.warn(`[open.path] Blocked path outside workspace/home: ${normalized}`);
+      return;
+    }
+
+    shell.openPath(normalized);
     return;
   }
 
@@ -1573,7 +1619,7 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
   }
 
   if (event.type === "miniworkflow.distill") {
-    const { sessionId } = event.payload;
+    const { sessionId, validationErrors } = event.payload as { sessionId: string; validationErrors?: string[] };
     const history = sessions.getSessionHistory(sessionId);
     if (!history) {
       sessionManager.emitToWindow(windowId, {
@@ -1606,14 +1652,18 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
         sessionId,
         cwd: history.session.cwd,
         history: history.messages as any[],
-        model: history.session.model
+        model: history.session.model,
+        previousErrors: validationErrors
       });
+
+      const distillUsage = chainResult.usage;
 
       if (chainResult.status === "not_suitable") {
         sessionManager.emitToWindow(windowId, {
           type: "miniworkflow.distill.result",
           payload: {
             sessionId,
+            usage: distillUsage,
             result: { status: "not_suitable", reason: chainResult.reason, suggest_prompt_preset: false }
           }
         });
@@ -1626,6 +1676,7 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
           type: "miniworkflow.distill.result",
           payload: {
             sessionId,
+            usage: distillUsage,
             result: { status: "needs_clarification", questions: validation.errors }
           }
         });
@@ -1634,7 +1685,7 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
 
       sessionManager.emitToWindow(windowId, {
         type: "miniworkflow.distill.result",
-        payload: { sessionId, result: { status: "success", workflow: chainResult.workflow } }
+        payload: { sessionId, usage: distillUsage, result: { status: "success", workflow: chainResult.workflow } }
       });
     } catch (err) {
       console.error("[Distill] Error:", err);
@@ -1780,9 +1831,18 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
 
       for (const step of scriptSteps) {
         try {
-          const env: Record<string, string> = Object.fromEntries(
-            Object.entries(process.env).filter((e): e is [string, string] => e[1] != null)
-          );
+          // Build clean env: only pass safe system vars, not API keys or secrets
+          const SAFE_ENV_KEYS = new Set(["PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "LANG", "SYSTEMROOT", "COMSPEC", "SHELL", "TERM", "PYTHONPATH", "PYTHONHOME", "NODE_PATH", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "WINDIR"]);
+          const SAFE_ENV_PREFIXES = ["LC_", "PYTHON"];
+          const SECRET_PATTERNS = /(_KEY|_SECRET|_TOKEN|_PASSWORD|_CREDENTIAL|_AUTH)$|^(OPENAI|ANTHROPIC|TAVILY|ZAI|AWS_|AZURE_|GOOGLE_|GITHUB_TOKEN|NPM_TOKEN|CODEX_)/i;
+          const env: Record<string, string> = {};
+          for (const [k, v] of Object.entries(process.env)) {
+            if (v == null) continue;
+            if (SECRET_PATTERNS.test(k)) continue;
+            if (SAFE_ENV_KEYS.has(k) || SAFE_ENV_PREFIXES.some(p => k.startsWith(p))) {
+              env[k] = v;
+            }
+          }
           for (const [k, v] of Object.entries(inputs)) {
             env[`INPUTS_${k.toUpperCase()}`] = String(v);
           }
@@ -1813,46 +1873,12 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
       emitProgress(`✅ Скрипты выполнены. Запускаю агента...`);
     }
 
-    // Build replay prompt with pre-computed script results
-    const { prompt: basePrompt } = buildReplayPrompt(workflow as any, inputs);
-    let replayPrompt = basePrompt;
-    if (Object.keys(scriptResults).length > 0) {
-      const precomputed = Object.entries(scriptResults)
-        .map(([stepId, result]) => {
-          const step = (workflow as any).chain?.find((s: any) => s.id === stepId);
-          return `### ${step?.title || stepId} (выполнено автоматически)\n${result.slice(0, 2000)}${result.length > 2000 ? "\n...(truncated)" : ""}`;
-        })
-        .join("\n\n");
-      replayPrompt += `\n\nПредвычисленные результаты (выполнены скриптами, НЕ нужно повторять):\n${precomputed}`;
-    }
-
-    sessions.updateSession(session.id, { lastPrompt: replayPrompt });
-    emit({
-      type: "stream.user_prompt",
-      payload: { sessionId: session.id, prompt: replayPrompt }
-    });
+    // ─── Step-by-step chain execution ───
+    const llmSteps = getLlmSteps(workflow as any);
+    const allStepResults: Record<string, string> = { ...scriptResults };
 
     let replayLogged = false;
-    const stepStarts = new Map<string, number>();
     const orderedSteps: Array<{ step_id: string; status: "success" | "failed" | "skipped"; outputs?: unknown; error?: string | null; started_at?: string; finished_at?: string; duration_ms?: number }> = [];
-
-    const startStep = (stepId: string) => {
-      stepStarts.set(stepId, Date.now());
-    };
-    const finishStep = (stepId: string, status: "success" | "failed", outputs?: unknown, error?: string | null) => {
-      const now = Date.now();
-      const started = stepStarts.get(stepId) ?? now;
-      orderedSteps.push({
-        step_id: stepId,
-        status,
-        outputs,
-        error: error ?? null,
-        started_at: new Date(started).toISOString(),
-        finished_at: new Date(now).toISOString(),
-        duration_ms: Math.max(0, now - started)
-      });
-      stepStarts.delete(stepId);
-    };
 
     const finalizeReplayLog = (status: "success" | "partial" | "failed" | "aborted") => {
       if (replayLogged) return;
@@ -1860,56 +1886,143 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
       void writeReplayLog(workflow as any, { inputs, final_status: status, step_results: orderedSteps });
     };
 
-    const replayEmit = (serverEvent: ServerEvent) => {
-      emit(serverEvent);
-      if (serverEvent.type === "stream.message" && serverEvent.payload.sessionId === session.id) {
-        const message: any = serverEvent.payload.message;
-        if (message?.type === "assistant" && Array.isArray(message?.message?.content)) {
-          const toolUse = message.message.content.find((c: any) => c?.type === "tool_use");
-          if (toolUse?.id) {
-            startStep(String(toolUse.id));
+    // Show progress in chat
+    const emitStepProgress = (text: string) => emit({
+      type: "stream.message",
+      payload: { sessionId: session.id, message: { type: "system", subtype: "notice", text } as any }
+    });
+
+    /** Run a single LLM step and collect the final text result */
+    const runSingleStep = (stepPrompt: string, stepTitle: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        let collectedText = "";
+        let stepCompleted = false;
+
+        const stepEmit = (serverEvent: ServerEvent) => {
+          emit(serverEvent); // forward all events to UI
+
+          if (serverEvent.type === "stream.message" && serverEvent.payload.sessionId === session.id) {
+            const msg = serverEvent.payload.message as any;
+            if (msg.type === "assistant" && msg.content) {
+              collectedText += msg.content;
+            } else if (msg.type === "text" && msg.text) {
+              collectedText += msg.text;
+            }
           }
-        }
-        if (message?.type === "user" && Array.isArray(message?.message?.content)) {
-          const toolResult = message.message.content.find((c: any) => c?.type === "tool_result");
-          if (toolResult?.tool_use_id) {
-            const stepId = String(toolResult.tool_use_id);
-            finishStep(stepId, toolResult.is_error ? "failed" : "success", toolResult.content, toolResult.is_error ? String(toolResult.content) : null);
+          if (serverEvent.type === "session.status" && serverEvent.payload.sessionId === session.id) {
+            if (serverEvent.payload.status === "completed" || serverEvent.payload.status === "idle") {
+              if (!stepCompleted) {
+                stepCompleted = true;
+                resolve(collectedText.trim());
+              }
+            }
+            if (serverEvent.payload.status === "error") {
+              if (!stepCompleted) {
+                stepCompleted = true;
+                reject(new Error(`Step "${stepTitle}" failed`));
+              }
+            }
           }
-        }
-      }
-      if (serverEvent.type === "session.status" && serverEvent.payload.sessionId === session.id) {
-        if (serverEvent.payload.status === "completed") finalizeReplayLog("success");
-        if (serverEvent.payload.status === "idle" || serverEvent.payload.status === "error") finalizeReplayLog("failed");
-      }
-      if (serverEvent.type === "runner.error" && serverEvent.payload.sessionId === session.id) {
-        finalizeReplayLog("failed");
-      }
+          if (serverEvent.type === "runner.error" && serverEvent.payload.sessionId === session.id) {
+            if (!stepCompleted) {
+              stepCompleted = true;
+              reject(new Error(serverEvent.payload.message));
+            }
+          }
+        };
+
+        const runner = selectRunner(session.model);
+        runner({
+          prompt: stepPrompt,
+          session,
+          resumeSessionId: session.claudeSessionId,
+          onEvent: stepEmit,
+          secretBag,
+          onSessionUpdate: (updates) => {
+            sessions.updateSession(session.id, updates);
+          }
+        })
+          .then((handle) => {
+            runnerHandles.set(session.id, handle);
+          })
+          .catch((error) => {
+            if (!stepCompleted) {
+              stepCompleted = true;
+              reject(error);
+            }
+          });
+      });
     };
 
-    const runner = selectRunner(session.model);
-    runner({
-      prompt: replayPrompt,
-      session,
-      resumeSessionId: session.claudeSessionId,
-      onEvent: replayEmit,
-      secretBag,
-      onSessionUpdate: (updates) => {
-        sessions.updateSession(session.id, updates);
-      }
-    })
-      .then((handle) => {
-        runnerHandles.set(session.id, handle);
-        sessions.setAbortController(session.id, undefined);
-      })
-      .catch((error) => {
+    // Execute LLM steps sequentially
+    (async () => {
+      try {
+        for (let i = 0; i < llmSteps.length; i++) {
+          const step = llmSteps[i];
+          const stepStartedAt = Date.now();
+
+          emitStepProgress(`▸ Шаг ${i + 1}/${llmSteps.length}: ${step.title}...`);
+
+          const stepPrompt = buildStepPrompt(
+            workflow as any,
+            step,
+            i,
+            llmSteps.length,
+            inputs,
+            allStepResults
+          );
+
+          sessions.updateSession(session.id, { lastPrompt: stepPrompt, status: "running" });
+          emit({
+            type: "stream.user_prompt",
+            payload: { sessionId: session.id, prompt: stepPrompt }
+          });
+
+          try {
+            const result = await runSingleStep(stepPrompt, step.title);
+            allStepResults[step.id] = result;
+
+            orderedSteps.push({
+              step_id: step.id,
+              status: "success",
+              outputs: result.slice(0, 500),
+              started_at: new Date(stepStartedAt).toISOString(),
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - stepStartedAt
+            });
+
+            console.log(`[Replay] Step "${step.id}" completed (${result.length} chars)`);
+          } catch (stepErr) {
+            console.error(`[Replay] Step "${step.id}" failed:`, stepErr);
+            orderedSteps.push({
+              step_id: step.id,
+              status: "failed",
+              error: String(stepErr),
+              started_at: new Date(stepStartedAt).toISOString(),
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - stepStartedAt
+            });
+            finalizeReplayLog("partial");
+            return; // stop chain on failure
+          }
+        }
+
+        emitStepProgress(`✅ Все ${llmSteps.length} шагов выполнены.`);
+        finalizeReplayLog("success");
+        sessions.updateSession(session.id, { status: "completed" });
+        emit({
+          type: "session.status",
+          payload: { sessionId: session.id, status: "completed" }
+        });
+      } catch (err) {
         finalizeReplayLog("failed");
         sessions.updateSession(session.id, { status: "error" });
         sessionManager.emitToWindow(windowId, {
           type: "runner.error",
-          payload: { sessionId: session.id, message: String(error) }
+          payload: { sessionId: session.id, message: String(err) }
         });
-      });
+      }
+    })();
 
     // NOTE: miniworkflow.replay.started already emitted earlier (before scripts)
     return;

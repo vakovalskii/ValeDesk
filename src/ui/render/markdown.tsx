@@ -176,9 +176,10 @@ function linkifyFilePaths(text: string): string {
     );
 
     // 2. Match bare filenames with common extensions (not inside backticks or already linked)
+    // Use "localfile:" prefix instead of "file://" because rehype sanitizes file:// protocol
     line = line.replace(
       /(?<!\[)(?<!`)(?<!\()\b([\w][\w.+-]*\.(?:png|jpg|jpeg|csv|json|txt|pdf|xlsx|html|py|svg|webp))\b(?!`|\)|\])/gi,
-      (match) => `[${match}](file://${match})`
+      (match) => `[${match}](localfile:${match})`
     );
 
     return line;
@@ -187,7 +188,9 @@ function linkifyFilePaths(text: string): string {
 
 const MDContentInternal = ({ text }: { text: string }) => {
   const isLocalPath = (href: string) => {
-    // file:// protocol (from linkifyFilePaths for relative filenames)
+    // localfile: prefix (from linkifyFilePaths for relative filenames)
+    if (href.startsWith('localfile:')) return true;
+    // file:// protocol (legacy)
     if (href.startsWith('file://')) return true;
     // Windows absolute paths (C:\..., D:\...) or UNC paths (\\...)
     if (/^[A-Za-z]:[/\\]/.test(href) || href.startsWith('\\\\')) return true;
@@ -203,8 +206,8 @@ const MDContentInternal = ({ text }: { text: string }) => {
     if (href.startsWith('http://') || href.startsWith('https://')) {
       getPlatform().sendClientEvent({ type: "open.external", payload: { url: href } });
     } else if (isLocalPath(href)) {
-      // Strip file:// prefix for relative filenames — backend will resolve relative to session cwd
-      const path = href.startsWith('file://') ? href.slice(7) : href;
+      // Strip localfile:/file:// prefix for relative filenames — backend will resolve relative to session cwd
+      const path = href.startsWith('localfile:') ? href.slice(10) : href.startsWith('file://') ? href.slice(7) : href;
       getPlatform().sendClientEvent({ type: "open.path", payload: { path } });
     }
   };
@@ -216,6 +219,7 @@ const MDContentInternal = ({ text }: { text: string }) => {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        urlTransform={(url) => url}
         components={{
         h1: (props) => <h1 className="mt-4 text-xl font-semibold text-ink-900" {...props} />,
         h2: (props) => <h2 className="mt-4 text-lg font-semibold text-ink-900" {...props} />,
@@ -226,16 +230,17 @@ const MDContentInternal = ({ text }: { text: string }) => {
         li: (props) => <li className="min-w-0 text-ink-700" {...props} />,
         strong: (props) => <strong className="text-ink-900 font-semibold" {...props} />,
         em: (props) => <em className="text-ink-800" {...props} />,
-        a: (props) => (
+        a: ({ ref: _ref, ...props }) => (
           <a
+            {...props}
             className="text-accent hover:text-accent-hover underline cursor-pointer transition-colors"
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               if (props.href) {
                 handleLinkClick(props.href);
               }
             }}
-            {...props}
           />
         ),
         img: (props) => {

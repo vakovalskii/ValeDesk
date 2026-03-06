@@ -5,6 +5,8 @@ import { join } from "path";
 import type { StreamMessage } from "../types.js";
 import type { DistillResult, MiniWorkflow, MiniWorkflowSummary, ChainStep, ValidationConfig } from "../../shared/mini-workflow-types.js";
 export type { DistillResult, MiniWorkflow, MiniWorkflowSummary } from "../../shared/mini-workflow-types.js";
+export { detectPermissions } from "../../shared/mini-workflow-types.js";
+export type { DetectedPermissions } from "../../shared/mini-workflow-types.js";
 
 // ─── Utility helpers ───
 
@@ -451,29 +453,98 @@ export function assembleWorkflow(
 
 export function validateWorkflow(workflow: Record<string, unknown>): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
+  const VALID_INPUT_TYPES = ["string", "text", "number", "boolean", "enum", "date", "datetime", "file_path", "url", "secret"];
+  const VALID_EXECUTION_TYPES = ["llm", "script"];
+  const VALID_SCRIPT_LANGUAGES = ["python", "javascript"];
+
+  // ─── Top-level required fields ───
   const required = ["id", "name", "version", "goal", "definition_of_done", "inputs", "chain", "validation", "artifacts", "safety"];
   for (const field of required) {
     if (!(field in workflow)) errors.push(`missing required field: ${field}`);
   }
-  if (typeof workflow.id !== "string") errors.push("id must be string");
-  if (typeof workflow.name !== "string") errors.push("name must be string");
+  if (typeof workflow.id !== "string" || !workflow.id) errors.push("id must be non-empty string");
+  if (typeof workflow.name !== "string" || !workflow.name) errors.push("name must be non-empty string");
+  if (typeof workflow.goal !== "string") errors.push("goal must be string");
+  if (typeof workflow.definition_of_done !== "string") errors.push("definition_of_done must be string");
   if (!Array.isArray(workflow.inputs)) errors.push("inputs must be array");
   if (!Array.isArray(workflow.chain)) errors.push("chain must be array");
   if (!Array.isArray(workflow.artifacts)) errors.push("artifacts must be array");
   if (!workflow.safety || typeof workflow.safety !== "object") errors.push("safety must be object");
   if (!workflow.validation || typeof workflow.validation !== "object") errors.push("validation must be object");
 
-  const chain = Array.isArray(workflow.chain) ? workflow.chain : [];
-  for (const step of chain as Array<any>) {
-    if (typeof step?.id !== "string") errors.push("chain step: id must be string");
-    if (typeof step?.prompt_template !== "string") errors.push(`chain step ${step?.id}: prompt_template must be string`);
-    if (!Array.isArray(step?.tools)) errors.push(`chain step ${step?.id}: tools must be array`);
+  // ─── Inputs validation ───
+  const inputs = Array.isArray(workflow.inputs) ? workflow.inputs : [];
+  const inputIds = new Set<string>();
+  for (let i = 0; i < inputs.length; i++) {
+    const inp = inputs[i] as Record<string, unknown> | undefined;
+    if (!inp || typeof inp !== "object") { errors.push(`inputs[${i}]: must be object`); continue; }
+    if (typeof inp.id !== "string" || !inp.id) errors.push(`inputs[${i}]: id must be non-empty string`);
+    else if (inputIds.has(inp.id)) errors.push(`inputs[${i}]: duplicate id "${inp.id}"`);
+    else inputIds.add(inp.id);
+    if (typeof inp.title !== "string") errors.push(`input "${inp.id}": title must be string`);
+    if (typeof inp.type !== "string" || !VALID_INPUT_TYPES.includes(inp.type)) {
+      errors.push(`input "${inp.id}": type must be one of: ${VALID_INPUT_TYPES.join(", ")}`);
+    }
+    if (inp.type === "enum" && (!Array.isArray(inp.enum_values) || inp.enum_values.length === 0)) {
+      errors.push(`input "${inp.id}": enum type requires non-empty enum_values array`);
+    }
   }
 
-  const safety = workflow.safety as any;
-  if (safety) {
-    if (!["ask", "auto"].includes(String(safety.permission_mode_on_replay))) errors.push("safety.permission_mode_on_replay invalid");
-    if (!["offline", "allow_web_read", "allow_web_write"].includes(String(safety.network_policy))) errors.push("safety.network_policy invalid");
+  // ─── Chain steps validation ───
+  const chain = Array.isArray(workflow.chain) ? workflow.chain : [];
+  if (chain.length === 0 && errors.length === 0) errors.push("chain must have at least one step");
+  const stepIds = new Set<string>();
+  for (let i = 0; i < chain.length; i++) {
+    const step = chain[i] as Record<string, unknown> | undefined;
+    if (!step || typeof step !== "object") { errors.push(`chain[${i}]: must be object`); continue; }
+
+    const stepId = String(step.id || `step_${i}`);
+    if (typeof step.id !== "string" || !step.id) errors.push(`chain[${i}]: id must be non-empty string`);
+    else if (stepIds.has(step.id)) errors.push(`chain[${i}]: duplicate step id "${step.id}"`);
+    else stepIds.add(step.id);
+
+    if (typeof step.title !== "string") errors.push(`step "${stepId}": title must be string`);
+    if (typeof step.prompt_template !== "string") errors.push(`step "${stepId}": prompt_template must be string`);
+    if (!Array.isArray(step.tools)) errors.push(`step "${stepId}": tools must be array`);
+    if (typeof step.output_key !== "string") errors.push(`step "${stepId}": output_key must be string`);
+
+    // execution type
+    const execution = step.execution;
+    if (typeof execution !== "string" || !VALID_EXECUTION_TYPES.includes(execution)) {
+      errors.push(`step "${stepId}": execution must be one of: ${VALID_EXECUTION_TYPES.join(", ")}`);
+    }
+
+    // script validation for script steps
+    if (execution === "script") {
+      const script = step.script as Record<string, unknown> | undefined;
+      if (!script || typeof script !== "object") {
+        errors.push(`step "${stepId}": script step must have a script object`);
+      } else {
+        if (typeof script.language !== "string" || !VALID_SCRIPT_LANGUAGES.includes(script.language)) {
+          errors.push(`step "${stepId}": script.language must be one of: ${VALID_SCRIPT_LANGUAGES.join(", ")}`);
+        }
+        if (typeof script.code !== "string" || !script.code.trim()) {
+          errors.push(`step "${stepId}": script.code must be non-empty string`);
+        }
+      }
+    }
+  }
+
+  // ─── Validation config ───
+  const validation = workflow.validation as Record<string, unknown> | undefined;
+  if (validation && typeof validation === "object") {
+    if (typeof validation.acceptance_criteria !== "string") errors.push("validation.acceptance_criteria must be string");
+    if (typeof validation.max_fix_attempts !== "number" || validation.max_fix_attempts < 0) {
+      errors.push("validation.max_fix_attempts must be a non-negative number");
+    }
+  }
+
+  // ─── Safety config ───
+  const safety = workflow.safety as Record<string, unknown> | undefined;
+  if (safety && typeof safety === "object") {
+    if (!["ask", "auto"].includes(String(safety.permission_mode_on_replay))) errors.push("safety.permission_mode_on_replay must be 'ask' or 'auto'");
+    if (!["offline", "allow_web_read", "allow_web_write"].includes(String(safety.network_policy))) errors.push("safety.network_policy must be 'offline', 'allow_web_read', or 'allow_web_write'");
+    if (safety.side_effects !== undefined && !Array.isArray(safety.side_effects)) errors.push("safety.side_effects must be array");
   }
 
   return { valid: errors.length === 0, errors };
@@ -481,6 +552,93 @@ export function validateWorkflow(workflow: Record<string, unknown>): { valid: bo
 
 // ─── Replay prompt building ───
 
+/** Get LLM-only chain steps (skip script steps which are pre-computed) */
+export function getLlmSteps(workflow: MiniWorkflow): ChainStep[] {
+  return workflow.chain.filter((s) => s.execution !== "script");
+}
+
+/** Build context object for template rendering with current step results */
+function buildTemplateContext(
+  inputs: Record<string, unknown>,
+  stepResults: Record<string, string>
+): { inputs: Record<string, unknown>; steps: Record<string, { result: string }> } {
+  const steps: Record<string, { result: string }> = {};
+  for (const [id, result] of Object.entries(stepResults)) {
+    steps[id] = { result };
+  }
+  return { inputs, steps };
+}
+
+/** Build a prompt for a single chain step */
+export function buildStepPrompt(
+  workflow: MiniWorkflow,
+  step: ChainStep,
+  stepIndex: number,
+  totalSteps: number,
+  inputs: Record<string, unknown>,
+  stepResults: Record<string, string>
+): string {
+  const secretFields = new Set(
+    workflow.inputs.filter((i) => i.type === "secret" || i.redaction).map((i) => i.id)
+  );
+
+  const ctx = buildTemplateContext(inputs, stepResults);
+  const expanded = renderTemplate(step.prompt_template, ctx);
+
+  const isFirstStep = stepIndex === 0;
+  const isLastStep = stepIndex === totalSteps - 1;
+
+  // First step: full context (goal, inputs, constraints)
+  // Subsequent steps: only task + previous step results (compact)
+  if (isFirstStep) {
+    const inputLines = workflow.inputs.length > 0
+      ? workflow.inputs.map((i) => {
+          const val = inputs[i.id] ?? i.default ?? "";
+          const display = secretFields.has(i.id) ? `{{secret::${i.id}}}` : String(val);
+          return `- ${i.title}: ${display}`;
+        }).join("\n")
+      : "Входные данные не требуются.";
+
+    const constraintsText = workflow.constraints.length > 0
+      ? `\nОграничения:\n${workflow.constraints.map(c => `- ${c}`).join("\n")}\n`
+      : "";
+
+    return `Мини-приложение "${workflow.name}" — Шаг 1/${totalSteps}: ${step.title}
+
+Цель: ${workflow.goal}
+Входные данные:
+${inputLines}
+${constraintsText}
+Задача:
+${expanded}
+
+Выполни ТОЛЬКО этот шаг.`;
+  }
+
+  // Subsequent steps: compact — task + previous results only
+  const prevResults = Object.entries(stepResults).map(([id, result]) => {
+    const prevStep = workflow.chain.find(s => s.id === id);
+    const truncated = result.length > 2000 ? result.slice(0, 2000) + "\n...(truncated)" : result;
+    return `### ${prevStep?.title || id}\n${truncated}`;
+  }).join("\n\n");
+
+  const validationBlock = isLastStep
+    ? `\n\nКритерии готовности: ${workflow.definition_of_done || workflow.validation.acceptance_criteria || ""}
+Если результат не проходит критерии — исправь (до ${workflow.validation.max_fix_attempts} попыток).`
+    : "";
+
+  return `Мини-приложение "${workflow.name}" — Шаг ${stepIndex + 1}/${totalSteps}: ${step.title}
+
+Результаты предыдущих шагов:
+${prevResults}
+
+Задача:
+${expanded}${validationBlock}
+
+Выполни ТОЛЬКО этот шаг.`;
+}
+
+/** Build a single combined prompt (legacy fallback for single-step workflows) */
 export function buildReplayPrompt(workflow: MiniWorkflow, inputs: Record<string, unknown>): { prompt: string; redactedInputs: Record<string, unknown> } {
   const secretFields = new Set(
     workflow.inputs.filter((i) => i.type === "secret" || i.redaction).map((i) => i.id)
@@ -494,14 +652,10 @@ export function buildReplayPrompt(workflow: MiniWorkflow, inputs: Record<string,
       }).join("\n")
     : "Входные данные не требуются.";
 
-  // Build context for template rendering
-  const templateContext = {
-    inputs: inputs as Record<string, unknown>,
-    steps: {} as Record<string, { result: string }>
-  };
+  const templateContext = buildTemplateContext(inputs, {});
 
   const chainLines = workflow.chain
-    .filter((s) => s.execution !== "script") // skip scripted steps — they're pre-computed
+    .filter((s) => s.execution !== "script")
     .map((s, idx) => {
       const expanded = renderTemplate(s.prompt_template, templateContext);
       return `### Шаг ${idx + 1}: ${s.title}\n${expanded}`;
@@ -511,17 +665,10 @@ export function buildReplayPrompt(workflow: MiniWorkflow, inputs: Record<string,
     ? workflow.constraints.map(c => `- ${c}`).join("\n")
     : "Нет дополнительных ограничений.";
 
-  // Merge DoD and acceptance_criteria to avoid duplication
   const dodText = workflow.definition_of_done && workflow.validation.acceptance_criteria
     && workflow.definition_of_done !== workflow.validation.acceptance_criteria
     ? `${workflow.definition_of_done}\n${workflow.validation.acceptance_criteria}`
     : workflow.validation.acceptance_criteria || workflow.definition_of_done || "";
-
-  // Build reference artifacts description for validation
-  const artifactsList = workflow.artifacts.length > 0
-    ? workflow.artifacts.map(a => `- ${a.title} (${a.type}): ${a.description}`).join("\n")
-    : "";
-  const referenceDir = workflow.source_session_cwd || "";
 
   const prompt = `Выполни мини-приложение "${workflow.name}".
 
@@ -537,8 +684,7 @@ ${chainLines}
 
 Валидация (до ${workflow.validation.max_fix_attempts} попыток):
 1. Проверь результат по критериям готовности
-2. ${referenceDir ? `Сравни с эталонным артефактом из оригинальной сессии (${referenceDir})` : "Сравни результат с описанием ожидаемых артефактов"}${artifactsList ? `:\n${artifactsList}` : ""}
-3. Если результат расходится с эталоном или не проходит критерии — исправь и повтори проверку`;
+2. Если результат не проходит критерии — исправь и повтори проверку`;
 
   return {
     prompt,

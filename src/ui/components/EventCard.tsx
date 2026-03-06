@@ -563,10 +563,8 @@ const MiniAppPromptCard = ({ prompt, name, onCopy, copied, onEdit }: {
 
   // Parse sections from compact prompt
   const lines = prompt.split("\n");
-  const goalLine = lines.find(l => l.startsWith("Цель: "));
-  const goal = goalLine?.slice("Цель: ".length) || "";
-  const criteriaLine = lines.find(l => l.startsWith("Критерии готовности: "));
-  const criteria = criteriaLine?.slice("Критерии готовности: ".length) || "";
+  const goalLine = lines.find(l => l.startsWith("Цель приложения: ") || l.startsWith("Цель: "));
+  const goal = goalLine?.replace(/^Цель(?: приложения)?: /, "") || "";
 
   return (
     <div className="mt-1 rounded-lg border border-accent/20 bg-accent/5 overflow-hidden">
@@ -666,11 +664,15 @@ const UserMessageCard = ({
           </div>
         </div>
       ) : (() => {
-        const isMiniApp = message.prompt.startsWith('Выполни мини-приложение "');
-        const miniAppName = isMiniApp ? message.prompt.match(/^Выполни мини-приложение "([^"]+)"/)?.[1] : null;
+        const isMiniAppLegacy = message.prompt.startsWith('Выполни мини-приложение "');
+        const stepMatch = message.prompt.match(/^Мини-приложение "([^"]+)" — Шаг (\d+)\/(\d+): (.+)/);
+        const isMiniApp = isMiniAppLegacy || !!stepMatch;
+        const miniAppName = isMiniAppLegacy
+          ? message.prompt.match(/^Выполни мини-приложение "([^"]+)"/)?.[1] || "Mini-app"
+          : stepMatch ? `${stepMatch[1]} — Шаг ${stepMatch[2]}/${stepMatch[3]}: ${stepMatch[4]}` : "Mini-app";
 
         return isMiniApp ? (
-          <MiniAppPromptCard prompt={message.prompt} name={miniAppName || "Mini-app"} onCopy={handleCopy} copied={copied} onEdit={onEdit ? () => setIsEditing(true) : undefined} />
+          <MiniAppPromptCard prompt={message.prompt} name={miniAppName} onCopy={handleCopy} copied={copied} onEdit={onEdit ? () => setIsEditing(true) : undefined} />
         ) : (
           <>
             <MDContent text={message.prompt} />

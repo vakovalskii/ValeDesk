@@ -2,12 +2,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import type { MiniWorkflow } from "../src/shared/mini-workflow-types.ts";
+import type { MiniWorkflow, ChainStep } from "../src/shared/mini-workflow-types.ts";
+import { detectPermissions } from "../src/shared/mini-workflow-types.ts";
 import {
   MiniWorkflowStore,
   buildReplayPrompt,
+  buildStepPrompt,
   checkDistillability,
   generateSkillMarkdown,
+  getLlmSteps,
   redactSecrets,
   renderTemplate,
   saveNewVersion,
@@ -47,14 +50,16 @@ function baseWorkflow(id = "report-gen"): MiniWorkflow {
         title: "Search the web",
         prompt_template: "Search for {{inputs.topic}} and summarize findings.",
         tools: ["search_web"],
-        output_key: "research"
+        output_key: "research",
+        execution: "llm"
       },
       {
         id: "step_2",
         title: "Write report",
         prompt_template: "Based on research:\n{{steps.step_1.result}}\n\nWrite a report.",
         tools: ["write_file"],
-        output_key: "report"
+        output_key: "report",
+        execution: "llm"
       }
     ],
     validation: {
@@ -250,6 +255,169 @@ describe("MiniWorkflow v2 UT", () => {
     expect(entries.length).toBe(1);
     const raw = await fs.readFile(join(runsDir, entries[0]), "utf8");
     expect(raw).toContain('"step_results"');
+  });
+
+  // ─── detectPermissions ───
+
+  it("UT-16b: detectPermissions detects network tools", () => {
+    const result = detectPermissions([{ tools: ["search_web", "read_file"] }]);
+    expect(result.network).toBe(true);
+    expect(result.local_fs).toBe(true);
+    expect(result.git).toBe(false);
+    expect(result.reasons.length).toBe(2);
+  });
+
+  it("UT-16c: detectPermissions detects git tools", () => {
+    const result = detectPermissions([{ tools: ["git_status", "git_commit"] }]);
+    expect(result.git).toBe(true);
+    expect(result.network).toBe(false);
+  });
+
+  it("UT-16d: detectPermissions detects network in script code", () => {
+    const result = detectPermissions([{
+      tools: [],
+      execution: "script",
+      script: { code: "import requests\ndata = requests.get('http://example.com')" }
+    }]);
+    expect(result.network).toBe(true);
+    expect(result.reasons.some(r => r.reason.includes("script"))).toBe(true);
+  });
+
+  it("UT-16e: detectPermissions returns empty for no tools", () => {
+    const result = detectPermissions([{ tools: [] }]);
+    expect(result.network).toBe(false);
+    expect(result.local_fs).toBe(false);
+    expect(result.git).toBe(false);
+    expect(result.reasons.length).toBe(0);
+  });
+
+  it("UT-16f: detectPermissions detects run_command as local_fs", () => {
+    const result = detectPermissions([{ tools: ["run_command"] }]);
+    expect(result.local_fs).toBe(true);
+  });
+
+  // ─── getLlmSteps ───
+
+  it("UT-17: getLlmSteps filters out script steps", () => {
+    const wf = baseWorkflow();
+    wf.chain.push({
+      id: "step_script",
+      title: "Script step",
+      prompt_template: "",
+      tools: [],
+      output_key: "computed",
+      execution: "script",
+      script: { language: "python", code: "print('hello')" }
+    });
+    const llmSteps = getLlmSteps(wf);
+    expect(llmSteps).toHaveLength(2); // step_1 and step_2 only
+    expect(llmSteps.every(s => s.execution === "llm")).toBe(true);
+  });
+
+  it("UT-18: getLlmSteps returns all steps when none are scripts", () => {
+    const wf = baseWorkflow();
+    expect(getLlmSteps(wf)).toHaveLength(2);
+  });
+
+  // ─── buildStepPrompt ───
+
+  it("UT-19: buildStepPrompt includes step title and index", () => {
+    const wf = baseWorkflow();
+    wf.inputs = [{ id: "topic", title: "Topic", description: "", type: "string", required: true }];
+    const prompt = buildStepPrompt(wf, wf.chain[0], 0, 2, { topic: "AI" }, {});
+    expect(prompt).toContain("Шаг 1/2");
+    expect(prompt).toContain("Search the web");
+    expect(prompt).toContain("AI");
+    expect(prompt).not.toContain("Критерии готовности"); // not last step
+  });
+
+  it("UT-20: buildStepPrompt includes validation on last step", () => {
+    const wf = baseWorkflow();
+    const prompt = buildStepPrompt(wf, wf.chain[1], 1, 2, {}, { step_1: "research data" });
+    expect(prompt).toContain("Шаг 2/2");
+    expect(prompt).toContain("Критерии готовности");
+    expect(prompt).toContain("research data"); // previous step result
+  });
+
+  it("UT-21: buildStepPrompt redacts secret inputs", () => {
+    const wf = baseWorkflow();
+    wf.inputs = [
+      { id: "topic", title: "Topic", description: "", type: "string", required: true },
+      { id: "token", title: "Token", description: "", type: "secret", required: true, redaction: true }
+    ];
+    const prompt = buildStepPrompt(wf, wf.chain[0], 0, 2, { topic: "AI", token: "sk-secret" }, {});
+    expect(prompt).toContain("AI");
+    expect(prompt).toContain("{{secret::token}}");
+    expect(prompt).not.toContain("sk-secret");
+  });
+
+  it("UT-22: buildStepPrompt subsequent step is compact (no full context)", () => {
+    const wf = baseWorkflow();
+    wf.inputs = [{ id: "topic", title: "Topic", description: "", type: "string", required: true }];
+    wf.constraints = ["no network"];
+    const prompt = buildStepPrompt(wf, wf.chain[1], 1, 2, { topic: "AI" }, { step_1: "Found 5 results about AI" });
+    expect(prompt).toContain("Результаты предыдущих шагов");
+    expect(prompt).toContain("Found 5 results about AI");
+    // Subsequent steps should NOT repeat full inputs/constraints
+    expect(prompt).not.toContain("Входные данные:");
+    expect(prompt).not.toContain("no network");
+  });
+
+  // ─── Enhanced validateWorkflow ───
+
+  it("UT-23: validateWorkflow catches duplicate input ids", () => {
+    const wf = baseWorkflow() as unknown as Record<string, unknown>;
+    (wf as any).inputs = [
+      { id: "dup", title: "A", type: "string", required: true },
+      { id: "dup", title: "B", type: "string", required: true }
+    ];
+    const result = validateWorkflow(wf);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes("duplicate id"))).toBe(true);
+  });
+
+  it("UT-24: validateWorkflow catches invalid input type", () => {
+    const wf = baseWorkflow() as unknown as Record<string, unknown>;
+    (wf as any).inputs = [{ id: "x", title: "X", type: "invalid_type", required: true }];
+    const result = validateWorkflow(wf);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes("type must be one of"))).toBe(true);
+  });
+
+  it("UT-25: validateWorkflow catches enum without values", () => {
+    const wf = baseWorkflow() as unknown as Record<string, unknown>;
+    (wf as any).inputs = [{ id: "x", title: "X", type: "enum", required: true }];
+    const result = validateWorkflow(wf);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes("enum_values"))).toBe(true);
+  });
+
+  it("UT-26: validateWorkflow catches missing execution type", () => {
+    const wf = baseWorkflow() as unknown as Record<string, unknown>;
+    ((wf as any).chain[0] as any).execution = undefined;
+    const result = validateWorkflow(wf);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes("execution must be one of"))).toBe(true);
+  });
+
+  it("UT-27: validateWorkflow catches script step without code", () => {
+    const wf = baseWorkflow() as unknown as Record<string, unknown>;
+    (wf as any).chain = [{
+      id: "s1", title: "Script", prompt_template: "", tools: [],
+      output_key: "out", execution: "script", script: { language: "python", code: "" }
+    }];
+    const result = validateWorkflow(wf);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes("script.code"))).toBe(true);
+  });
+
+  it("UT-28: validateWorkflow catches invalid safety config", () => {
+    const wf = baseWorkflow() as unknown as Record<string, unknown>;
+    (wf as any).safety = { permission_mode_on_replay: "invalid", network_policy: "invalid", side_effects: [] };
+    const result = validateWorkflow(wf);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes("permission_mode_on_replay"))).toBe(true);
+    expect(result.errors.some(e => e.includes("network_policy"))).toBe(true);
   });
 
   it("UT-16: writeReplayLog redacts secrets", async () => {

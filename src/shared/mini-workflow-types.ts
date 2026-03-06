@@ -110,3 +110,52 @@ export type MiniWorkflowTestResult = {
   passed: boolean;
   message: string;
 };
+
+// ─── Permission detection (shared between agent and UI) ───
+
+export type DetectedPermissions = {
+  network: boolean;
+  local_fs: boolean;
+  git: boolean;
+  external_accounts: boolean;
+  reasons: { permission: string; reason: string }[];
+};
+
+const NETWORK_TOOLS = new Set(["search_web", "fetch_html", "fetch_json", "download_file", "browser_navigate", "browser_click", "browser_type", "browser_screenshot"]);
+const FS_TOOLS = new Set(["write_file", "edit_file", "read_file", "search_files", "search_text", "read_document"]);
+const GIT_TOOLS = new Set(["git_status", "git_log", "git_diff", "git_commit", "git_push", "git_pull", "git_checkout", "git_branch", "git_stash", "git_merge", "git_reset"]);
+const NETWORK_CODE_PATTERNS = /\b(requests\.(get|post|put|delete|patch|head)|urllib\.request|http\.client|aiohttp|httpx|fetch\(|axios|curl_cffi|socket\.connect|websocket)\b/;
+
+export function detectPermissions(chain: Array<{ tools?: string[]; execution?: string; script?: { code?: string } }>): DetectedPermissions {
+  const result: DetectedPermissions = { network: false, local_fs: false, git: false, external_accounts: false, reasons: [] };
+
+  for (const step of chain) {
+    for (const tool of step.tools || []) {
+      if (NETWORK_TOOLS.has(tool) && !result.network) {
+        result.network = true;
+        result.reasons.push({ permission: "network", reason: `tool: ${tool}` });
+      }
+      if (FS_TOOLS.has(tool) && !result.local_fs) {
+        result.local_fs = true;
+        result.reasons.push({ permission: "local_fs", reason: `tool: ${tool}` });
+      }
+      if (GIT_TOOLS.has(tool) && !result.git) {
+        result.git = true;
+        result.reasons.push({ permission: "git", reason: `tool: ${tool}` });
+      }
+      if (tool === "run_command" && !result.local_fs) {
+        result.local_fs = true;
+        result.reasons.push({ permission: "local_fs", reason: "tool: run_command" });
+      }
+    }
+
+    if (step.execution === "script" && step.script?.code) {
+      if (NETWORK_CODE_PATTERNS.test(step.script.code) && !result.network) {
+        result.network = true;
+        result.reasons.push({ permission: "network", reason: "script uses network library" });
+      }
+    }
+  }
+
+  return result;
+}

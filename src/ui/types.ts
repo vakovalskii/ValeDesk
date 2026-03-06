@@ -1,6 +1,8 @@
 import type { SDKMessage, PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import type { MiniWorkflow, MiniWorkflowSummary, MiniWorkflowTestResult } from "../shared/mini-workflow-types";
 export type { MiniWorkflow, MiniWorkflowSummary, MiniWorkflowTestResult } from "../shared/mini-workflow-types";
+export { detectPermissions } from "../shared/mini-workflow-types";
+export type { DetectedPermissions } from "../shared/mini-workflow-types";
 
 export type UserPromptMessage = {
   type: "user_prompt";
@@ -248,7 +250,7 @@ export type ServerEvent =
   // Mini workflow events
   | { type: "miniworkflow.list"; payload: { workflows: MiniWorkflowSummary[] } }
   | { type: "miniworkflow.loaded"; payload: { workflow: MiniWorkflow } }
-  | { type: "miniworkflow.distill.result"; payload: { sessionId: string; result: { status: "success"; workflow: MiniWorkflow } | { status: "needs_clarification"; questions: string[] } | { status: "not_suitable"; reason: string; suggest_prompt_preset: boolean } } }
+  | { type: "miniworkflow.distill.result"; payload: { sessionId: string; usage?: { input_tokens: number; output_tokens: number }; result: { status: "success"; workflow: MiniWorkflow } | { status: "needs_clarification"; questions: string[] } | { status: "not_suitable"; reason: string; suggest_prompt_preset: boolean } } }
   | { type: "miniworkflow.replay.started"; payload: { workflowId: string; sessionId: string } }
   | { type: "miniworkflow.error"; payload: { message: string } }
   // Scheduler events
@@ -295,7 +297,7 @@ export type ClientEvent =
   // Mini workflow events
   | { type: "miniworkflow.list"; payload?: { cwd?: string } }
   | { type: "miniworkflow.get"; payload: { workflowId: string; cwd?: string } }
-  | { type: "miniworkflow.distill"; payload: { sessionId: string; clarification?: string } }
+  | { type: "miniworkflow.distill"; payload: { sessionId: string; validationErrors?: string[] } }
   | { type: "miniworkflow.archive"; payload: { workflowId: string; cwd?: string } }
   | { type: "miniworkflow.save"; payload: { workflow: MiniWorkflow; scope?: "global" | "project"; cwd?: string } }
   | { type: "miniworkflow.delete"; payload: { workflowId: string; scope?: "global" | "project" | "both"; cwd?: string } }

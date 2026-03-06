@@ -3,6 +3,7 @@ import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { useIPC } from "./hooks/useIPC";
 import { useAppStore } from "./store/useAppStore";
 import type { ServerEvent, ApiSettings, MiniWorkflow, MiniWorkflowSummary } from "./types";
+import { detectPermissions } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { StartSessionModal } from "./components/StartSessionModal";
 import { SessionEditModal } from "./components/SessionEditModal";
@@ -37,7 +38,7 @@ function App() {
   const [distillWorkflow, setDistillWorkflow] = useState<MiniWorkflow | null>(null);
   const [distillError, setDistillError] = useState<string | null>(null);
   const [distillQuestions, setDistillQuestions] = useState<string[]>([]);
-  const [distillClarification, setDistillClarification] = useState("");
+  const [distillUsage, setDistillUsage] = useState<{ input_tokens: number; output_tokens: number } | null>(null);
   const [runWorkflow, setRunWorkflow] = useState<MiniWorkflow | null>(null);
   const [runInputs, setRunInputs] = useState<Record<string, string>>({});
   const [runModel, setRunModel] = useState<string>("");
@@ -149,6 +150,7 @@ function App() {
     }
     if (event.type === "miniworkflow.distill.result") {
       setDistillLoading(false);
+      setDistillUsage(event.payload.usage || null);
       const result = event.payload.result as any;
       if (result.status === "success") {
         // Sanitize workflow to ensure all fields are correct types for rendering
@@ -519,7 +521,7 @@ function App() {
     setDistillWorkflow(null);
     setDistillError(null);
     setDistillQuestions([]);
-    setDistillClarification("");
+    setDistillUsage(null);
     sendEvent({ type: "miniworkflow.distill", payload: { sessionId: activeSessionId } });
   }, [activeSessionId, sendEvent]);
 
@@ -940,12 +942,18 @@ function App() {
                 onClick={() => {
                   setDistillSessionId(null);
                   setDistillWorkflow(null);
-                  setDistillClarification("");
                 }}
               >
                 Close
               </button>
             </div>
+            {distillUsage && (
+              <div className="mb-2 flex items-center gap-3 text-xs text-ink-500">
+                <span>Tokens: <span className="font-medium text-ink-700">{distillUsage.input_tokens.toLocaleString()}</span> in</span>
+                <span>/ <span className="font-medium text-ink-700">{distillUsage.output_tokens.toLocaleString()}</span> out</span>
+                <span>= <span className="font-medium text-ink-700">{(distillUsage.input_tokens + distillUsage.output_tokens).toLocaleString()}</span> total</span>
+              </div>
+            )}
             {distillLoading && (
               <div className="rounded-lg border border-ink-900/10 bg-surface p-4 text-sm text-ink-700">
                 Анализирую сессию...
@@ -956,29 +964,27 @@ function App() {
                 {distillError}
                 {distillQuestions.length > 0 && (
                   <div className="mt-2 space-y-2">
-                    <ul className="list-disc pl-4">
+                    <div className="text-xs font-semibold text-error/80 mb-1">Ошибки валидации:</div>
+                    <ul className="list-disc pl-4 text-xs">
                       {distillQuestions.map((q) => <li key={q}>{q}</li>)}
                     </ul>
-                    <textarea
-                      className="w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm text-ink-800"
-                      rows={3}
-                      value={distillClarification}
-                      onChange={(e) => setDistillClarification(e.target.value)}
-                      placeholder="Введите уточнение для distill..."
-                    />
                     <div className="flex justify-end">
                       <button
-                        className={`rounded-lg px-3 py-1.5 text-xs text-white ${distillClarification.trim() ? "bg-accent hover:bg-accent-hover" : "bg-ink-400 cursor-not-allowed"}`}
+                        className="rounded-lg px-3 py-1.5 text-xs text-white bg-accent hover:bg-accent-hover"
                         onClick={() => {
-                          if (!activeSessionId || !distillClarification.trim()) return;
+                          if (!activeSessionId) return;
                           setDistillLoading(true);
+                          setDistillError(null);
                           sendEvent({
                             type: "miniworkflow.distill",
-                            payload: { sessionId: activeSessionId, clarification: distillClarification.trim() }
+                            payload: {
+                              sessionId: activeSessionId,
+                              validationErrors: distillQuestions
+                            }
                           });
                         }}
                       >
-                        Продолжить
+                        Повторить дистилляцию
                       </button>
                     </div>
                   </div>
@@ -1106,6 +1112,36 @@ function App() {
                     <div className="text-xs text-ink-600">{distillWorkflow.validation.acceptance_criteria}</div>
                   </div>
                 )}
+                {/* Permissions detected from chain steps */}
+                {(() => {
+                  const perms = detectPermissions(distillWorkflow.chain || []);
+                  const badges: { label: string; icon: string; active: boolean; tooltip: string }[] = [
+                    { label: "Network", icon: "🌐", active: perms.network, tooltip: perms.reasons.filter(r => r.permission === "network").map(r => r.reason).join(", ") || "no network access" },
+                    { label: "File System", icon: "📁", active: perms.local_fs, tooltip: perms.reasons.filter(r => r.permission === "local_fs").map(r => r.reason).join(", ") || "no fs access" },
+                    { label: "Git", icon: "🔀", active: perms.git, tooltip: perms.reasons.filter(r => r.permission === "git").map(r => r.reason).join(", ") || "no git access" },
+                  ];
+                  return (
+                    <div className="rounded-lg border border-ink-900/10 p-3">
+                      <div className="text-xs font-semibold text-ink-700 mb-2">Permissions</div>
+                      <div className="flex flex-wrap gap-2">
+                        {badges.map(b => (
+                          <span
+                            key={b.label}
+                            title={b.tooltip}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
+                              b.active
+                                ? "border-amber-300 bg-amber-50 text-amber-800"
+                                : "border-ink-900/10 bg-surface-tertiary text-ink-400"
+                            }`}
+                          >
+                            <span>{b.icon}</span>
+                            {b.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="flex justify-end gap-2">
                   <button
                     className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover"
@@ -1120,7 +1156,6 @@ function App() {
                       });
                       setDistillSessionId(null);
                       setDistillWorkflow(null);
-                      setDistillClarification("");
                     }}
                   >
                     Publish
@@ -1138,7 +1173,6 @@ function App() {
                       });
                       setDistillSessionId(null);
                       setDistillWorkflow(null);
-                      setDistillClarification("");
                     }}
                   >
                     Save as draft

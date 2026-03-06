@@ -181,7 +181,7 @@ export type ServerEvent =
   // Mini workflow events
   | { type: "miniworkflow.list"; payload: { workflows: MiniWorkflowSummary[] } }
   | { type: "miniworkflow.loaded"; payload: { workflow: MiniWorkflow } }
-  | { type: "miniworkflow.distill.result"; payload: { sessionId: string; result: { status: "success"; workflow: MiniWorkflow } | { status: "needs_clarification"; questions: string[] } | { status: "not_suitable"; reason: string; suggest_prompt_preset: boolean } } }
+  | { type: "miniworkflow.distill.result"; payload: { sessionId: string; usage?: { input_tokens: number; output_tokens: number }; result: { status: "success"; workflow: MiniWorkflow } | { status: "needs_clarification"; questions: string[] } | { status: "not_suitable"; reason: string; suggest_prompt_preset: boolean } } }
   | { type: "miniworkflow.tests.result"; payload: { workflowId: string; passed: boolean; results: MiniWorkflowTestResult[] } }
   | { type: "miniworkflow.fix.result"; payload: { workflow: MiniWorkflow; attempt: number } }
   | { type: "miniworkflow.replay.started"; payload: { workflowId: string; sessionId: string } }
@@ -293,9 +293,7 @@ export type ClientEvent =
   // Mini workflow events
   | { type: "miniworkflow.list"; payload?: { cwd?: string } }
   | { type: "miniworkflow.get"; payload: { workflowId: string; cwd?: string } }
-  | { type: "miniworkflow.distill"; payload: { sessionId: string; clarification?: string } }
-  | { type: "miniworkflow.test"; payload: { workflow: MiniWorkflow } }
-  | { type: "miniworkflow.fix"; payload: { workflow: MiniWorkflow; failedResults: MiniWorkflowTestResult[]; attempt: number } }
+  | { type: "miniworkflow.distill"; payload: { sessionId: string; validationErrors?: string[] } }
   | { type: "miniworkflow.archive"; payload: { workflowId: string; cwd?: string } }
   | { type: "miniworkflow.save"; payload: { workflow: MiniWorkflow; scope?: "global" | "project"; cwd?: string } }
   | { type: "miniworkflow.delete"; payload: { workflowId: string; scope?: "global" | "project" | "both"; cwd?: string } }
