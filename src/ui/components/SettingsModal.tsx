@@ -1038,36 +1038,40 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
       enabled: true,
     };
 
-    // Send test request
-    getPlatform().sendClientEvent({
-      type: "llm.models.test",
-      payload: { provider: tempProvider }
-    });
+    let resolved = false;
+    const timeoutId = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      setTesting(false);
+      setError('Connection timeout - please check your settings');
+      removeListener();
+    }, 30000);
 
-    // Listen for response
     const removeListener = getPlatform().onServerEvent((event) => {
       if (event.type === "llm.models.fetched" && event.payload.providerId === tempProvider.id) {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        removeListener();
         setTesting(false);
         setTestSuccess(true);
         setAvailableModels(event.payload.models);
         setError('');
-        removeListener();
       } else if (event.type === "llm.models.error" && event.payload.providerId === tempProvider.id) {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        removeListener();
         setTesting(false);
         setTestSuccess(false);
         setError(`Connection failed: ${event.payload.message}`);
-        removeListener();
       }
     });
 
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      if (testing) {
-        setTesting(false);
-        setError('Connection timeout - please check your settings');
-        removeListener();
-      }
-    }, 30000);
+    getPlatform().sendClientEvent({
+      type: "llm.models.test",
+      payload: { provider: tempProvider }
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {

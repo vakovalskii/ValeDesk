@@ -1,0 +1,19 @@
+{
+  "mode": "allowlist_only",
+  "allow": [
+    "vercel-labs/agent-skills",
+    "vercel-labs/skills",
+    "anthropics/*",
+    "openai/*",
+    "microsoft/*",
+    "github/*",
+    "docker/*",
+    "hashicorp/*",
+    "kubernetes/*",
+    "google/*"
+  ],
+  "deny": [],
+  "min_stars": 0,
+  "notes": "allow/deny entries are glob-like patterns (owner/repo). 'allowlist_only' means only allow[] patterns are eligible for auto-install."
+}
+

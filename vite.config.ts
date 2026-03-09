@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => {
 		base: './',
 		build: {
 			outDir: 'dist-react',
+			rollupOptions: {
+				external: ['tauri-plugin-locale-api', '@razein97/tauri-plugin-i18n'],
+			},
 		},
 		server: {
 			port, // MUST BE LOWERCASE

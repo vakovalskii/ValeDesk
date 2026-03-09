@@ -1,0 +1,41 @@
+{
+  "domains": [
+    {
+      "id": "web-development",
+      "label": "Web Development",
+      "example_queries": ["react", "nextjs", "typescript", "css", "tailwind"]
+    },
+    {
+      "id": "testing",
+      "label": "Testing",
+      "example_queries": ["testing", "jest", "playwright", "e2e"]
+    },
+    {
+      "id": "devops",
+      "label": "DevOps",
+      "example_queries": ["deploy", "docker", "kubernetes", "ci-cd"]
+    },
+    {
+      "id": "documentation",
+      "label": "Documentation",
+      "example_queries": ["docs", "readme", "changelog", "api-docs"]
+    },
+    {
+      "id": "code-quality",
+      "label": "Code Quality",
+      "example_queries": ["review", "lint", "refactor", "best-practices"]
+    },
+    {
+      "id": "design",
+      "label": "Design",
+      "example_queries": ["ui", "ux", "design-system", "accessibility"]
+    },
+    {
+      "id": "productivity",
+      "label": "Productivity",
+      "example_queries": ["workflow", "automation", "git"]
+    }
+  ],
+  "source": "Derived from the 'Common Skill Categories' section in find-skills/SKILL.md. Keep this in sync."
+}
+

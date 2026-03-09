@@ -160,18 +160,66 @@ const MermaidDiagram = ({ code }: { code: string }) => {
   );
 };
 
+// Convert bare file paths/filenames in text to markdown links so they become clickable
+function linkifyFilePaths(text: string): string {
+  // Process line-by-line to avoid matching inside existing markdown syntax
+  return text.split('\n').map(line => {
+    // Skip lines that are already markdown links or images
+    if (/\[.*?\]\(.*?\)/.test(line) || /^!\[/.test(line)) return line;
+    // Skip code blocks
+    if (line.trim().startsWith('```') || line.trim().startsWith('`')) return line;
+
+    // 1. Match Windows absolute paths: D:\path\to\file.ext
+    line = line.replace(
+      /\b([A-Za-z]:[/\\](?:[^\s\n*`\[\]()]+[/\\])*[^\s\n*`\[\]()]+\.(?:png|jpg|jpeg|csv|json|txt|pdf|xlsx|html|py|svg|webp))\b/gi,
+      (match) => `[${match.split(/[/\\]/).pop()}](${match})`
+    );
+
+    // 2. Match bare filenames with common extensions (not inside backticks or already linked)
+    // Use "localfile:" prefix instead of "file://" because rehype sanitizes file:// protocol
+    line = line.replace(
+      /(?<!\[)(?<!`)(?<!\()\b([\w][\w.+-]*\.(?:png|jpg|jpeg|csv|json|txt|pdf|xlsx|html|py|svg|webp))\b(?!`|\)|\])/gi,
+      (match) => `[${match}](localfile:${match})`
+    );
+
+    return line;
+  }).join('\n');
+}
+
 const MDContentInternal = ({ text }: { text: string }) => {
+  const isLocalPath = (href: string) => {
+    // localfile: prefix (from linkifyFilePaths for relative filenames)
+    if (href.startsWith('localfile:')) return true;
+    // file:// protocol (legacy)
+    if (href.startsWith('file://')) return true;
+    // Windows absolute paths (C:\..., D:\...) or UNC paths (\\...)
+    if (/^[A-Za-z]:[/\\]/.test(href) || href.startsWith('\\\\')) return true;
+    // Unix absolute paths
+    if (href.startsWith('/') && !href.startsWith('//')) return true;
+    // Relative paths with file extensions
+    if (/^\.{0,2}[/\\]/.test(href)) return true;
+    return false;
+  };
+
   const handleLinkClick = (href: string) => {
-    if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+    if (!href) return;
+    if (href.startsWith('http://') || href.startsWith('https://')) {
       getPlatform().sendClientEvent({ type: "open.external", payload: { url: href } });
+    } else if (isLocalPath(href)) {
+      // Strip localfile:/file:// prefix for relative filenames — backend will resolve relative to session cwd
+      const path = href.startsWith('localfile:') ? href.slice(10) : href.startsWith('file://') ? href.slice(7) : href;
+      getPlatform().sendClientEvent({ type: "open.path", payload: { path } });
     }
   };
+
+  const processedText = linkifyFilePaths(text);
 
   return (
     <div className="max-w-full">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        urlTransform={(url) => url}
         components={{
         h1: (props) => <h1 className="mt-4 text-xl font-semibold text-ink-900" {...props} />,
         h2: (props) => <h2 className="mt-4 text-lg font-semibold text-ink-900" {...props} />,
@@ -182,18 +230,40 @@ const MDContentInternal = ({ text }: { text: string }) => {
         li: (props) => <li className="min-w-0 text-ink-700" {...props} />,
         strong: (props) => <strong className="text-ink-900 font-semibold" {...props} />,
         em: (props) => <em className="text-ink-800" {...props} />,
-        a: (props) => (
+        a: ({ ref: _ref, ...props }) => (
           <a
+            {...props}
             className="text-accent hover:text-accent-hover underline cursor-pointer transition-colors"
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               if (props.href) {
                 handleLinkClick(props.href);
               }
             }}
-            {...props}
           />
         ),
+        img: (props) => {
+          const src = props.src || "";
+          if (isLocalPath(src)) {
+            // Local file: show clickable card instead of broken image
+            const fileName = src.split(/[/\\]/).pop() || src;
+            return (
+              <button
+                type="button"
+                onClick={() => handleLinkClick(src)}
+                className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1.5 rounded-lg border border-accent/20 bg-accent/5 text-sm text-accent hover:bg-accent/10 transition-colors cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {fileName}
+              </button>
+            );
+          }
+          // Remote or data URLs: render normally
+          return <img {...props} className="max-w-full rounded-lg mt-2" />;
+        },
         pre: (props) => (
           <pre
             className="mt-3 max-w-full overflow-x-auto whitespace-pre-wrap rounded-xl bg-surface-tertiary p-3 text-sm text-ink-700"
@@ -211,10 +281,26 @@ const MDContentInternal = ({ text }: { text: string }) => {
             return <MermaidDiagram code={String(children).trim()} />;
           }
 
+          // Make inline code with file extensions clickable
+          const textContent = String(children).trim();
+          const isFileLink = isInline && /\.\w{1,10}$/.test(textContent) &&
+            /\.(png|jpg|jpeg|csv|json|txt|pdf|xlsx|html|py|svg|webp)$/i.test(textContent);
+
           return isInline ? (
-            <code className="rounded bg-surface-tertiary px-1.5 py-0.5 text-accent font-mono text-base" {...rest}>
-              {children}
-            </code>
+            isFileLink ? (
+              <code
+                className="rounded bg-surface-tertiary px-1.5 py-0.5 text-accent font-mono text-base cursor-pointer hover:bg-accent/10 underline decoration-accent/30 transition-colors"
+                onClick={() => handleLinkClick(`file://${textContent}`)}
+                role="link"
+                {...rest}
+              >
+                {children}
+              </code>
+            ) : (
+              <code className="rounded bg-surface-tertiary px-1.5 py-0.5 text-accent font-mono text-base" {...rest}>
+                {children}
+              </code>
+            )
           ) : (
             <code className={`${className} font-mono`} {...rest}>
               {children}
@@ -240,7 +326,7 @@ const MDContentInternal = ({ text }: { text: string }) => {
         ),
       }}
       >
-        {String(text ?? "")}
+        {processedText}
       </ReactMarkdown>
     </div>
   );

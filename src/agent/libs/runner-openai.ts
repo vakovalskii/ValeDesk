@@ -25,6 +25,7 @@ export type RunnerOptions = {
   resumeSessionId?: string;
   onEvent: (event: ServerEvent) => void;
   onSessionUpdate?: (updates: Partial<Session>) => void;
+  secretBag?: Record<string, string>;
 };
 
 export type RunnerHandle = {
@@ -60,8 +61,6 @@ const logTurn = (sessionId: string, iteration: number, type: 'request' | 'respon
     
     writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf8');
     
-    if (type === 'request' && iteration === 1) {
-    }
   } catch (error) {
     console.error(`[OpenAI Runner] Failed to write ${type} log:`, error);
   }
@@ -93,6 +92,8 @@ const redactMessagesForLog = (messages: ChatMessage[]) => {
 
 export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
   const { prompt, session, onEvent, onSessionUpdate } = options;
+  const sessionSecretBag = options.secretBag ?? {};
+  const secretValues = Object.values(sessionSecretBag).filter((v): v is string => typeof v === "string" && v.length > 0);
   
   // Helper to send debug logs to UI
   const sendDebugLog = (message: string, data?: any) => {
@@ -148,6 +149,34 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
       type: "permission.request",
       payload: { sessionId: session.id, toolUseId, toolName, input, explanation }
     });
+  };
+
+  const resolveSecretHandles = <T>(value: T): T => {
+        const replaceString = (inputValue: string): string => {
+      return inputValue.replace(/\{\{secret::([a-zA-Z0-9_-]+)\}\}/g, (_, secretId) => {
+        const resolved = sessionSecretBag[String(secretId)];
+        return resolved ?? `{{secret::${secretId}}}`;
+      });
+    };
+    if (typeof value === "string") return replaceString(value) as T;
+    if (Array.isArray(value)) return value.map((v) => resolveSecretHandles(v)) as T;
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = resolveSecretHandles(v);
+      }
+      return out as T;
+    }
+    return value;
+  };
+
+  const redactSecretValues = (value: string): string => {
+    let next = value;
+    for (const secretValue of secretValues) {
+      if (!secretValue) continue;
+      next = next.split(secretValue).join("[REDACTED]");
+    }
+    return next;
   };
 
   const resolvePermission = (toolUseId: string, approved: boolean) => {
@@ -1039,6 +1068,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
 
           const toolName = toolCall.function.name;
           const toolArgs = safeParseToolArgs(toolCall.function.arguments, toolName);
+          const resolvedToolArgs = resolveSecretHandles(toolArgs);
 
           // Check for parse error
           if (toolArgs._parse_error) {
@@ -1113,7 +1143,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           }
           sendDebugLog(`Executing tool: ${toolName}`, { toolName, toolArgsKeys: Object.keys(toolArgs) });
           
-          const result = await toolExecutor.executeTool(toolName, toolArgs, {
+          const result = await toolExecutor.executeTool(toolName, resolvedToolArgs, {
             sessionId: session.id,
             onTodosChanged: (todos) => {
               // Save to DB
@@ -1377,13 +1407,12 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           }
 
           // Add tool result to messages
+          const safeOutput = redactSecretValues(result.success ? (result.output || "Success") : `Error: ${result.error}`);
           toolResults.push({
             role: 'tool',
             tool_call_id: toolCall.id,
             name: toolName,
-            content: result.success 
-              ? (result.output || 'Success') 
-              : `Error: ${result.error}`
+            content: safeOutput
           });
 
           // Send tool result message for UI
@@ -1392,7 +1421,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
               content: [{
                 type: 'tool_result',
                 tool_use_id: toolCall.id,
-                content: result.success ? result.output : `Error: ${result.error}`,
+                content: safeOutput,
                 is_error: !result.success
               }]
             }
@@ -1401,7 +1430,7 @@ export async function runClaude(options: RunnerOptions): Promise<RunnerHandle> {
           // Save for DB storage (without UI update)
           saveToDb('tool_result', {
             tool_use_id: toolCall.id,
-            output: result.success ? result.output : `Error: ${result.error}`,
+            output: safeOutput,
             is_error: !result.success,
             uuid: `tool_result_${toolCall.id}`
           });

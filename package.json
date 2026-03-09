@@ -29,24 +29,32 @@
 		"react"
 	],
 	"type": "module",
-	"main": "dist-electron/main.js",
+	"main": "dist-electron/agent/main.js",
 	"scripts": {
 		"dev:clean": "node scripts/dev-clean.cjs",
 		"dev": "node scripts/dev.cjs",
 		"dev:tauri": "node scripts/dev-tauri.cjs",
 		"dev:react": "vite --host 127.0.0.1 --port 5173 --strictPort",
+		"dev:electron:delayed": "node scripts/dev-electron-delayed.cjs",
 		"prebuild": "npm run copy:locales",
 		"build": "tsc -b && vite build",
+		"build:app": "npm run build && npm run transpile:electron && npx electron-rebuild",
+		"start": "electron . --no-sandbox",
+		"start:xvfb": "xvfb-run -a electron . --no-sandbox",
 		"lint": "eslint .",
 		"preview": "vite preview",
-		"transpile:electron": "tsc --project src/agent/tsconfig.json",
+		"copy:electron-prompts": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist-electron/agent/libs/prompts',{recursive:true});fs.readdirSync('src/agent/libs/prompts').filter(f=>f.endsWith('.txt')).forEach(f=>fs.copyFileSync(path.join('src/agent/libs/prompts',f),path.join('dist-electron/agent/libs/prompts',f)))\"",
+		"transpile:electron": "tsc --project src/agent/tsconfig.json && npm run copy:electron-prompts",
 		"transpile:sidecar": "tsc --project src/sidecar/tsconfig.json && npm run copy:sidecar-prompts",
 		"build:sidecar": "npm run copy:sidecar-prompts && node scripts/build-sidecar.cjs",
 		"copy:prompts": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist-agent/libs/prompts',{recursive:true});fs.readdirSync('src/agent/libs/prompts').filter(f=>f.endsWith('.txt')).forEach(f=>fs.copyFileSync(path.join('src/agent/libs/prompts',f),path.join('dist-agent/libs/prompts',f)))\"",
 		"copy:locales":"node -e \"const fs=require('fs');const path=require('path');const src='locales';const dest='public/locales';fs.mkdirSync(dest,{recursive:true});fs.readdirSync(src).filter(f=>f.endsWith('.json')).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(dest,f)))\"",
     "copy:sidecar-prompts": "node -e \"const fs=require('fs');const path=require('path');fs.mkdirSync('dist-sidecar/agent/libs/prompts',{recursive:true});fs.readdirSync('src/agent/libs/prompts').filter(f=>f.endsWith('.txt')).forEach(f=>fs.copyFileSync(path.join('src/agent/libs/prompts',f),path.join('dist-sidecar/agent/libs/prompts',f)))\"",
 		"type-check": "tsc --noEmit",
-		"test": "vitest run"
+		"test": "vitest run",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui",
+		"dist:win": "npm run build:app && electron-builder --win portable"
 	},
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.2.6",
@@ -86,6 +94,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.2",
+		"@playwright/test": "^1.58.2",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
 		"@types/better-sqlite3": "^7.6.13",
@@ -99,6 +108,7 @@
 		"@yao-pkg/pkg": "^6.12.0",
 		"concurrently": "^9.2.0",
 		"cross-env": "^10.1.0",
+		"electron": "^40.6.0",
 		"eslint": "^9.39.2",
 		"eslint-plugin-react-hooks": "^7.0.1",
 		"eslint-plugin-react-refresh": "^0.4.26",
@@ -108,6 +118,7 @@
 		"typescript": "~5.9.3",
 		"typescript-eslint": "^8.52.0",
 		"vite": "^7.3.1",
-		"vitest": "^4.0.18"
+		"vitest": "^4.0.18",
+		"electron-builder": "^26.4.0"
 	}
 }

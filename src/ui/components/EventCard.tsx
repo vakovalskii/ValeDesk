@@ -558,12 +558,59 @@ const SystemInfoCard = ({ message, showIndicator = false }: { message: SDKMessag
   );
 };
 
-const UserMessageCard = ({ 
-  message, 
+const MiniAppPromptCard = ({ prompt, name, onCopy, copied, onEdit }: {
+  prompt: string;
+  name: string;
+  onCopy: () => void;
+  copied: boolean;
+  onEdit?: () => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  // Parse sections from compact prompt
+  const lines = prompt.split("\n");
+  const goalLine = lines.find(l => l.startsWith("Цель приложения: ") || l.startsWith("Цель: "));
+  const goal = goalLine?.replace(/^Цель(?: приложения)?: /, "") || "";
+
+  return (
+    <div className="mt-1 rounded-lg border border-accent/20 bg-accent/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/10 transition-colors"
+      >
+        <span className="text-base">{">"}</span>
+        <span className="text-sm font-medium text-ink-800 truncate flex-1">{name}</span>
+        <span className="text-[11px] text-muted flex-shrink-0">{goal.slice(0, 60)}{goal.length > 60 ? "..." : ""}</span>
+        <svg className={`w-3.5 h-3.5 text-ink-400 transition-transform flex-shrink-0 ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 border-t border-accent/10">
+          <div className="mt-2 text-xs text-ink-600 max-h-[300px] overflow-y-auto">
+            <MDContent text={prompt} />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {onEdit && (
+              <button onClick={onEdit} className="text-xs px-2 py-1 rounded text-ink-400 hover:text-accent hover:bg-surface-tertiary transition-colors">Edit</button>
+            )}
+            <button onClick={onCopy} className="text-xs px-2 py-1 rounded text-ink-400 hover:text-accent hover:bg-surface-tertiary transition-colors">
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const UserMessageCard = ({
+  message,
   showIndicator = false,
   onEdit
-}: { 
-  message: { type: "user_prompt"; prompt: string }; 
+}: {
+  message: { type: "user_prompt"; prompt: string };
   showIndicator?: boolean;
   onEdit?: (newPrompt: string) => void;
 }) => {
@@ -623,35 +670,46 @@ const UserMessageCard = ({
             </button>
           </div>
         </div>
-      ) : (
-        <>
-          <MDContent text={message.prompt} />
-          <div className="mt-2 flex items-center gap-2 self-start">
-            {onEdit && (
+      ) : (() => {
+        const isMiniAppLegacy = message.prompt.startsWith('Выполни мини-приложение "');
+        const stepMatch = message.prompt.match(/^Мини-приложение "([^"]+)" — Шаг (\d+)\/(\d+): (.+)/);
+        const isMiniApp = isMiniAppLegacy || !!stepMatch;
+        const miniAppName = isMiniAppLegacy
+          ? message.prompt.match(/^Выполни мини-приложение "([^"]+)"/)?.[1] || "Mini-app"
+          : stepMatch ? `${stepMatch[1]} — Шаг ${stepMatch[2]}/${stepMatch[3]}: ${stepMatch[4]}` : "Mini-app";
+
+        return isMiniApp ? (
+          <MiniAppPromptCard prompt={message.prompt} name={miniAppName} onCopy={handleCopy} copied={copied} onEdit={onEdit ? () => setIsEditing(true) : undefined} />
+        ) : (
+          <>
+            <MDContent text={message.prompt} />
+            <div className="mt-2 flex items-center gap-2 self-start">
+              {onEdit && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200"
+                >
+                  {t("eventCard.edit")}
+                </button>
+              )}
               <button
-                onClick={() => setIsEditing(true)}
-                className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200"
+                onClick={handleCopy}
+                className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1.5"
+                title={t("eventCard.copyUserMessage")}
               >
-                {t("eventCard.edit")}
+                <svg className={`w-4 h-4 ${copied ? 'text-success' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {copied ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  )}
+                </svg>
+                {copied ? t("eventCard.copied") : t("eventCard.copy")}
               </button>
-            )}
-            <button
-              onClick={handleCopy}
-              className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1.5"
-              title={t("eventCard.copyUserMessage")}
-            >
-              <svg className={`w-4 h-4 ${copied ? 'text-success' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {copied ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                )}
-              </svg>
-              {copied ? t("eventCard.copied") : t("eventCard.copy")}
-            </button>
-          </div>
-        </>
-      )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 };
