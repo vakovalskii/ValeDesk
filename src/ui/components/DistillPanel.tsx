@@ -377,7 +377,7 @@ export default function DistillPanel({
         {/* Center panel: main form */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-ink-900/10">
-            <h3 className="text-sm font-semibold text-ink-800">Distill Mini-workflow</h3>
+            <h3 className="text-sm font-semibold text-ink-800">Create Vale App</h3>
             <div className="flex items-center gap-3">
               {distillUsage && (
                 <div className="flex items-center gap-2 text-xs text-ink-500">

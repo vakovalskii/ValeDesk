@@ -31,6 +31,8 @@ function AppHeader({
   activeSession,
   showFileBrowser,
   setShowFileBrowser,
+  showWorkflowPanel,
+  setShowWorkflowPanel,
 }: {
   activeSessionId: string | null;
   setShowSessionEditModal: (v: boolean) => void;
@@ -140,9 +142,9 @@ function AppHeader({
                 : "bg-ink-900/5 border-ink-900/10 text-ink-600"
             }`}
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title="Mini-workflows"
+            title="Vale Apps"
           >
-            Workflows
+            Vale Apps
           </button>
         )}
         <button
@@ -293,7 +295,16 @@ function App() {
   const isUserScrolledUpRef = useRef(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
-  const [showWorkflowPanel, setShowWorkflowPanel] = useState(false);
+  const [showWorkflowPanel, setShowWorkflowPanelRaw] = useState(false);
+  const setShowWorkflowPanel = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setShowWorkflowPanelRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next !== prev) {
+        try { getPlatform().send?.("toggle-side-panel", next); } catch { /* non-electron */ }
+      }
+      return next;
+    });
+  }, []);
   const [miniWorkflows, setMiniWorkflows] = useState<MiniWorkflowSummary[]>([]);
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<"run" | "edit">("run");
@@ -1022,12 +1033,12 @@ function App() {
       </main>
 
       <aside
-        className={`fixed inset-y-0 right-0 z-30 w-[320px] border-l border-ink-900/10 bg-surface px-3 pt-12 pb-3 overflow-y-auto transition-transform duration-200 ease-out ${
+        className={`fixed inset-y-0 right-0 z-[70] w-[320px] border-l border-ink-900/10 bg-[#FAF9F6] px-3 pt-3 pb-3 overflow-y-auto transition-transform duration-200 ease-out ${
           showWorkflowPanel ? "translate-x-0" : "translate-x-full pointer-events-none"
         }`}
       >
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-ink-700">Mini-workflows</h3>
+            <h3 className="text-sm font-semibold text-ink-700">Vale Apps</h3>
             <button
               type="button"
               className="rounded-lg border border-ink-900/10 px-2 py-1 text-xs text-ink-600 hover:bg-ink-100"
@@ -1037,7 +1048,7 @@ function App() {
             </button>
           </div>
           <input
-            className="mb-3 w-full rounded-lg border border-ink-900/10 px-2.5 py-1.5 text-xs"
+            className="mb-3 w-full rounded-xl border border-ink-900/10 bg-white pl-2.5 pr-2.5 py-1.5 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
             placeholder="Filter by name/tags..."
             value={workflowFilter}
             onChange={(e) => setWorkflowFilter(e.target.value)}
@@ -1398,7 +1409,7 @@ function App() {
         />
       )}
 
-      <AppFooter />
+      <AppFooter workflowPanelOpen={showWorkflowPanel} />
     </div>
     </I18nProvider>
   );
