@@ -11,7 +11,7 @@ import { runClaude as runOpenAI } from "../agent/libs/runner-openai.js";
 import { loadApiSettings, saveApiSettings } from "../agent/libs/settings-store.js";
 import { loadLLMProviderSettings, saveLLMProviderSettings } from "../agent/libs/llm-providers-store.js";
 import { fetchModelsFromProvider, checkModelsAvailability } from "../agent/libs/llm-providers.js";
-import { loadSkillsSettings, toggleSkill, setMarketplaceUrl } from "../agent/libs/skills-store.js";
+import { loadSkillsSettings, toggleSkill, setMarketplaceUrl, addRepository, updateRepository, removeRepository, toggleRepository } from "../agent/libs/skills-store.js";
 import { fetchSkillsFromMarketplace } from "../agent/libs/skills-loader.js";
 import { webCache } from "../agent/libs/web-cache.js";
 import * as gitUtils from "../agent/git-utils.js";
@@ -1151,18 +1151,22 @@ async function handleLlmModelsCheck() {
   emit({ type: "llm.models.checked", payload: { unavailableModels } } as any);
 }
 
-function handleSkillsGet() {
+function emitSkillsLoaded() {
   const settings = loadSkillsSettings();
   emit({
     type: "skills.loaded",
-    payload: { skills: settings.skills, marketplaceUrl: settings.marketplaceUrl, lastFetched: settings.lastFetched },
+    payload: { skills: settings.skills, repositories: settings.repositories, lastFetched: settings.lastFetched },
   } as any);
+}
+
+function handleSkillsGet() {
+  emitSkillsLoaded();
 }
 
 function handleSkillsRefresh() {
   fetchSkillsFromMarketplace()
     .then(() => {
-      handleSkillsGet();
+      emitSkillsLoaded();
     })
     .catch((error) => {
       emit({ type: "skills.error", payload: { message: String(error) } } as any);
@@ -1172,11 +1176,39 @@ function handleSkillsRefresh() {
 function handleSkillsToggle(event: Extract<ClientEvent, { type: "skills.toggle" }>) {
   const { skillId, enabled } = event.payload as any;
   toggleSkill(skillId, enabled);
+  emitSkillsLoaded();
 }
 
 function handleSkillsSetMarketplace(event: Extract<ClientEvent, { type: "skills.set-marketplace" }>) {
   const { url } = event.payload as any;
   setMarketplaceUrl(url);
+}
+
+function handleSkillsAddRepository(event: Extract<ClientEvent, { type: "skills.add-repository" }>) {
+  addRepository((event.payload as any).repo);
+  fetchSkillsFromMarketplace()
+    .then(() => emitSkillsLoaded())
+    .catch((error) => {
+      emit({ type: "skills.error", payload: { message: String(error) } } as any);
+    });
+}
+
+function handleSkillsUpdateRepository(event: Extract<ClientEvent, { type: "skills.update-repository" }>) {
+  const { id, updates } = event.payload as any;
+  updateRepository(id, updates);
+  emitSkillsLoaded();
+}
+
+function handleSkillsRemoveRepository(event: Extract<ClientEvent, { type: "skills.remove-repository" }>) {
+  const { id } = event.payload as any;
+  removeRepository(id);
+  emitSkillsLoaded();
+}
+
+function handleSkillsToggleRepository(event: Extract<ClientEvent, { type: "skills.toggle-repository" }>) {
+  const { id, enabled } = event.payload as any;
+  toggleRepository(id, enabled);
+  emitSkillsLoaded();
 }
 
 async function handleClientEvent(event: ClientEvent) {
@@ -1270,6 +1302,18 @@ async function handleClientEvent(event: ClientEvent) {
       return;
     case "skills.set-marketplace":
       handleSkillsSetMarketplace(event);
+      return;
+    case "skills.add-repository":
+      handleSkillsAddRepository(event);
+      return;
+    case "skills.update-repository":
+      handleSkillsUpdateRepository(event);
+      return;
+    case "skills.remove-repository":
+      handleSkillsRemoveRepository(event);
+      return;
+    case "skills.toggle-repository":
+      handleSkillsToggleRepository(event);
       return;
     case "session.compact": {
       const { sessionId, sessionData, messages: historyMessages, llmProviderSettings, apiSettings } = (event as any).payload;

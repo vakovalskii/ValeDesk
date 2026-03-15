@@ -1,41 +1,78 @@
 import { useState } from "react";
-import type { Skill } from "../types";
+import type { Skill, SkillRepository, SkillRepositoryType } from "../types";
 import { useI18n } from "../i18n";
+import { getPlatform } from "../platform";
 
 interface SkillsTabProps {
   skills: Skill[];
-  marketplaceUrl: string;
+  repositories: SkillRepository[];
   lastFetched?: number;
   loading: boolean;
   error: string | null;
   onToggleSkill: (skillId: string, enabled: boolean) => void;
   onRefresh: () => void;
-  onSetMarketplaceUrl: (url: string) => void;
+  onAddRepository: (repo: Omit<SkillRepository, "id">) => void;
+  onUpdateRepository: (id: string, updates: Partial<Omit<SkillRepository, "id">>) => void;
+  onRemoveRepository: (id: string) => void;
+  onToggleRepository: (id: string, enabled: boolean) => void;
+}
+
+interface RepoFormState {
+  name: string;
+  type: SkillRepositoryType;
+  url: string;
+}
+
+const DEFAULT_FORM: RepoFormState = { name: "", type: "github", url: "" };
+
+function urlPlaceholder(type: SkillRepositoryType, t: (key: string) => string): string {
+  if (type === "github") return t("skillsTab.urlPlaceholderGithub");
+  if (type === "local") return t("skillsTab.urlPlaceholderLocal");
+  return t("skillsTab.urlPlaceholderHttp");
+}
+
+function typeBadgeClass(type: SkillRepositoryType): string {
+  if (type === "github") return "bg-purple-100 text-purple-700";
+  if (type === "local") return "bg-green-100 text-green-700";
+  return "bg-blue-100 text-blue-700";
+}
+
+function typeLabel(type: SkillRepositoryType, t: (key: string) => string): string {
+  if (type === "github") return t("skillsTab.typeGithub");
+  if (type === "local") return t("skillsTab.typeLocal");
+  return t("skillsTab.typeHttp");
 }
 
 export function SkillsTab({
   skills,
-  marketplaceUrl,
+  repositories,
   lastFetched,
   loading,
   error,
   onToggleSkill,
   onRefresh,
-  onSetMarketplaceUrl
+  onAddRepository,
+  onUpdateRepository,
+  onRemoveRepository,
+  onToggleRepository
 }: SkillsTabProps) {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState("");
   const [showOnlyEnabled, setShowOnlyEnabled] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [editingUrl, setEditingUrl] = useState(false);
-  const [newUrl, setNewUrl] = useState(marketplaceUrl);
+
+  // Dialog state
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addForm, setAddForm] = useState<RepoFormState>(DEFAULT_FORM);
+  const [editingRepo, setEditingRepo] = useState<SkillRepository | null>(null);
+  const [editForm, setEditForm] = useState<RepoFormState>(DEFAULT_FORM);
 
   // Get unique categories
   const categories = Array.from(new Set(skills.map(s => s.category).filter(Boolean))) as string[];
 
   // Filter skills
   const filteredSkills = skills.filter(skill => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       skill.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesEnabled = !showOnlyEnabled || skill.enabled;
@@ -50,6 +87,26 @@ export function SkillsTab({
     const date = new Date(lastFetched);
     return date.toLocaleString();
   };
+
+  const handleAddSubmit = () => {
+    if (!addForm.name.trim() || !addForm.url.trim()) return;
+    onAddRepository({ name: addForm.name.trim(), type: addForm.type, url: addForm.url.trim(), enabled: true });
+    setAddForm(DEFAULT_FORM);
+    setShowAddDialog(false);
+  };
+
+  const handleEditStart = (repo: SkillRepository) => {
+    setEditingRepo(repo);
+    setEditForm({ name: repo.name, type: repo.type, url: repo.url });
+  };
+
+  const handleEditSubmit = () => {
+    if (!editingRepo || !editForm.name.trim() || !editForm.url.trim()) return;
+    onUpdateRepository(editingRepo.id, { name: editForm.name.trim(), type: editForm.type, url: editForm.url.trim() });
+    setEditingRepo(null);
+  };
+
+  const repoById = (id: string) => repositories.find(r => r.id === id);
 
   return (
     <div className="space-y-4">
@@ -80,56 +137,71 @@ export function SkillsTab({
         </button>
       </div>
 
-      {/* Marketplace URL */}
-      <div className="p-3 bg-ink-50 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="text-sm">
-            <span className="text-ink-500">{t("skillsTab.marketplace")}</span>{" "}
-            {editingUrl ? (
-              <input
-                type="text"
-                value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
-                className="ml-2 px-2 py-1 text-sm border border-ink-200 rounded"
-                placeholder={t("skillsTab.githubApiUrl")}
-              />
-            ) : (
-              <span className="text-ink-700 font-mono text-xs">{marketplaceUrl}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {editingUrl ? (
-              <>
-                <button
-                  onClick={() => {
-                    onSetMarketplaceUrl(newUrl);
-                    setEditingUrl(false);
-                  }}
-                  className="px-2 py-1 text-xs font-medium text-white bg-accent rounded hover:bg-accent/90"
-                >
-                  {t("settings.save")}
-                </button>
-                <button
-                  onClick={() => {
-                    setNewUrl(marketplaceUrl);
-                    setEditingUrl(false);
-                  }}
-                  className="px-2 py-1 text-xs font-medium text-ink-600 bg-ink-100 rounded hover:bg-ink-200"
-                >
-                  {t("settings.cancel")}
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setEditingUrl(true)}
-                className="px-2 py-1 text-xs font-medium text-ink-600 bg-ink-100 rounded hover:bg-ink-200"
-              >
-                {t("eventCard.edit")}
-              </button>
-            )}
-          </div>
+      {/* Repositories Section */}
+      <div className="border border-ink-200 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 bg-ink-50">
+          <span className="text-sm font-medium text-ink-700">{t("skillsTab.repositories")}</span>
+          <button
+            onClick={() => { setAddForm(DEFAULT_FORM); setShowAddDialog(true); }}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-accent bg-accent/10 rounded hover:bg-accent/20 transition-colors"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            {t("skillsTab.addRepository")}
+          </button>
         </div>
-        <div className="mt-1 text-xs text-ink-400">
+
+        {/* Repository List */}
+        {repositories.length === 0 ? (
+          <div className="p-4 text-center text-sm text-ink-400">{t("skillsTab.noRepositories")}</div>
+        ) : (
+          <ul className="divide-y divide-ink-100">
+            {repositories.map(repo => (
+              <li key={repo.id} className="p-3 bg-white">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <label className="flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={repo.enabled}
+                        onChange={() => onToggleRepository(repo.id, !repo.enabled)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-ink-200 rounded-full peer peer-checked:bg-accent relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></div>
+                    </label>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-ink-900 truncate">{repo.name}</span>
+                        <span className={`px-1.5 py-0.5 text-xs font-medium rounded shrink-0 ${typeBadgeClass(repo.type)}`}>
+                          {typeLabel(repo.type, t)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-ink-400 truncate font-mono">{repo.url}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleEditStart(repo)}
+                      className="px-2 py-1 text-xs font-medium text-ink-600 bg-ink-100 rounded hover:bg-ink-200"
+                    >
+                      {t("skillsTab.editRepository")}
+                    </button>
+                    <button
+                      onClick={() => onRemoveRepository(repo.id)}
+                      className="px-2 py-1 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100"
+                    >
+                      {t("skillsTab.removeRepository")}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Last fetched */}
+        <div className="px-3 py-1.5 bg-ink-50 border-t border-ink-100 text-xs text-ink-400">
           {t("skillsTab.lastUpdated")} {formatLastFetched()}
         </div>
       </div>
@@ -195,9 +267,11 @@ export function SkillsTab({
         ) : (
           filteredSkills.map(skill => (
             <SkillCard
-              key={skill.id}
+              key={`${skill.repositoryId}:${skill.id}`}
               skill={skill}
+              repoName={repoById(skill.repositoryId)?.name}
               onToggle={() => onToggleSkill(skill.id, !skill.enabled)}
+              t={t}
             />
           ))
         )}
@@ -211,24 +285,188 @@ export function SkillsTab({
           {t("skillsTab.loadSkillToolDesc")}
         </p>
       </div>
+
+      {/* Add Repository Dialog */}
+      <RepoDialog
+        open={showAddDialog}
+        title={t("skillsTab.addRepositoryTitle")}
+        form={addForm}
+        onChange={setAddForm}
+        onSubmit={handleAddSubmit}
+        onCancel={() => { setShowAddDialog(false); setAddForm(DEFAULT_FORM); }}
+        t={t}
+      />
+
+      {/* Edit Repository Dialog */}
+      <RepoDialog
+        open={editingRepo !== null}
+        title={t("skillsTab.editRepositoryTitle")}
+        form={editForm}
+        onChange={setEditForm}
+        onSubmit={handleEditSubmit}
+        onCancel={() => setEditingRepo(null)}
+        t={t}
+      />
     </div>
   );
 }
 
-function SkillCard({ skill, onToggle }: { skill: Skill; onToggle: () => void }) {
+function RepoDialog({
+  open,
+  title,
+  form,
+  onChange,
+  onSubmit,
+  onCancel,
+  t
+}: {
+  open: boolean;
+  title: string;
+  form: RepoFormState;
+  onChange: (f: RepoFormState) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  t: (key: string) => string;
+}) {
+  if (!open) return null;
+
+  const handleBrowse = async () => {
+    const dir = await getPlatform().selectDirectory();
+    if (dir) onChange({ ...form, url: dir });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+
+      {/* Dialog */}
+      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-xl shadow-xl border border-ink-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100">
+          <h3 className="text-base font-semibold text-ink-900">{title}</h3>
+          <button
+            onClick={onCancel}
+            className="p-1 text-ink-400 hover:text-ink-700 rounded transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-3">
+          {/* Name */}
+          <div>
+            <label className="block text-xs font-medium text-ink-600 mb-1">
+              {t("skillsTab.repositoryName")}
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => onChange({ ...form, name: e.target.value })}
+              placeholder={t("skillsTab.repositoryName")}
+              autoFocus
+              className="w-full px-3 py-2 text-sm border border-ink-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+
+          {/* Type */}
+          <div>
+            <label className="block text-xs font-medium text-ink-600 mb-1">
+              {t("skillsTab.repositoryType")}
+            </label>
+            <select
+              value={form.type}
+              onChange={e => onChange({ ...form, type: e.target.value as SkillRepositoryType })}
+              className="w-full px-3 py-2 text-sm border border-ink-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="github">{t("skillsTab.typeGithub")}</option>
+              <option value="local">{t("skillsTab.typeLocal")}</option>
+              <option value="http">{t("skillsTab.typeHttp")}</option>
+            </select>
+          </div>
+
+          {/* URL / Path */}
+          <div>
+            <label className="block text-xs font-medium text-ink-600 mb-1">
+              {t("skillsTab.repositoryUrl")}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.url}
+                onChange={e => onChange({ ...form, url: e.target.value })}
+                placeholder={urlPlaceholder(form.type, t)}
+                className="flex-1 px-3 py-2 text-sm border border-ink-200 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-accent/20"
+              />
+              {form.type === "local" && (
+                <button
+                  type="button"
+                  onClick={handleBrowse}
+                  className="px-3 py-2 text-sm font-medium text-ink-600 bg-ink-100 rounded-lg hover:bg-ink-200 transition-colors shrink-0"
+                >
+                  {t("skillsTab.browse")}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-ink-600 bg-ink-100 rounded-lg hover:bg-ink-200 transition-colors"
+          >
+            {t("skillsTab.cancelEdit")}
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={!form.name.trim() || !form.url.trim()}
+            className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent/90 disabled:opacity-40 transition-colors"
+          >
+            {t("skillsTab.saveRepository")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillCard({
+  skill,
+  repoName,
+  onToggle,
+  t
+}: {
+  skill: Skill;
+  repoName?: string;
+  onToggle: () => void;
+  t: (key: string) => string;
+}) {
   return (
     <div className={`p-4 border rounded-lg transition-colors ${
-      skill.enabled 
-        ? 'border-accent/30 bg-accent/5' 
+      skill.enabled
+        ? 'border-accent/30 bg-accent/5'
         : 'border-ink-200 bg-white hover:border-ink-300'
     }`}>
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h4 className="font-medium text-ink-900 truncate">{skill.name}</h4>
             {skill.category && (
               <span className="px-2 py-0.5 text-xs font-medium bg-ink-100 text-ink-600 rounded">
                 {skill.category}
+              </span>
+            )}
+            {repoName && (
+              <span className="text-xs text-ink-400">
+                {t("skillsTab.repositoryFrom")} {repoName}
               </span>
             )}
           </div>

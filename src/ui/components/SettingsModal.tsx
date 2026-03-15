@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import type { 
-  ApiSettings, 
-  WebSearchProvider, 
-  ZaiApiUrl, 
-  ZaiReaderApiUrl, 
+import type {
+  ApiSettings,
+  WebSearchProvider,
+  ZaiApiUrl,
+  ZaiReaderApiUrl,
   LLMProvider,
   LLMModel,
   LLMProviderSettings,
   LLMProviderType,
   RoleGroupSettings,
-  Skill
+  Skill,
+  SkillRepository
 } from "../types";
 import { SkillsTab } from "./SkillsTab";
 import { getPlatform } from "../platform";
@@ -90,7 +91,7 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
 
   // Skills state
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [skillsMarketplaceUrl, setSkillsMarketplaceUrl] = useState("");
+  const [skillsRepositories, setSkillsRepositories] = useState<SkillRepository[]>([]);
   const [skillsLastFetched, setSkillsLastFetched] = useState<number | undefined>();
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
@@ -242,9 +243,21 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     setSkills(prev => prev.map(s => s.id === skillId ? { ...s, enabled } : s));
   }, []);
 
-  const setMarketplaceUrl = useCallback((url: string) => {
-    getPlatform().sendClientEvent({ type: "skills.set-marketplace", payload: { url } });
-    setSkillsMarketplaceUrl(url);
+  const handleAddRepository = useCallback((repo: Omit<SkillRepository, "id">) => {
+    getPlatform().sendClientEvent({ type: "skills.add-repository", payload: { repo } });
+  }, []);
+
+  const handleUpdateRepository = useCallback((id: string, updates: Partial<Omit<SkillRepository, "id">>) => {
+    getPlatform().sendClientEvent({ type: "skills.update-repository", payload: { id, updates } });
+  }, []);
+
+  const handleRemoveRepository = useCallback((id: string) => {
+    getPlatform().sendClientEvent({ type: "skills.remove-repository", payload: { id } });
+  }, []);
+
+  const handleToggleRepository = useCallback((id: string, enabled: boolean) => {
+    getPlatform().sendClientEvent({ type: "skills.toggle-repository", payload: { id, enabled } });
+    setSkillsRepositories(prev => prev.map(r => r.id === id ? { ...r, enabled } : r));
   }, []);
 
   // Load skills on mount
@@ -253,9 +266,13 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
     
     const unsubscribe = getPlatform().onServerEvent((event) => {
       if (event.type === "skills.loaded") {
-        setSkills(event.payload.skills);
-        setSkillsMarketplaceUrl(event.payload.marketplaceUrl);
-        setSkillsLastFetched(event.payload.lastFetched);
+        if (Array.isArray(event.payload?.skills) && event.payload.skills.length > 0) {
+          setSkills(event.payload.skills);
+        }
+        if (Array.isArray(event.payload?.repositories) && event.payload.repositories.length > 0) {
+          setSkillsRepositories(event.payload.repositories);
+        }
+        setSkillsLastFetched(event.payload?.lastFetched);
         setSkillsLoading(false);
       } else if (event.type === "skills.error") {
         setSkillsError(event.payload.message);
@@ -524,13 +541,16 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
               <div className="p-6">
                 <SkillsTab
                   skills={skills}
-                  marketplaceUrl={skillsMarketplaceUrl}
+                  repositories={skillsRepositories}
                   lastFetched={skillsLastFetched}
                   loading={skillsLoading}
                   error={skillsError}
                   onToggleSkill={toggleSkill}
                   onRefresh={refreshSkills}
-                  onSetMarketplaceUrl={setMarketplaceUrl}
+                  onAddRepository={handleAddRepository}
+                  onUpdateRepository={handleUpdateRepository}
+                  onRemoveRepository={handleRemoveRepository}
+                  onToggleRepository={handleToggleRepository}
                 />
               </div>
             ) : activeTab === 'roles' ? (

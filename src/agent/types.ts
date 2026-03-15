@@ -177,12 +177,22 @@ export type ServerEvent =
   | { type: "llm.models.error"; payload: { providerId: string; message: string } }
   | { type: "llm.models.checked"; payload: { unavailableModels: string[] } }
   // Skills events
-  | { type: "skills.loaded"; payload: { skills: Skill[]; marketplaceUrl: string; lastFetched?: number } }
+  | { type: "skills.loaded"; payload: { skills: Skill[]; repositories: SkillRepository[]; lastFetched?: number } }
   | { type: "skills.error"; payload: { message: string } }
   // Scheduler IPC (sidecar -> Rust)
   | { type: "scheduler.request"; payload: { requestId: string; operation: string; params: Record<string, any> } };
 
 // Skill types
+export type SkillRepositoryType = "github" | "local" | "http";
+
+export interface SkillRepository {
+  id: string;
+  name: string;
+  type: SkillRepositoryType;
+  url: string; // GitHub API URL | local path | http base URL
+  enabled: boolean;
+}
+
 export interface Skill {
   id: string;
   name: string;
@@ -193,6 +203,7 @@ export interface Skill {
   license?: string;
   compatibility?: string;
   repoPath: string;
+  repositoryId: string;
   enabled: boolean;
   lastUpdated?: number;
 }
@@ -281,4 +292,8 @@ export type ClientEvent =
   | { type: "skills.get" }
   | { type: "skills.refresh" }
   | { type: "skills.toggle"; payload: { skillId: string; enabled: boolean } }
-  | { type: "skills.set-marketplace"; payload: { url: string } };
+  | { type: "skills.set-marketplace"; payload: { url: string } }
+  | { type: "skills.add-repository"; payload: { repo: Omit<SkillRepository, "id"> } }
+  | { type: "skills.update-repository"; payload: { id: string; updates: Partial<Omit<SkillRepository, "id">> } }
+  | { type: "skills.remove-repository"; payload: { id: string } }
+  | { type: "skills.toggle-repository"; payload: { id: string; enabled: boolean } };
