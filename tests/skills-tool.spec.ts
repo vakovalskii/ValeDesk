@@ -25,13 +25,17 @@ const allSkills = [
   }
 ];
 
-vi.mock("../src/agent/libs/skills-store.js", () => ({
-  getEnabledSkills: () => enabledSkills,
-  loadSkillsSettings: () => ({
-    repositories: [{ id: "default", name: "Default", type: "github", url: "", enabled: true }],
-    skills: allSkills
-  })
-}));
+vi.mock("../src/agent/libs/skills-store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/agent/libs/skills-store.js")>();
+  return {
+    ...actual,
+    getEnabledSkills: () => enabledSkills,
+    loadSkillsSettings: () => ({
+      repositories: [{ id: "default", name: "Default", type: "github", url: "", enabled: true }],
+      skills: allSkills
+    })
+  };
+});
 
 vi.mock("../src/agent/libs/skills-loader.js", () => ({
   readSkillContent: async () => "## Skill Content",
