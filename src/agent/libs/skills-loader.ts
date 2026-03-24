@@ -7,7 +7,8 @@ import {
   SkillRepository,
   loadSkillsSettings,
   updateSkillsList,
-  getEnabledRepositories
+  getEnabledRepositories,
+  findSkill
 } from "./skills-store.js";
 
 const WORKSPACE_DIR = ".valedesk";
@@ -337,6 +338,7 @@ async function fetchFromSkillsbd(repo: SkillRepository): Promise<Skill[]> {
     enabled: false,
     owner: item.owner,
     repo: item.repo,
+    contentPath: item.contentPath || null,
     installs: item.installs,
     trending24h: item.trending24h,
     tags: item.tags,
@@ -400,7 +402,7 @@ export async function fetchSkillsFromMarketplace(): Promise<Skill[]> {
  */
 export async function downloadSkill(skillId: string, cwd?: string): Promise<string> {
   const settings = loadSkillsSettings();
-  const skill = settings.skills.find(s => s.id === skillId);
+  const skill = findSkill(skillId, settings.skills);
 
   if (!skill) {
     throw new Error(`Skill not found: ${skillId}`);
@@ -410,16 +412,16 @@ export async function downloadSkill(skillId: string, cwd?: string): Promise<stri
   const repo = settings.repositories.find(r => r.id === skill.repositoryId);
 
   const skillsDir = ensureSkillsDir(cwd);
-  const skillCacheDir = path.join(skillsDir, skillId);
+  const skillCacheDir = path.join(skillsDir, skill.id);
 
-  console.log(`[SkillsLoader] Downloading skill: ${skillId} to ${skillCacheDir}`);
+  console.log(`[SkillsLoader] Downloading skill: ${skill.id} (${skill.name}) to ${skillCacheDir}`);
 
   if (!fs.existsSync(skillCacheDir)) {
     fs.mkdirSync(skillCacheDir, { recursive: true });
   }
 
   if (!repo) {
-    throw new Error(`Repository not found for skill: ${skillId} (repositoryId: ${skill.repositoryId})`);
+    throw new Error(`Repository not found for skill: ${skill.id} (repositoryId: ${skill.repositoryId})`);
   }
 
   switch (repo.type) {
@@ -468,6 +470,21 @@ async function downloadSkillFromGitHub(
   await downloadContents(contents, skillCacheDir, skill.repoPath, urlInfo);
 }
 
+async function fetchGitHubContents(url: string): Promise<GitHubContent[]> {
+  const response = await fetch(url, {
+    headers: {
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "ValeDesk"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API error ${response.status}: ${url}`);
+  }
+
+  return response.json();
+}
+
 async function downloadSkillFromSkillsbd(
   skill: Skill,
   repo: SkillRepository,
@@ -477,21 +494,55 @@ async function downloadSkillFromSkillsbd(
     throw new Error(`Skill ${skill.id} missing owner/repo for GitHub download`);
   }
 
-  // Fetch skill contents from GitHub using owner/repo from skillsbd catalog
-  const contentsUrl = `https://api.github.com/repos/${skill.owner}/${skill.repo}/contents/`;
-  const response = await fetch(contentsUrl, {
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-      "User-Agent": "ValeDesk"
+  const urlInfo = { owner: skill.owner, repo: skill.repo, branch: "main" };
+  const baseApiUrl = `https://api.github.com/repos/${skill.owner}/${skill.repo}/contents`;
+
+  // If contentPath is explicitly set in the catalog, use it directly
+  if (skill.contentPath) {
+    const contents = await fetchGitHubContents(`${baseApiUrl}/${skill.contentPath}`);
+    await downloadContents(contents, skillCacheDir, skill.contentPath, urlInfo);
+  } else {
+    // Auto-search for SKILL.md: root → skill.name subdir → any first-level subdir
+    const rootContents = await fetchGitHubContents(`${baseApiUrl}/`);
+
+    const skillMdAtRoot = rootContents.find(
+      f => f.type === "file" && f.name.toLowerCase() === "skill.md"
+    );
+
+    if (skillMdAtRoot) {
+      // SKILL.md is at root — this is a single-skill repo
+      await downloadContents(rootContents, skillCacheDir, "", urlInfo);
+    } else {
+      // Not at root — search subdirectories for SKILL.md
+      const subdirs = rootContents.filter(f => f.type === "dir");
+
+      // Prioritise subdirectory named after the skill
+      const nameMatch = subdirs.find(d => d.name === skill.name);
+      const searchOrder = nameMatch
+        ? [nameMatch, ...subdirs.filter(d => d.name !== skill.name)]
+        : subdirs;
+
+      let found = false;
+      for (const subdir of searchOrder) {
+        const subContents = await fetchGitHubContents(`${baseApiUrl}/${subdir.name}`);
+        const hasSkillMd = subContents.find(
+          f => f.type === "file" && f.name.toLowerCase() === "skill.md"
+        );
+
+        if (hasSkillMd) {
+          await downloadContents(subContents, skillCacheDir, subdir.name, urlInfo);
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        throw new Error(
+          `SKILL.md not found in ${skill.owner}/${skill.repo} — checked root and ${subdirs.length} subdirectories`
+        );
+      }
     }
-  });
-
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`);
   }
-
-  const contents: GitHubContent[] = await response.json();
-  await downloadContents(contents, skillCacheDir, "", { owner: skill.owner, repo: skill.repo, branch: "main" });
 
   // Fire-and-forget: track installation on skillsbd
   const baseUrl = repo.url.replace(/\/$/, "");
@@ -588,7 +639,8 @@ async function downloadContents(
  */
 export async function getSkillPath(skillId: string, cwd?: string): Promise<string> {
   const settings = loadSkillsSettings();
-  const skill = settings.skills.find(s => s.id === skillId);
+  const skill = findSkill(skillId, settings.skills);
+  const resolvedId = skill?.id ?? skillId;
 
   // For local repos, serve directly from source
   if (skill) {
@@ -600,20 +652,20 @@ export async function getSkillPath(skillId: string, cwd?: string): Promise<strin
 
   // First check workspace-local cache
   if (cwd) {
-    const localSkillDir = path.join(getSkillsDir(cwd), skillId);
+    const localSkillDir = path.join(getSkillsDir(cwd), resolvedId);
     if (fs.existsSync(localSkillDir) && fs.existsSync(path.join(localSkillDir, "SKILL.md"))) {
       return localSkillDir;
     }
   }
 
   // Then check global cache
-  const globalSkillDir = path.join(getGlobalSkillsDir(), skillId);
+  const globalSkillDir = path.join(getGlobalSkillsDir(), resolvedId);
   if (fs.existsSync(globalSkillDir) && fs.existsSync(path.join(globalSkillDir, "SKILL.md"))) {
     return globalSkillDir;
   }
 
   // Download to workspace-local or global (based on cwd)
-  return downloadSkill(skillId, cwd);
+  return downloadSkill(resolvedId, cwd);
 }
 
 /**

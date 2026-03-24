@@ -1,5 +1,5 @@
 import { BaseTool, ToolResult, ToolExecutionContext } from "./base-tool.js";
-import { getEnabledSkills, loadSkillsSettings, Skill } from "../skills-store.js";
+import { getEnabledSkills, loadSkillsSettings, findSkill, Skill } from "../skills-store.js";
 import { 
   readSkillContent, 
   listSkillFiles, 
@@ -93,23 +93,22 @@ export class SkillsTool extends BaseTool {
     }
     
     const skillsList = enabledSkills.map((skill: Skill) => 
-      `- **${skill.name}**: ${skill.description}${skill.category ? ` [${skill.category}]` : ""}`
+      `- **${skill.name}** (skill_id: \`${skill.name}\`): ${skill.description}${skill.category ? ` [${skill.category}]` : ""}`
     ).join("\n");
     
     return {
       success: true,
-      output: `## Enabled Skills (${enabledSkills.length})\n\n${skillsList}\n\nUse \`load_skill\` with operation "get" and the skill_id to load detailed instructions.`
+      output: `## Enabled Skills (${enabledSkills.length})\n\n${skillsList}\n\nUse \`load_skill\` with operation "get" and the skill_id (the skill name shown above) to load detailed instructions.`
     };
   }
   
   private async getSkill(skillId: string, cwd?: string): Promise<ToolResult> {
-    // Check if skill is enabled
     const enabledSkills = getEnabledSkills();
-    const skill = enabledSkills.find((s: Skill) => s.id === skillId);
+    const skill = findSkill(skillId, enabledSkills);
     
     if (!skill) {
       const settings = loadSkillsSettings();
-      const allSkill = settings.skills.find((s: Skill) => s.id === skillId);
+      const allSkill = findSkill(skillId, settings.skills);
       
       if (allSkill) {
         return {
@@ -125,9 +124,8 @@ export class SkillsTool extends BaseTool {
     }
     
     try {
-      // Pass cwd to download skill to workspace/skills/
-      const content = await readSkillContent(skillId, cwd);
-      const skillDir = await getSkillPath(skillId, cwd);
+      const content = await readSkillContent(skill.id, cwd);
+      const skillDir = await getSkillPath(skill.id, cwd);
       
       return {
         success: true,
@@ -143,7 +141,7 @@ export class SkillsTool extends BaseTool {
   
   private async listSkillFiles(skillId: string, cwd?: string): Promise<ToolResult> {
     const enabledSkills = getEnabledSkills();
-    const skill = enabledSkills.find((s: Skill) => s.id === skillId);
+    const skill = findSkill(skillId, enabledSkills);
     
     if (!skill) {
       return {
@@ -153,8 +151,8 @@ export class SkillsTool extends BaseTool {
     }
     
     try {
-      const files = await listSkillFiles(skillId, cwd);
-      const skillDir = await getSkillPath(skillId, cwd);
+      const files = await listSkillFiles(skill.id, cwd);
+      const skillDir = await getSkillPath(skill.id, cwd);
       
       const filesList = files.map((f: string) => `- ${f}`).join("\n");
       

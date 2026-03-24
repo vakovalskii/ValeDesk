@@ -39,6 +39,7 @@ export interface Skill {
   // Skillsbd-specific optional fields
   owner?: string;
   repo?: string;
+  contentPath?: string | null; // path within repo (for mono-repos), null = auto-search for SKILL.md
   installs?: number;
   trending24h?: number;
   tags?: string[];
@@ -171,6 +172,15 @@ export function saveSkillsSettings(settings: SkillsSettings): void {
 export function getEnabledSkills(): Skill[] {
   const settings = loadSkillsSettings();
   return settings.skills.filter(s => s.enabled);
+}
+
+/**
+ * Find a skill by id or name (case-insensitive name fallback).
+ * Useful because skillsbd uses UUIDs as id, but agents reference skills by name.
+ */
+export function findSkill(idOrName: string, skills: Skill[]): Skill | undefined {
+  return skills.find(s => s.id === idOrName)
+    || skills.find(s => s.name.toLowerCase() === idOrName.toLowerCase());
 }
 
 export function getEnabledRepositories(): SkillRepository[] {
