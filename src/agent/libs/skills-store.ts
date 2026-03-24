@@ -13,6 +13,16 @@ export interface SkillMetadata {
   allowedTools?: string[];
 }
 
+export type SkillRepositoryType = "github" | "local" | "http";
+
+export interface SkillRepository {
+  id: string;
+  name: string;
+  type: SkillRepositoryType;
+  url: string; // GitHub API URL | local filesystem path | http base URL
+  enabled: boolean;
+}
+
 export interface Skill {
   id: string;
   name: string;
@@ -22,18 +32,32 @@ export interface Skill {
   version?: string;
   license?: string;
   compatibility?: string;
-  repoPath: string; // Path in GitHub repo (e.g., "skills/pdf-processing")
+  repoPath: string; // Path within the repository (e.g., "skills/pdf-processing")
+  repositoryId: string; // Which repository this skill belongs to
   enabled: boolean;
   lastUpdated?: number;
 }
 
 export interface SkillsSettings {
-  marketplaceUrl: string;
+  repositories: SkillRepository[];
   skills: Skill[];
   lastFetched?: number;
 }
 
-const DEFAULT_MARKETPLACE_URL = "https://api.github.com/repos/vakovalskii/ValeDesk-Skills/contents/skills";
+// Legacy settings format for migration
+interface LegacySkillsSettings {
+  marketplaceUrl?: string;
+  skills?: Array<Omit<Skill, "repositoryId"> & { repositoryId?: string }>;
+  lastFetched?: number;
+}
+
+const DEFAULT_REPOSITORY: SkillRepository = {
+  id: "default",
+  name: "Default",
+  type: "github",
+  url: "https://api.github.com/repos/vakovalskii/LocalDesk-Skills/contents/skills",
+  enabled: true
+};
 
 // In pkg binary, import.meta.url is undefined. Use eval to get require in CJS context.
 const require = (process as any).pkg
@@ -57,17 +81,47 @@ function getSettingsPath(): string {
   return path.join(getUserDataDir(), SKILLS_FILE);
 }
 
-export function loadSkillsSettings(): SkillsSettings {
-  const filePath = getSettingsPath();
+function generateId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
 
+export function loadSkillsSettings(): SkillsSettings {
   try {
+    const filePath = getSettingsPath();
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, "utf-8");
-      const settings = JSON.parse(data) as SkillsSettings;
+      const raw = JSON.parse(data) as LegacySkillsSettings & SkillsSettings;
+
+      // Migration: old format had marketplaceUrl instead of repositories
+      if (!raw.repositories && raw.marketplaceUrl) {
+        const migratedRepo: SkillRepository = {
+          id: "default",
+          name: "Default",
+          type: "github",
+          url: raw.marketplaceUrl,
+          enabled: true
+        };
+        const migratedSkills: Skill[] = (raw.skills || []).map(s => ({
+          ...s,
+          repositoryId: s.repositoryId ?? "default"
+        }));
+        return {
+          repositories: [migratedRepo],
+          skills: migratedSkills,
+          lastFetched: raw.lastFetched
+        };
+      }
+
+      const repos = raw.repositories && raw.repositories.length > 0
+        ? raw.repositories
+        : [{ ...DEFAULT_REPOSITORY }];
       return {
-        marketplaceUrl: settings.marketplaceUrl || DEFAULT_MARKETPLACE_URL,
-        skills: settings.skills || [],
-        lastFetched: settings.lastFetched
+        repositories: repos,
+        skills: (raw.skills || []).map(s => ({
+          ...s,
+          repositoryId: s.repositoryId ?? "default"
+        })),
+        lastFetched: raw.lastFetched
       };
     }
   } catch (error) {
@@ -75,7 +129,7 @@ export function loadSkillsSettings(): SkillsSettings {
   }
 
   return {
-    marketplaceUrl: DEFAULT_MARKETPLACE_URL,
+    repositories: [{ ...DEFAULT_REPOSITORY }],
     skills: []
   };
 }
@@ -96,6 +150,11 @@ export function getEnabledSkills(): Skill[] {
   return settings.skills.filter(s => s.enabled);
 }
 
+export function getEnabledRepositories(): SkillRepository[] {
+  const settings = loadSkillsSettings();
+  return settings.repositories.filter(r => r.enabled);
+}
+
 export function toggleSkill(skillId: string, enabled: boolean): void {
   const settings = loadSkillsSettings();
   const skill = settings.skills.find(s => s.id === skillId);
@@ -109,22 +168,57 @@ export function toggleSkill(skillId: string, enabled: boolean): void {
 export function updateSkillsList(skills: Skill[]): void {
   const settings = loadSkillsSettings();
 
-  // Preserve enabled state from existing skills
+  // Preserve enabled state from existing skills (match by repositoryId + id)
   const existingEnabled = new Map(
-    settings.skills.map(s => [s.id, s.enabled])
+    settings.skills.map(s => [`${s.repositoryId}:${s.id}`, s.enabled])
   );
 
   settings.skills = skills.map(skill => ({
     ...skill,
-    enabled: existingEnabled.get(skill.id) ?? false
+    enabled: existingEnabled.get(`${skill.repositoryId}:${skill.id}`) ?? false
   }));
 
   settings.lastFetched = Date.now();
   saveSkillsSettings(settings);
 }
 
+export function addRepository(repo: Omit<SkillRepository, "id">): SkillRepository {
+  const settings = loadSkillsSettings();
+  const newRepo: SkillRepository = { ...repo, id: generateId() };
+  settings.repositories.push(newRepo);
+  saveSkillsSettings(settings);
+  return newRepo;
+}
+
+export function removeRepository(id: string): void {
+  const settings = loadSkillsSettings();
+  settings.repositories = settings.repositories.filter(r => r.id !== id);
+  // Remove skills from that repository
+  settings.skills = settings.skills.filter(s => s.repositoryId !== id);
+  saveSkillsSettings(settings);
+}
+
+export function updateRepository(id: string, updates: Partial<Omit<SkillRepository, "id">>): void {
+  const settings = loadSkillsSettings();
+  const repo = settings.repositories.find(r => r.id === id);
+  if (repo) {
+    Object.assign(repo, updates);
+    saveSkillsSettings(settings);
+  }
+}
+
+export function toggleRepository(id: string, enabled: boolean): void {
+  updateRepository(id, { enabled });
+}
+
+/** @deprecated Use repositories instead. Kept for backwards compatibility. */
 export function setMarketplaceUrl(url: string): void {
   const settings = loadSkillsSettings();
-  settings.marketplaceUrl = url;
+  const defaultRepo = settings.repositories.find(r => r.id === "default");
+  if (defaultRepo) {
+    defaultRepo.url = url;
+  } else {
+    settings.repositories.unshift({ id: "default", name: "Default", type: "github", url, enabled: true });
+  }
   saveSkillsSettings(settings);
 }

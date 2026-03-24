@@ -16,7 +16,7 @@ import type { CreateTaskPayload, ThreadTask } from "./types.js";
 import { webCache } from "./libs/web-cache.js";
 import { loadLLMProviderSettings, saveLLMProviderSettings } from "./libs/llm-providers-store.js";
 import { fetchModelsFromProvider, checkModelsAvailability, validateProvider, createProvider } from "./libs/llm-providers.js";
-import { loadSkillsSettings, saveSkillsSettings, toggleSkill, setMarketplaceUrl } from "./libs/skills-store.js";
+import { loadSkillsSettings, saveSkillsSettings, toggleSkill, setMarketplaceUrl, addRepository, updateRepository, removeRepository, toggleRepository } from "./libs/skills-store.js";
 import { fetchSkillsFromMarketplace } from "./libs/skills-loader.js";
 
 const DB_PATH = join(app.getPath("userData"), "sessions.db");
@@ -1579,7 +1579,7 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
       type: "skills.loaded",
       payload: {
         skills: settings.skills,
-        marketplaceUrl: settings.marketplaceUrl,
+        repositories: settings.repositories,
         lastFetched: settings.lastFetched
       }
     });
@@ -1588,13 +1588,13 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
 
   if (event.type === "skills.refresh") {
     fetchSkillsFromMarketplace()
-      .then(skills => {
+      .then(_skills => {
         const settings = loadSkillsSettings();
         sessionManager.emitToWindow(windowId, {
           type: "skills.loaded",
           payload: {
             skills: settings.skills,
-            marketplaceUrl: settings.marketplaceUrl,
+            repositories: settings.repositories,
             lastFetched: settings.lastFetched
           }
         });
@@ -1612,12 +1612,89 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
   if (event.type === "skills.toggle") {
     const { skillId, enabled } = event.payload;
     toggleSkill(skillId, enabled);
+    const settings = loadSkillsSettings();
+    sessionManager.emitToWindow(windowId, {
+      type: "skills.loaded",
+      payload: {
+        skills: settings.skills,
+        repositories: settings.repositories,
+        lastFetched: settings.lastFetched
+      }
+    });
     return;
   }
 
   if (event.type === "skills.set-marketplace") {
     const { url } = event.payload;
     setMarketplaceUrl(url);
+    return;
+  }
+
+  if (event.type === "skills.add-repository") {
+    addRepository(event.payload.repo);
+    fetchSkillsFromMarketplace()
+      .then(_skills => {
+        const settings = loadSkillsSettings();
+        sessionManager.emitToWindow(windowId, {
+          type: "skills.loaded",
+          payload: {
+            skills: settings.skills,
+            repositories: settings.repositories,
+            lastFetched: settings.lastFetched
+          }
+        });
+      })
+      .catch(error => {
+        sessionManager.emitToWindow(windowId, {
+          type: "skills.error",
+          payload: { message: String(error) }
+        });
+      });
+    return;
+  }
+
+  if (event.type === "skills.update-repository") {
+    const { id, updates } = event.payload;
+    updateRepository(id, updates);
+    const settings = loadSkillsSettings();
+    sessionManager.emitToWindow(windowId, {
+      type: "skills.loaded",
+      payload: {
+        skills: settings.skills,
+        repositories: settings.repositories,
+        lastFetched: settings.lastFetched
+      }
+    });
+    return;
+  }
+
+  if (event.type === "skills.remove-repository") {
+    const { id } = event.payload;
+    removeRepository(id);
+    const settings = loadSkillsSettings();
+    sessionManager.emitToWindow(windowId, {
+      type: "skills.loaded",
+      payload: {
+        skills: settings.skills,
+        repositories: settings.repositories,
+        lastFetched: settings.lastFetched
+      }
+    });
+    return;
+  }
+
+  if (event.type === "skills.toggle-repository") {
+    const { id, enabled } = event.payload;
+    toggleRepository(id, enabled);
+    const settings = loadSkillsSettings();
+    sessionManager.emitToWindow(windowId, {
+      type: "skills.loaded",
+      payload: {
+        skills: settings.skills,
+        repositories: settings.repositories,
+        lastFetched: settings.lastFetched
+      }
+    });
     return;
   }
 }
