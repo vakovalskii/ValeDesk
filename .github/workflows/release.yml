@@ -58,6 +58,9 @@ jobs:
           workspaces: src-tauri -> target
           key: ${{ matrix.target }}
 
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
       # Linux dependencies
       - name: Install Linux dependencies
         if: contains(matrix.platform, 'ubuntu')
@@ -72,9 +75,9 @@ jobs:
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
 
-      # macOS: Import signing certificate
+      # macOS: Import signing certificate (skip if secrets not configured)
       - name: Import Apple certificate
-        if: contains(matrix.platform, 'macos')
+        if: contains(matrix.platform, 'macos') && env.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -107,12 +110,12 @@ jobs:
         run: npm run build:sidecar
 
       # Build Tauri app
-      - name: Build Tauri (macOS signed)
+      - name: Build Tauri (macOS)
         if: contains(matrix.platform, 'macos')
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: 'Developer ID Application: Valeriy Kovalsky (A933C2TJXU)'
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_CERTIFICATE != '' && 'Developer ID Application: Valeriy Kovalsky (A933C2TJXU)' || '-' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -129,9 +132,9 @@ jobs:
         run: |
           cd src-tauri && cargo tauri build --target ${{ matrix.target }}
 
-      # macOS: Notarize
+      # macOS: Notarize (only if certificate is configured)
       - name: Notarize macOS DMG
-        if: contains(matrix.platform, 'macos')
+        if: contains(matrix.platform, 'macos') && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
