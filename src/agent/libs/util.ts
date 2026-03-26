@@ -1,5 +1,6 @@
 import { claudeCodeEnv, loadClaudeSettingsEnv } from "./claude-settings.js";
 import { loadApiSettings } from "./settings-store.js";
+import { resolveModelCredentials } from "./resolve-model.js";
 import type { ApiSettings } from "../types.js";
 import { join } from "path";
 import { homedir } from "os";
@@ -82,30 +83,44 @@ export function getEnhancedEnv(guiSettings?: ApiSettings | null): Record<string,
 export const claudeCodePath = getClaudeCodePath();
 export const enhancedEnv = getEnhancedEnv();
 
-export const generateSessionTitle = async (userIntent: string | null) => {
+export const generateSessionTitle = async (userIntent: string | null, modelSpec?: string) => {
   if (!userIntent) return "New Chat";
 
   try {
-    // Load GUI settings with priority
-    const guiSettings = loadApiSettings();
+    // Try to resolve credentials from the session's model first
+    const creds = resolveModelCredentials(modelSpec);
 
-    // If no valid settings, use simple fallback
-    if (!guiSettings || !guiSettings.apiKey) {
-      return extractFallbackTitle(userIntent);
+    let apiKey: string | undefined;
+    let baseURL: string | undefined;
+    let modelName: string | undefined;
+
+    if (creds) {
+      apiKey = creds.apiKey;
+      baseURL = creds.baseURL;
+      modelName = creds.modelName;
+    } else {
+      // Fallback to legacy GUI settings
+      const guiSettings = loadApiSettings();
+      if (!guiSettings || !guiSettings.apiKey) {
+        return extractFallbackTitle(userIntent);
+      }
+      apiKey = guiSettings.apiKey;
+      baseURL = guiSettings.baseUrl || undefined;
+      modelName = guiSettings.model || 'gpt-3.5-turbo';
     }
 
-    // Create OpenAI client with user settings
-    const client = new OpenAI({
-      apiKey: guiSettings.apiKey,
-      baseURL: guiSettings.baseUrl ? `${guiSettings.baseUrl}` : undefined,
-    });
+    // 5-second timeout to avoid blocking on slow models
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const client = new OpenAI({ apiKey, baseURL });
 
     const response = await client.chat.completions.create({
-      model: guiSettings.model || 'gpt-3.5-turbo',
+      model: modelName || 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: `You are a chat title generator. Generate a SHORT title (1-2 words MAX) that captures the essence of the user's request. 
+          content: `You are a chat title generator. Generate a SHORT title (1-2 words MAX) that captures the essence of the user's request.
 
 Rules:
 - Output ONLY the title, nothing else
@@ -121,7 +136,9 @@ Rules:
       ],
       max_tokens: 10,
       temperature: 0.3,
-    });
+    }, { signal: controller.signal });
+
+    clearTimeout(timeout);
 
     const title = response.choices[0]?.message?.content?.trim();
     if (title) {
