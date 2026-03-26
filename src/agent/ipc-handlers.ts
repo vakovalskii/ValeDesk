@@ -610,6 +610,24 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
       payload: { sessionId: session.id, prompt: event.payload.prompt }
     });
 
+    // Auto-generate title using the session's LLM model
+    if (session.title === "New Chat" && event.payload.prompt?.trim()) {
+      generateSessionTitle(event.payload.prompt, session.model)
+        .then((newTitle) => {
+          const current = sessions.getSession(session.id);
+          if (current && current.title === "New Chat" && newTitle && newTitle !== "New Chat") {
+            sessions.updateSession(session.id, { title: newTitle });
+            sessionManager.emitToWindow(windowId, {
+              type: "session.status",
+              payload: { sessionId: session.id, status: current.status, title: newTitle, cwd: session.cwd, model: session.model }
+            });
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to generate title for new session:', err);
+        });
+    }
+
     selectRunner(session.model)({
       prompt: event.payload.prompt,
       session,
@@ -660,14 +678,15 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
     // Generate title for empty chats on first real prompt
     let sessionTitle = session.title;
     if (isFirstRun && session.title === "New Chat" && event.payload.prompt) {
-      // Generate title asynchronously but don't block
-      generateSessionTitle(event.payload.prompt)
+      // Generate title asynchronously using the session's model
+      generateSessionTitle(event.payload.prompt, session.model)
         .then((newTitle) => {
-          if (newTitle && newTitle !== "New Chat") {
+          const current = sessions.getSession(session.id);
+          if (current && current.title === "New Chat" && newTitle && newTitle !== "New Chat") {
             sessions.updateSession(session.id, { title: newTitle });
             emit({
               type: "session.status",
-              payload: { sessionId: session.id, status: session.status, title: newTitle, cwd: session.cwd, model: session.model }
+              payload: { sessionId: session.id, status: current.status, title: newTitle, cwd: session.cwd, model: session.model }
             });
           }
         })

@@ -9,6 +9,7 @@ import { MemorySessionStore } from "./session-store-memory.js";
 import { runClaude as runClaudeSDK } from "../agent/libs/runner.js";
 import { runClaude as runOpenAI } from "../agent/libs/runner-openai.js";
 import { loadApiSettings, saveApiSettings } from "../agent/libs/settings-store.js";
+import { generateSessionTitle } from "../agent/libs/util.js";
 import { loadLLMProviderSettings, saveLLMProviderSettings } from "../agent/libs/llm-providers-store.js";
 import { fetchModelsFromProvider, checkModelsAvailability } from "../agent/libs/llm-providers.js";
 import { loadSkillsSettings, toggleSkill, setMarketplaceUrl, addRepository, updateRepository, removeRepository, toggleRepository } from "../agent/libs/skills-store.js";
@@ -521,6 +522,25 @@ function handleSessionStart(event: Extract<ClientEvent, { type: "session.start" 
   } as any);
 
   emitAndPersist({ type: "stream.user_prompt", payload: { sessionId: session.id, prompt: event.payload.prompt } } as any);
+
+  // Auto-generate title using the session's LLM model
+  if (session.title === "New Chat" && event.payload.prompt?.trim()) {
+    generateSessionTitle(event.payload.prompt, session.model)
+      .then((newTitle) => {
+        const current = sessions.getSession(session.id);
+        if (current && current.title === "New Chat" && newTitle && newTitle !== "New Chat") {
+          sessions.updateSession(session.id, { title: newTitle });
+          emit({
+            type: "session.status",
+            payload: { sessionId: session.id, status: current.status, title: newTitle, cwd: session.cwd, model: session.model, temperature: session.temperature },
+          } as any);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to generate title for new session:", err);
+      });
+  }
+
   startRunner(session.id, event.payload.prompt);
 }
 
@@ -559,6 +579,8 @@ function handleSessionContinue(event: Extract<ClientEvent, { type: "session.cont
     return;
   }
 
+  const isFirstRun = !session.claudeSessionId;
+
   sessions.updateSession(sessionId, { status: "running", lastPrompt: prompt });
   emit({
     type: "session.status",
@@ -566,6 +588,25 @@ function handleSessionContinue(event: Extract<ClientEvent, { type: "session.cont
   } as any);
 
   emitAndPersist({ type: "stream.user_prompt", payload: { sessionId: session.id, prompt } } as any);
+
+  // Auto-generate title for empty chats on first real prompt
+  if (isFirstRun && session.title === "New Chat" && prompt?.trim()) {
+    generateSessionTitle(prompt, session.model)
+      .then((newTitle) => {
+        const current = sessions.getSession(sessionId);
+        if (current && current.title === "New Chat" && newTitle && newTitle !== "New Chat") {
+          sessions.updateSession(sessionId, { title: newTitle });
+          emit({
+            type: "session.status",
+            payload: { sessionId, status: current.status, title: newTitle, cwd: session.cwd, model: session.model, temperature: session.temperature },
+          } as any);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to generate title for continued session:", err);
+      });
+  }
+
   startRunner(session.id, prompt);
 }
 

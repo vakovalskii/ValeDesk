@@ -48,12 +48,8 @@ export function usePromptActions(sendEvent: (event: ClientEvent) => void) {
 
       setPendingStart(true);
       
-      // Generate title from first 3 words of prompt
-      let title = "New Chat";
-      if (trimmedPrompt) {
-        const words = trimmedPrompt.split(/\s+/).slice(0, 3);
-        title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-      }
+      // Title starts as "New Chat"; backend will auto-generate via LLM
+      const title = "New Chat";
       sendEvent({
         type: "session.start",
         payload: {
