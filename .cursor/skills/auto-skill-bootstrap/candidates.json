@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-02-19T08:01:24.426193+00:00",
+  "caps": [
+    "docs",
+    "security"
+  ],
+  "missing_caps": [
+    "docs",
+    "security"
+  ],
+  "by_cap": {
+    "docs": {
+      "queries": [
+        "documentation",
+        "readme",
+        "changelog"
+      ],
+      "candidates": []
+    },
+    "security": {
+      "queries": [
+        "security",
+        "secrets",
+        "hardening"
+      ],
+      "candidates": []
+    }
+  }
+}

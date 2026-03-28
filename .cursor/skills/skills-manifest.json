@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-02-19T08:01:24.426053+00:00",
+  "repo_root": "/workspaces/work/repos/Global Projects/ValeDesk",
+  "skills_root": "/workspaces/work/repos/Global Projects/ValeDesk/.cursor/skills",
+  "skills": [
+    {
+      "name": "agent-git-workflow",
+      "description": "Standardizes git workflow for the AI agent in the sandbox devcontainer: work in agent/<task>-<yyyymmdd>, integrate via agent, never push to main/master, open PRs via GitHub CLI. Use when the user asks to create branches, push changes, open PRs, or follow this sandbox repo setup.",
+      "path": "/workspaces/work/repos/Global Projects/ValeDesk/.cursor/skills/agent-git-workflow/SKILL.md",
+      "scope": "project",
+      "capabilities": [
+        "git",
+        "github"
+      ]
+    },
+    {
+      "name": "auto-skill-bootstrap",
+      "description": "Deterministic helper to inventory existing project skills, detect missing capability coverage, search skills.sh via Skills CLI, and (optionally) install missing skills under a trust policy. Uses skills-manifest.json + state.json to stay idempotent across changing requirements.",
+      "path": "/workspaces/work/repos/Global Projects/ValeDesk/.cursor/skills/auto-skill-bootstrap/SKILL.md",
+      "scope": "project",
+      "capabilities": [
+        "skills-management"
+      ]
+    },
+    {
+      "name": "find-skills",
+      "description": "Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.",
+      "path": "/workspaces/work/repos/Global Projects/ValeDesk/.cursor/skills/find-skills/SKILL.md",
+      "scope": "project",
+      "capabilities": [
+        "skills-management"
+      ]
+    },
+    {
+      "name": "sandbox-framework",
+      "description": "Behavior + permission model for the AI agent inside the sandbox devcontainer. The agent has sudo and may modify its container environment freely to solve tasks, but must never bypass explicit safety restrictions (git hooks/blocks, policy rules) or escalate beyond the sandbox.",
+      "path": "/workspaces/work/repos/Global Projects/ValeDesk/.cursor/skills/sandbox-framework/SKILL.md",
+      "scope": "project",
+      "capabilities": [
+        "sandbox",
+        "security"
+      ]
+    }
+  ]
+}

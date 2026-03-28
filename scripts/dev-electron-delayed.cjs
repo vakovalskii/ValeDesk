@@ -2,6 +2,12 @@
 const { spawn } = require('child_process');
 
 const isWindows = process.platform === 'win32';
+const isLinux = process.platform === 'linux';
+
+// Use xvfb on Linux when DISPLAY is not set (headless/devcontainer)
+function needsXvfb() {
+  return isLinux && !process.env.DISPLAY;
+}
 
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -34,15 +40,23 @@ setTimeout(async () => {
       return;
     }
 
-    // Run electron
-    const electronCode = await runCommand(
-      'npx',
-      ['electron', '.', '--no-sandbox'],
-      {
-        env: { ...process.env, NODE_ENV: 'development' },
-        cwd: process.cwd()
-      }
-    );
+    const cwd = process.cwd();
+    const env = { ...process.env, NODE_ENV: 'development' };
+
+    let electronCode;
+    if (needsXvfb()) {
+      electronCode = await runCommand(
+        '/usr/bin/xvfb-run',
+        ['-a', 'npx', 'electron', '.', '--no-sandbox'],
+        { env, cwd }
+      );
+    } else {
+      electronCode = await runCommand(
+        'npx',
+        ['electron', '.', '--no-sandbox'],
+        { env, cwd }
+      );
+    }
 
     process.exit(electronCode || 0);
   } catch (err) {

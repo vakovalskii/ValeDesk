@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { useIPC } from "./hooks/useIPC";
 import { useAppStore } from "./store/useAppStore";
-import type { ServerEvent, ApiSettings, ClientEvent, LLMModel } from "./types";
+import type { ServerEvent, ApiSettings, ClientEvent, LLMModel, MiniWorkflow, MiniWorkflowSummary } from "./types";
 import { I18nProvider, useI18n, mapSystemLocaleToSupported } from "./i18n";
 import { Sidebar } from "./components/Sidebar";
 import { StartSessionModalWithActions } from "./components/StartSessionModal";
@@ -13,6 +13,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { FileBrowser } from "./components/FileBrowser";
 import { PromptInput } from "./components/PromptInput";
 import { MessageCard } from "./components/EventCard";
+import DistillPanel from "./components/DistillPanel";
 import { AppFooter } from "./components/AppFooter";
 import { TodoPanel } from "./components/TodoPanel";
 import MDContent from "./render/markdown";
@@ -30,6 +31,8 @@ function AppHeader({
   activeSession,
   showFileBrowser,
   setShowFileBrowser,
+  showWorkflowPanel,
+  setShowWorkflowPanel,
 }: {
   activeSessionId: string | null;
   setShowSessionEditModal: (v: boolean) => void;
@@ -41,6 +44,8 @@ function AppHeader({
   activeSession: { cwd?: string; title?: string } | undefined;
   showFileBrowser: boolean;
   setShowFileBrowser: (v: boolean) => void;
+  showWorkflowPanel?: boolean;
+  setShowWorkflowPanel?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -127,6 +132,20 @@ function AppHeader({
               </svg>
             </button>
           </div>
+        )}
+        {setShowWorkflowPanel && (
+          <button
+            onClick={() => setShowWorkflowPanel((v: boolean) => !v)}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+              showWorkflowPanel
+                ? "bg-accent/10 border-accent/30 text-accent"
+                : "bg-ink-900/5 border-ink-900/10 text-ink-600"
+            }`}
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            title="Vale Apps"
+          >
+            Vale Apps
+          </button>
         )}
         <button
           onClick={() => {
@@ -276,6 +295,38 @@ function App() {
   const isUserScrolledUpRef = useRef(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [showWorkflowPanel, setShowWorkflowPanelRaw] = useState(false);
+  const setShowWorkflowPanel = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setShowWorkflowPanelRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next !== prev) {
+        try { getPlatform().send?.("toggle-side-panel", next); } catch { /* non-electron */ }
+      }
+      return next;
+    });
+  }, []);
+  const [miniWorkflows, setMiniWorkflows] = useState<MiniWorkflowSummary[]>([]);
+  const [workflowFilter, setWorkflowFilter] = useState("");
+  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<"run" | "edit">("run");
+  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | null>(null);
+  const [distillSessionId, setDistillSessionId] = useState<string | null>(null);
+  const [distillLoading, setDistillLoading] = useState(false);
+  const [distillWorkflow, setDistillWorkflow] = useState<MiniWorkflow | null>(null);
+  const [distillError, setDistillError] = useState<string | null>(null);
+  const [distillQuestions, setDistillQuestions] = useState<string[]>([]);
+  const [distillUsage, setDistillUsage] = useState<{ input_tokens: number; output_tokens: number } | null>(null);
+  const [distillProgress, setDistillProgress] = useState<{ step: number; totalSteps: number; label: string } | null>(null);
+  const [replayVerification, setReplayVerification] = useState<{ match: boolean; summary: string; discrepancies: string[]; suggestions: string[] } | null>(null);
+  const [replayArtifacts, setReplayArtifacts] = useState<{ filesCreated: string[]; stepResults: Record<string, string>; workspaceDir?: string } | null>(null);
+  const [verifyCycles, setVerifyCycles] = useState<{ used: number; max: number } | null>(null);
+  const [distillDebugLogPath, setDistillDebugLogPath] = useState<string | null>(null);
+  const [showDistillConfig, setShowDistillConfig] = useState(false);
+  const [distillConfigModel, setDistillConfigModel] = useState("");
+  const [distillConfigMaxCycles, setDistillConfigMaxCycles] = useState(3);
+  const [runWorkflow, setRunWorkflow] = useState<MiniWorkflow | null>(null);
+  const [runInputs, setRunInputs] = useState<Record<string, string>>({});
+  const [runModel, setRunModel] = useState<string>("");
+  const [deleteWorkflowCandidate, setDeleteWorkflowCandidate] = useState<MiniWorkflowSummary | null>(null);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [showRoleGroupDialog, setShowRoleGroupDialog] = useState(false);
   const [showSessionEditModal, setShowSessionEditModal] = useState(false);
@@ -379,14 +430,116 @@ function App() {
     if (event.type === "llm.providers.loaded") {
       setLlmProvidersLoaded(true);
     }
-    
+
+    if (event.type === "miniworkflow.list") {
+      setMiniWorkflows(event.payload.workflows);
+    }
+    if (event.type === "miniworkflow.distill.progress") {
+      const { step, totalSteps, label, usage } = event.payload;
+      setDistillProgress({ step, totalSteps, label });
+      if (usage) setDistillUsage(usage);
+    }
+    if (event.type === "miniworkflow.distill.result") {
+      setDistillLoading(false);
+      setDistillProgress(null);
+      setDistillUsage(event.payload.usage || null);
+      if (event.payload.debugLogPath) setDistillDebugLogPath(event.payload.debugLogPath);
+      const result = event.payload.result as any;
+      if (result.status === "success") {
+        // Sanitize workflow to ensure all fields are correct types for rendering
+        const wf = result.workflow as any;
+        try {
+          const sanitized: MiniWorkflow = {
+            ...wf,
+            name: String(wf.name || ""),
+            description: String(wf.description || ""),
+            goal: String(wf.goal || ""),
+            inputs: Array.isArray(wf.inputs) ? wf.inputs.map((inp: any) => ({
+              ...inp,
+              id: String(inp.id || ""),
+              title: String(inp.title || ""),
+              description: String(inp.description || ""),
+              type: String(inp.type || "string"),
+              required: Boolean(inp.required),
+            })) : [],
+            chain: Array.isArray(wf.chain) ? wf.chain.map((s: any) => ({
+              ...s,
+              id: String(s.id || ""),
+              title: String(s.title || ""),
+              prompt_template: String(s.prompt_template || ""),
+              tools: Array.isArray(s.tools) ? s.tools.map(String) : [],
+              output_key: String(s.output_key || ""),
+              execution: s.execution || "llm",
+              script: s.script || undefined,
+            })) : [],
+            validation: wf.validation ? {
+              acceptance_criteria: String(wf.validation.acceptance_criteria || ""),
+              prompt_template: String(wf.validation.prompt_template || ""),
+              tools: Array.isArray(wf.validation.tools) ? wf.validation.tools.map(String) : [],
+              max_fix_attempts: Number(wf.validation.max_fix_attempts) || 3,
+            } : { acceptance_criteria: "", prompt_template: "", tools: [], max_fix_attempts: 3 },
+            artifacts: Array.isArray(wf.artifacts) ? wf.artifacts : [],
+          };
+          setDistillWorkflow(sanitized);
+          setDistillError(null);
+          setDistillQuestions([]);
+          console.log("[UI] Distill workflow set:", sanitized.id, sanitized.name, "inputs:", sanitized.inputs.length, "chain:", sanitized.chain.length);
+        } catch (e) {
+          console.error("[UI] Failed to sanitize workflow:", e, wf);
+          setDistillWorkflow(null);
+          setDistillQuestions([]);
+          setDistillError(`Ошибка обработки workflow: ${String(e)}`);
+        }
+      } else if (result.status === "needs_clarification") {
+        setDistillWorkflow(null);
+        setDistillQuestions(result.questions || []);
+        setDistillError("Нужны уточнения для построения workflow.");
+      } else {
+        setDistillWorkflow(null);
+        setDistillQuestions([]);
+        setDistillError(result.reason || "Сессия не подходит для distill.");
+      }
+    }
+    if (event.type === "miniworkflow.loaded") {
+      const full = event.payload.workflow;
+      if (pendingWorkflowAction === "edit") {
+        setDistillSessionId(full.source_session_id || "manual");
+        setDistillWorkflow(full);
+        setDistillLoading(false);
+        setDistillError(null);
+        setDistillQuestions([]);
+      } else {
+        const defaults: Record<string, string> = {};
+        for (const input of full.inputs) defaults[input.id] = String(input.default ?? "");
+        setRunInputs(defaults);
+        setRunWorkflow(full);
+      }
+    }
+    if (event.type === "miniworkflow.replay.verified") {
+      setReplayVerification(event.payload.verification);
+      setReplayArtifacts(event.payload.replayArtifacts || null);
+      setVerifyCycles(event.payload.verifyCycles || null);
+    }
+    if (event.type === "miniworkflow.refine.result") {
+      // Forward to DistillPanel via CustomEvent
+      window.dispatchEvent(new CustomEvent("distill-refine", { detail: event }));
+    }
+    if (event.type === "miniworkflow.error") {
+      setGlobalError(event.payload.message);
+    }
+    if (event.type === "miniworkflow.replay.started") {
+      const { sessionId } = event.payload;
+      useAppStore.getState().setActiveSessionId(sessionId);
+    }
+
     // Scheduler notifications are now handled natively by Rust
     if (event.type === "scheduler.notification") {
       console.log(`[scheduler] 🔔 ${event.payload.title}: ${event.payload.body}`);
     }
-  }, [handleServerEvent, handlePartialMessages]);
+  }, [handleServerEvent, handlePartialMessages, pendingWorkflowAction, setGlobalError]);
 
   const { connected, sendEvent } = useIPC(onEvent);
+
 
   const activeSession = activeSessionId ? sessions[activeSessionId] : undefined;
   const messages = activeSession?.messages ?? [];
@@ -396,6 +549,7 @@ function App() {
   useEffect(() => {
     if (connected) {
       sendEvent({ type: "session.list" });
+      sendEvent({ type: "miniworkflow.list", payload: { cwd: activeSession?.cwd, global: true } });
       sendEvent({ type: "settings.get" });
       sendEvent({ type: "models.get" });
       sendEvent({ type: "llm.providers.get" });
@@ -403,6 +557,14 @@ function App() {
       sendEvent({ type: "scheduler.default_temperature.get" });
     }
   }, [connected, sendEvent]);
+
+  // Reload workflow list when active session changes — use any known cwd as fallback
+  const anyCwd = activeSession?.cwd || Object.values(sessions).find(s => s.cwd)?.cwd;
+  useEffect(() => {
+    if (connected && anyCwd) {
+      sendEvent({ type: "miniworkflow.list", payload: { cwd: anyCwd, global: true } });
+    }
+  }, [connected, activeSessionId, anyCwd, sendEvent]);
 
   // Detect system locale for first-run (Tauri: getLocale, Electron: navigator.language)
   useEffect(() => {
@@ -712,6 +874,57 @@ function App() {
     setShowRoleGroupDialog(false);
   }, [sendEvent, setGlobalError]);
 
+  const handleDistillWorkflow = useCallback(() => {
+    if (!activeSessionId) return;
+    // Pre-set model from session
+    const sessionModel = activeSession?.model || "";
+    setDistillConfigModel(sessionModel);
+    setDistillConfigMaxCycles(3);
+    setShowDistillConfig(true);
+  }, [activeSessionId, activeSession]);
+
+  const handleDistillStart = useCallback((model: string, maxCycles: number) => {
+    if (!activeSessionId) return;
+    setShowDistillConfig(false);
+    setDistillSessionId(activeSessionId);
+    setDistillLoading(true);
+    setDistillWorkflow(null);
+    setDistillError(null);
+    setDistillQuestions([]);
+    setDistillUsage(null);
+    setDistillProgress(null);
+    setReplayVerification(null);
+    setVerifyCycles(null);
+    setDistillDebugLogPath(null);
+    sendEvent({
+      type: "miniworkflow.distill",
+      payload: {
+        sessionId: activeSessionId,
+        model: model || undefined,
+        maxVerifyCycles: maxCycles
+      }
+    });
+  }, [activeSessionId, sendEvent]);
+
+  const hasToolUseInMessages = messages.some((m: any) => m?.type === "tool_use")
+    || messages.some((m: any) => m?.type === "assistant" && Array.isArray(m?.message?.content) && m.message.content.some((c: any) => c?.type === "tool_use"));
+  const canSaveMiniWorkflow = Boolean(
+    activeSessionId &&
+    activeSession &&
+    (activeSession.status === "completed" || activeSession.status === "idle") &&
+    hasToolUseInMessages &&
+    !distillLoading
+  );
+  const saveMiniWorkflowHint = !activeSessionId
+    ? "Откройте сессию"
+    : distillLoading
+      ? "Идет анализ сессии..."
+      : activeSession?.status === "running"
+      ? "Дождитесь завершения сессии"
+      : !hasToolUseInMessages
+        ? "Нет вызовов инструментов в сессии"
+        : undefined;
+
   return (
     <I18nProvider
       initialLocale={effectiveLocale}
@@ -728,7 +941,7 @@ function App() {
         apiSettings={apiSettings}
       />
 
-      <main className="flex flex-1 flex-col ml-[280px] bg-surface-cream overflow-hidden">
+      <main className={`flex flex-1 flex-col ml-[280px] bg-surface-cream overflow-hidden ${showWorkflowPanel ? "mr-[320px]" : ""}`}>
         <AppHeader
           activeSessionId={activeSessionId}
           setShowSessionEditModal={setShowSessionEditModal}
@@ -740,6 +953,8 @@ function App() {
           activeSession={activeSession}
           showFileBrowser={showFileBrowser}
           setShowFileBrowser={setShowFileBrowser}
+          showWorkflowPanel={showWorkflowPanel}
+          setShowWorkflowPanel={setShowWorkflowPanel}
         />
 
         <div ref={messagesContainerRef} id="messages-container" className={`flex-1 overflow-y-auto overflow-x-hidden px-8 pt-6 min-w-0 ${activeSession?.todos && activeSession.todos.length > 0 ? 'pb-4' : 'pb-40'}`}>
@@ -807,8 +1022,115 @@ function App() {
           </div>
         )}
 
-        <PromptInput sendEvent={sendEvent} />
+        <PromptInput
+          sendEvent={sendEvent}
+          onSaveMiniWorkflow={handleDistillWorkflow}
+          canSaveMiniWorkflow={canSaveMiniWorkflow}
+          saveMiniWorkflowHint={saveMiniWorkflowHint}
+          workflowPanelOpen={showWorkflowPanel}
+          saveMiniWorkflowLoading={distillLoading}
+        />
       </main>
+
+      <aside
+        className={`fixed inset-y-0 right-0 z-[70] w-[320px] border-l border-ink-900/10 bg-[#FAF9F6] px-3 pt-3 pb-3 overflow-y-auto transition-transform duration-200 ease-out ${
+          showWorkflowPanel ? "translate-x-0" : "translate-x-full pointer-events-none"
+        }`}
+      >
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-ink-700">Vale Apps</h3>
+            <button
+              type="button"
+              className="rounded-lg border border-ink-900/10 px-2 py-1 text-xs text-ink-600 hover:bg-ink-100"
+              onClick={() => setShowWorkflowPanel(false)}
+            >
+              X
+            </button>
+          </div>
+          <input
+            className="mb-3 w-full rounded-xl border border-ink-900/10 bg-white pl-2.5 pr-2.5 py-1.5 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
+            placeholder="Filter by name/tags..."
+            value={workflowFilter}
+            onChange={(e) => setWorkflowFilter(e.target.value)}
+          />
+          {miniWorkflows.length === 0 ? (
+            <div className="rounded-lg border border-ink-900/10 bg-white p-3 text-xs text-muted">
+              No published workflows yet.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {miniWorkflows
+                .filter((wf) => {
+                  const q = workflowFilter.trim().toLowerCase();
+                  if (!q) return true;
+                  const tags = (wf.tags || []).join(" ").toLowerCase();
+                  return wf.name.toLowerCase().includes(q) || wf.description.toLowerCase().includes(q) || tags.includes(q);
+                })
+                .map((wf) => (
+                <div key={wf.id} className="rounded-lg border border-ink-900/10 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-ink-800">{wf.icon} {wf.name}</div>
+                      <div className="text-[11px] text-muted">v{wf.version} - inputs: {wf.inputs_count}</div>
+                    </div>
+                    <div className="relative">
+                      <button
+                        className="rounded-md border border-ink-900/10 px-2 py-1 text-[11px] text-ink-600 hover:bg-ink-100"
+                        onClick={() => setOpenWorkflowMenuId((prev) => prev === wf.id ? null : wf.id)}
+                      >
+                        ...
+                      </button>
+                      {openWorkflowMenuId === wf.id && (
+                        <div className="absolute right-0 top-7 z-20 min-w-[140px] rounded-lg border border-ink-900/10 bg-white p-1 shadow-lg">
+                          <button
+                            className="block w-full rounded px-2 py-1 text-left text-xs text-ink-700 hover:bg-ink-100"
+                            onClick={() => {
+                              setPendingWorkflowAction("edit");
+                              sendEvent({ type: "miniworkflow.get", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                              setOpenWorkflowMenuId(null);
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="block w-full rounded px-2 py-1 text-left text-xs text-ink-700 hover:bg-ink-100"
+                            onClick={() => {
+                              sendEvent({ type: "miniworkflow.archive", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                              setOpenWorkflowMenuId(null);
+                            }}
+                          >
+                            Archive
+                          </button>
+                          <button
+                            className="block w-full rounded px-2 py-1 text-left text-xs text-error hover:bg-error/10"
+                            onClick={() => {
+                              setDeleteWorkflowCandidate(wf);
+                              setOpenWorkflowMenuId(null);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-ink-600">{wf.description}</p>
+                  <div className="mt-2 flex items-center justify-end">
+                    <button
+                      className="rounded-md border border-accent/30 bg-accent/10 px-2.5 py-1.5 text-xs text-accent hover:bg-accent/20"
+                      onClick={() => {
+                        setPendingWorkflowAction("run");
+                        sendEvent({ type: "miniworkflow.get", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                      }}
+                    >
+                      Run
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+      </aside>
 
       <AppModals
         showStartModal={showStartModal}
@@ -843,6 +1165,232 @@ function App() {
         handleCreateRoleGroupTask={handleCreateRoleGroupTask}
       />
 
+      {showDistillConfig && (
+        <div className="fixed inset-0 z-50 bg-ink-900/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-ink-900/10 bg-white shadow-xl p-6 space-y-4">
+            <h3 className="text-sm font-semibold text-ink-800">Настройки дистилляции</h3>
+            <label className="block text-xs text-ink-700">
+              Модель
+              <div className="text-[10px] text-ink-400 mb-1">Рекомендуется использовать самую мощную / размышляющую модель</div>
+              <select
+                className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
+                value={distillConfigModel}
+                onChange={(e) => setDistillConfigModel(e.target.value)}
+              >
+                <option value="">Модель сессии ({activeSession?.model?.split("::").pop() || "default"})</option>
+                {llmModels.filter(m => m.enabled !== false).map(m => (
+                  <option key={m.id} value={m.id}>{m.name} ({m.providerType})</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs text-ink-700">
+              Макс. циклов ревью-багфикс
+              <div className="text-[10px] text-ink-400 mb-1">Сколько итераций "тестовый прогон → верификация → исправление" (1-10)</div>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
+                value={distillConfigMaxCycles}
+                onChange={(e) => setDistillConfigMaxCycles(Math.max(1, Math.min(10, Number(e.target.value) || 3)))}
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                className="rounded-lg border border-ink-900/20 bg-ink-100 px-3 py-1.5 text-xs text-ink-700 hover:bg-ink-200"
+                onClick={() => setShowDistillConfig(false)}
+              >
+                Отмена
+              </button>
+              <button
+                className="rounded-lg bg-accent px-4 py-1.5 text-xs text-white hover:bg-accent-hover"
+                onClick={() => handleDistillStart(distillConfigModel, distillConfigMaxCycles)}
+              >
+                Начать дистилляцию
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {distillSessionId && (
+        <DistillPanel
+          distillLoading={distillLoading}
+          distillWorkflow={distillWorkflow}
+          distillError={distillError}
+          distillQuestions={distillQuestions}
+          distillUsage={distillUsage}
+          distillProgress={distillProgress}
+          activeSessionId={distillSessionId}
+          activeSessionCwd={activeSession?.cwd}
+          onClose={() => {
+            setDistillSessionId(null);
+            setDistillWorkflow(null);
+            setReplayVerification(null);
+            setReplayArtifacts(null);
+            setVerifyCycles(null);
+            setDistillDebugLogPath(null);
+          }}
+          onSave={(wf, status) => {
+            sendEvent({
+              type: "miniworkflow.save",
+              payload: {
+                workflow: { ...wf, status },
+                scope: activeSession?.cwd ? "project" : "global",
+                cwd: activeSession?.cwd
+              }
+            });
+            setDistillSessionId(null);
+            setDistillWorkflow(null);
+            setReplayVerification(null);
+            setReplayArtifacts(null);
+            setVerifyCycles(null);
+            setDistillDebugLogPath(null);
+          }}
+          onRetry={(errors) => {
+            if (!activeSessionId) return;
+            setDistillLoading(true);
+            setDistillError(null);
+            sendEvent({
+              type: "miniworkflow.distill",
+              payload: { sessionId: activeSessionId, validationErrors: errors }
+            });
+          }}
+          onSetWorkflow={setDistillWorkflow}
+          sendEvent={sendEvent}
+          replayVerification={replayVerification}
+          replayArtifacts={replayArtifacts}
+          verifyCycles={verifyCycles}
+          debugLogPath={distillDebugLogPath}
+        />
+      )}
+
+      {runWorkflow && (
+        <div className="fixed inset-0 z-50 bg-ink-900/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-xl border border-ink-900/10 bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ink-800">Запуск: {runWorkflow.name}</h3>
+              <button className="rounded-md border border-ink-900/10 px-2 py-1 text-xs text-ink-600 hover:bg-ink-100" onClick={() => setRunWorkflow(null)}>
+                Close
+              </button>
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs text-ink-700 font-medium mb-1">Model</label>
+              {(() => {
+                const enabledModels = llmModels.filter(m => m.enabled !== false);
+                if (enabledModels.length === 0) {
+                  return <p className="text-xs text-ink-500">No models configured</p>;
+                }
+                return (
+                  <select
+                    className="w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
+                    value={runModel || enabledModels[0]?.id || ""}
+                    onChange={(e) => setRunModel(e.target.value)}
+                  >
+                    {enabledModels.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                );
+              })()}
+            </div>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {runWorkflow.inputs.map((input) => (
+                <label key={input.id} className="block text-xs text-ink-700">
+                  {input.title || input.id}
+                  {input.type === "boolean" ? (
+                    <div className="mt-1 flex items-center gap-2 rounded-lg border border-ink-900/10 px-2 py-1.5 bg-white">
+                      <input
+                        type="checkbox"
+                        checked={String(runInputs[input.id] ?? "").toLowerCase() === "true"}
+                        onChange={(e) => setRunInputs((prev) => ({ ...prev, [input.id]: String(e.target.checked) }))}
+                      />
+                      <span className="text-xs text-ink-600">{input.description || input.id}</span>
+                    </div>
+                  ) : input.type === "enum" && Array.isArray(input.enum_values) ? (
+                    <select
+                      className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
+                      value={runInputs[input.id] ?? ""}
+                      onChange={(e) => setRunInputs((prev) => ({ ...prev, [input.id]: e.target.value }))}
+                    >
+                      <option value="">Выберите значение</option>
+                      {input.enum_values.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type={
+                        input.type === "secret" ? "password"
+                          : input.type === "number" ? "number"
+                            : input.type === "date" ? "date"
+                              : input.type === "datetime" ? "datetime-local"
+                                : input.type === "url" ? "url"
+                                  : "text"
+                      }
+                      className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
+                      value={runInputs[input.id] ?? ""}
+                      onChange={(e) => setRunInputs((prev) => ({ ...prev, [input.id]: e.target.value }))}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded-lg border border-ink-900/10 px-3 py-1.5 text-xs text-ink-700 hover:bg-ink-100" onClick={() => setRunWorkflow(null)}>
+                Отмена
+              </button>
+              <button
+                className={`rounded-lg px-3 py-1.5 text-xs text-white ${
+                  runWorkflow.inputs.some((input) => input.required && !String(runInputs[input.id] ?? "").trim())
+                    ? "bg-ink-400 cursor-not-allowed"
+                    : "bg-accent hover:bg-accent-hover"
+                }`}
+                onClick={() => {
+                  if (runWorkflow.inputs.some((input) => input.required && !String(runInputs[input.id] ?? "").trim())) return;
+                  sendEvent({
+                    type: "miniworkflow.replay",
+                    payload: { workflowId: runWorkflow.id, inputs: runInputs, cwd: activeSession?.cwd, model: runModel || undefined }
+                  });
+                  setRunWorkflow(null);
+                }}
+              >
+                Запустить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteWorkflowCandidate && (
+        <div className="fixed inset-0 z-50 bg-ink-900/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-ink-900/10 bg-white p-4 shadow-xl">
+            <h3 className="text-sm font-semibold text-ink-800">Удалить workflow</h3>
+            <p className="mt-2 text-sm text-ink-700">
+              Удалить workflow "{deleteWorkflowCandidate.name}"? Это действие необратимо.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="rounded-lg border border-ink-900/10 px-3 py-1.5 text-xs text-ink-700 hover:bg-ink-100"
+                onClick={() => setDeleteWorkflowCandidate(null)}
+              >
+                Отмена
+              </button>
+              <button
+                className="rounded-lg bg-error px-3 py-1.5 text-xs text-white hover:bg-error/90"
+                onClick={() => {
+                  sendEvent({
+                    type: "miniworkflow.delete",
+                    payload: { workflowId: deleteWorkflowCandidate.id, scope: "both", cwd: activeSession?.cwd }
+                  });
+                  setDeleteWorkflowCandidate(null);
+                }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {globalError && (
         <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-error/20 bg-error-light px-4 py-3 shadow-lg">
           <div className="flex items-center gap-3">
@@ -862,7 +1410,7 @@ function App() {
         />
       )}
 
-      <AppFooter />
+      <AppFooter workflowPanelOpen={showWorkflowPanel} />
     </div>
     </I18nProvider>
   );

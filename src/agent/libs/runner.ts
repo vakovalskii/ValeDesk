@@ -23,6 +23,7 @@ export type RunnerOptions = {
   resumeSessionId?: string;
   onEvent: (event: ServerEvent) => void;
   onSessionUpdate?: (updates: Partial<Session>) => void;
+  secretBag?: Record<string, string>;
 };
 
 export type RunnerHandle = {

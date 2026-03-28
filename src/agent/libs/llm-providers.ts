@@ -13,14 +13,20 @@ function generateModelId(providerId: string, modelName: string): string {
   return `${providerId}::${modelName}`;
 }
 
+const FETCH_MODELS_TIMEOUT_MS = 15000;
+
 // Fetch models from OpenAI-compatible API
 async function fetchOpenAIModels(baseUrl: string, apiKey: string): Promise<PartialModel[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_MODELS_TIMEOUT_MS);
   try {
     const response = await fetch(`${baseUrl}/models`, {
+      signal: controller.signal,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -36,8 +42,12 @@ async function fetchOpenAIModels(baseUrl: string, apiKey: string): Promise<Parti
 
     return models;
   } catch (error) {
+    clearTimeout(timeoutId);
+    const msg = error instanceof Error && error.name === 'AbortError'
+      ? 'Connection timeout - server did not respond in time'
+      : (error instanceof Error ? error.message : String(error));
     console.error('[LLM Providers] Failed to fetch OpenAI models:', error);
-    throw error;
+    throw new Error(msg);
   }
 }
 
