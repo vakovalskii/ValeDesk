@@ -1908,6 +1908,45 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
       Ok(())
     }
 
+    // miniworkflow.distill - enrich with session data and messages from DB
+    "miniworkflow.distill" => {
+      let payload = event.get("payload").ok_or_else(|| "[miniworkflow.distill] missing payload".to_string())?;
+      let session_id = payload.get("sessionId").and_then(|v| v.as_str())
+        .ok_or_else(|| "[miniworkflow.distill] missing sessionId".to_string())?;
+
+      match state.db.get_session_history(session_id) {
+        Ok(Some(history)) => {
+          eprintln!("[miniworkflow.distill] Found session: {}, messages={}", session_id, history.messages.len());
+          let enriched_event = json!({
+            "type": "miniworkflow.distill",
+            "payload": {
+              "sessionId": session_id,
+              "validationErrors": payload.get("validationErrors"),
+              "model": payload.get("model"),
+              "maxVerifyCycles": payload.get("maxVerifyCycles"),
+              "sessionData": {
+                "title": history.session.title,
+                "cwd": history.session.cwd,
+                "model": history.session.model,
+                "allowedTools": history.session.allowed_tools,
+                "temperature": history.session.temperature
+              },
+              "messages": history.messages
+            }
+          });
+          send_to_sidecar(app, state.inner(), &enriched_event)
+        }
+        Ok(None) => {
+          eprintln!("[miniworkflow.distill] Session {} NOT FOUND in DB!", session_id);
+          send_to_sidecar(app, state.inner(), &event)
+        }
+        Err(e) => {
+          eprintln!("[miniworkflow.distill] DB error: {}", e);
+          send_to_sidecar(app, state.inner(), &event)
+        }
+      }
+    }
+
     _ => {
       // Forward unknown events to sidecar
       send_to_sidecar(app, state.inner(), &event)

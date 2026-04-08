@@ -1936,7 +1936,27 @@ async function handleClientEvent(event: ClientEvent) {
       return;
     }
     case "miniworkflow.distill": {
-      const { sessionId: distillSessionId, validationErrors, model: distillModel, maxVerifyCycles: userMaxCycles } = (event as any).payload;
+      const { sessionId: distillSessionId, validationErrors, model: distillModel, maxVerifyCycles: userMaxCycles, sessionData, messages: historyMessages } = (event as any).payload;
+
+      // Restore session in memory if not present (Rust enriches with sessionData + messages)
+      if (!sessions.getSession(distillSessionId) && sessionData) {
+        sessions.restoreSession({
+          id: distillSessionId,
+          title: sessionData.title || "Restored Session",
+          cwd: sessionData.cwd,
+          model: sessionData.model,
+          allowedTools: sessionData.allowedTools,
+          temperature: sessionData.temperature,
+        });
+        if (historyMessages && Array.isArray(historyMessages)) {
+          for (const msg of historyMessages) {
+            const msgs = (sessions as any).messages.get(distillSessionId) || [];
+            msgs.push(msg);
+            (sessions as any).messages.set(distillSessionId, msgs);
+          }
+        }
+      }
+
       const history = sessions.getSessionHistory(distillSessionId);
       if (!history) {
         emit({ type: "miniworkflow.error", payload: { message: "Session not found for distill" } } as any);
