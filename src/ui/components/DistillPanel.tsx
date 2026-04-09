@@ -475,7 +475,7 @@ export default function DistillPanel({
               <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="text-xs text-ink-700">
-                    Name
+                    {t("distill.nameLabel")}
                     <input
                       className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
                       value={distillWorkflow.name}
@@ -483,7 +483,7 @@ export default function DistillPanel({
                     />
                   </label>
                   <label className="text-xs text-ink-700">
-                    Description
+                    {t("distill.descriptionLabel")}
                     <input
                       className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
                       value={distillWorkflow.description}
@@ -493,7 +493,7 @@ export default function DistillPanel({
                 </div>
 
                 <label className="block text-xs text-ink-700">
-                  Goal
+                  {t("distill.goalLabel")}
                   <textarea
                     className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
                     rows={2}
@@ -504,7 +504,7 @@ export default function DistillPanel({
 
                 {/* Inputs */}
                 <div className="rounded-lg border border-ink-900/10 p-3">
-                  <div className="text-xs font-semibold text-ink-700 mb-2">Inputs ({distillWorkflow.inputs.length})</div>
+                  <div className="text-xs font-semibold text-ink-700 mb-2">{t("distill.inputsLabel", { count: distillWorkflow.inputs.length })}</div>
                   {distillWorkflow.inputs.length === 0 ? (
                     <div className="text-xs text-muted">{t("distill.inputsNotFound")}</div>
                   ) : (
@@ -563,7 +563,7 @@ export default function DistillPanel({
                 {/* Acceptance criteria */}
                 {distillWorkflow.validation?.acceptance_criteria && (
                   <div className="rounded-lg border border-success/20 bg-success/5 p-3">
-                    <div className="text-xs font-semibold text-ink-700 mb-1">Acceptance Criteria</div>
+                    <div className="text-xs font-semibold text-ink-700 mb-1">{t("distill.acceptanceCriteria")}</div>
                     <div className="text-xs text-ink-600">{distillWorkflow.validation.acceptance_criteria}</div>
                   </div>
                 )}
@@ -710,9 +710,9 @@ export default function DistillPanel({
                 {(() => {
                   const perms = detectPermissions(distillWorkflow.chain || []);
                   const badges = [
-                    { label: "Network", icon: "🌐", active: perms.network, tooltip: perms.reasons.filter(r => r.permission === "network").map(r => r.reason).join(", ") || "no network" },
-                    { label: "File System", icon: "📁", active: perms.local_fs, tooltip: perms.reasons.filter(r => r.permission === "local_fs").map(r => r.reason).join(", ") || "no fs" },
-                    { label: "Git", icon: "🔀", active: perms.git, tooltip: perms.reasons.filter(r => r.permission === "git").map(r => r.reason).join(", ") || "no git" },
+                    { label: t("distill.permNetwork"), icon: "🌐", active: perms.network, tooltip: perms.reasons.filter(r => r.permission === "network").map(r => r.reason).join(", ") || "no network" },
+                    { label: t("distill.permFileSystem"), icon: "📁", active: perms.local_fs, tooltip: perms.reasons.filter(r => r.permission === "local_fs").map(r => r.reason).join(", ") || "no fs" },
+                    { label: t("distill.permGit"), icon: "🔀", active: perms.git, tooltip: perms.reasons.filter(r => r.permission === "git").map(r => r.reason).join(", ") || "no git" },
                   ];
                   return (
                     <div className="flex flex-wrap gap-2">
