@@ -109,7 +109,7 @@ function StepsPanel({
             {expandedStep === step.id && (
               <div className="px-2.5 pb-2.5 border-t border-ink-900/5 space-y-2">
                 <label className="block mt-2">
-                  <span className="text-[10px] text-ink-500">Title</span>
+                  <span className="text-[10px] text-ink-500">{t("distill.stepTitle")}</span>
                   <input
                     className="w-full rounded border border-ink-900/10 px-2 py-1 text-xs"
                     value={step.title}
@@ -117,7 +117,7 @@ function StepsPanel({
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] text-ink-500">Prompt template</span>
+                  <span className="text-[10px] text-ink-500">{t("distill.stepPromptTemplate")}</span>
                   <textarea
                     className="w-full rounded border border-ink-900/10 px-2 py-1.5 text-xs font-mono resize-y min-h-[100px]"
                     value={step.prompt_template}
@@ -126,7 +126,7 @@ function StepsPanel({
                 </label>
                 {step.execution === "script" && step.script && (
                   <label className="block">
-                    <span className="text-[10px] text-ink-500">Script ({step.script.language})</span>
+                    <span className="text-[10px] text-ink-500">{t("distill.stepScript", { lang: step.script.language })}</span>
                     <textarea
                       className="w-full rounded border border-ink-900/10 px-2 py-1.5 text-xs font-mono resize-y min-h-[80px]"
                       value={step.script.code}
@@ -135,7 +135,7 @@ function StepsPanel({
                   </label>
                 )}
                 <div className="text-[10px] text-muted">
-                  Tools: {(step.tools || []).join(", ") || "none"} · Output: {step.output_key}
+                  {t("distill.stepTools")}: {(step.tools || []).join(", ") || t("distill.stepNone")} · {t("distill.stepOutput")}: {step.output_key}
                 </div>
               </div>
             )}
@@ -398,7 +398,7 @@ export default function DistillPanel({
                   onClick={() => getPlatform().sendClientEvent({ type: "open.path", payload: { path: debugLogPath } })}
                   title={debugLogPath}
                 >
-                  Debug Log
+                  {t("distill.debugLog")}
                 </button>
               )}
               <button
