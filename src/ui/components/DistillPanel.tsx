@@ -3,6 +3,7 @@ import type { MiniWorkflow, ChainStep } from "../../shared/mini-workflow-types.j
 import { detectPermissions } from "../types";
 import MDContent from "../render/markdown";
 import { getPlatform } from "../platform";
+import { useI18n } from "../i18n";
 
 type ReplayVerification = {
   match: boolean;
@@ -41,11 +42,12 @@ function StepsPanel({
   workflow: MiniWorkflow;
   onUpdate: (wf: MiniWorkflow) => void;
 }) {
+  const { t } = useI18n();
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
 
-  const systemPrompt = `Цель: ${workflow.goal}\nDefinition of done: ${workflow.definition_of_done || ""}${
-    workflow.constraints.length > 0 ? "\nОграничения:\n" + workflow.constraints.map(c => `- ${c}`).join("\n") : ""
+  const systemPrompt = `${t("distill.goal")} ${workflow.goal}\nDefinition of done: ${workflow.definition_of_done || ""}${
+    workflow.constraints.length > 0 ? "\n" + t("distill.constraints") + "\n" + workflow.constraints.map(c => `- ${c}`).join("\n") : ""
   }`;
 
   const updateStep = (index: number, patch: Partial<ChainStep>) => {
@@ -57,7 +59,7 @@ function StepsPanel({
   return (
     <div className="flex flex-col h-full">
       <div className="text-xs font-semibold text-ink-700 px-3 pt-3 pb-2">
-        Шаги ({workflow.chain.length})
+        {t("distill.steps", { count: workflow.chain.length })}
       </div>
       <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
         {/* Step 0: System context */}
@@ -68,7 +70,7 @@ function StepsPanel({
             className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-tertiary transition-colors"
           >
             <span className="text-[10px] font-bold text-ink-400 w-5 text-center">0</span>
-            <span className="text-xs font-medium text-ink-700 flex-1 truncate">Системный контекст</span>
+            <span className="text-xs font-medium text-ink-700 flex-1 truncate">{t("distill.systemContext")}</span>
             <svg className={`w-3 h-3 text-ink-400 transition-transform ${expandedStep === "__system" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
@@ -80,7 +82,7 @@ function StepsPanel({
                 value={systemPrompt}
                 readOnly
               />
-              <div className="mt-1 text-[10px] text-muted">Системный контекст (read-only, меняется через Goal/Constraints)</div>
+              <div className="mt-1 text-[10px] text-muted">{t("distill.systemContextHint")}</div>
             </div>
           )}
         </div>
@@ -143,11 +145,11 @@ function StepsPanel({
         {/* Session result (verification) */}
         {workflow.source_result && (
           <div className="rounded-lg border border-accent/20 bg-accent/5 p-2.5 mt-3 space-y-1.5">
-            <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Результат сессии</div>
+            <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">{t("distill.sessionResult")}</div>
             <div className="text-xs text-ink-700">{workflow.source_result.description}</div>
             {workflow.source_result.requirements && (
               <div className="text-[10px] text-ink-500">
-                <span className="font-medium">Требования:</span> {workflow.source_result.requirements}
+                <span className="font-medium">{t("distill.requirements")}</span> {workflow.source_result.requirements}
               </div>
             )}
             {workflow.source_result.artifacts.length > 0 && (
@@ -187,7 +189,7 @@ function StepsPanel({
               className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-surface-tertiary transition-colors"
             >
               <span className="text-[10px] text-ink-400">📋</span>
-              <span className="text-xs font-medium text-ink-500 flex-1">Контекст исходной сессии</span>
+              <span className="text-xs font-medium text-ink-500 flex-1">{t("distill.sourceContext")}</span>
               <svg className={`w-3 h-3 text-ink-400 transition-transform ${contextExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -221,6 +223,7 @@ function ChatPanel({
   sendEvent: (event: any) => void;
   sessionId: string;
 }) {
+  const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -256,7 +259,7 @@ function ChatPanel({
     } catch (err) {
       console.error("[ChatPanel] sendEvent failed:", err);
       setLoading(false);
-      setMessages(prev => [...prev, { role: "assistant", text: `Ошибка отправки: ${err}` }]);
+      setMessages(prev => [...prev, { role: "assistant", text: `${t("distill.chatSendError")}${err}` }]);
     }
   }, [input, loading, sendEvent, sessionId, workflow]);
 
@@ -267,12 +270,12 @@ function ChatPanel({
       if (data?.type === "miniworkflow.refine.result" && data.payload?.sessionId === sessionId) {
         setLoading(false);
         if (data.payload.result?.status === "success") {
-          setMessages(prev => [...prev, { role: "assistant", text: data.payload.result.message || "Workflow обновлён." }]);
+          setMessages(prev => [...prev, { role: "assistant", text: data.payload.result.message || t("distill.chatWorkflowUpdated") }]);
           if (data.payload.result.workflow) {
             onUpdateWorkflow(data.payload.result.workflow);
           }
         } else {
-          setMessages(prev => [...prev, { role: "assistant", text: data.payload.result?.message || "Ошибка при обработке." }]);
+          setMessages(prev => [...prev, { role: "assistant", text: data.payload.result?.message || t("distill.chatProcessingError") }]);
         }
       }
     };
@@ -283,7 +286,7 @@ function ChatPanel({
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 pt-3 pb-2">
-        <div className="text-xs font-semibold text-ink-700">Чат с агентом</div>
+        <div className="text-xs font-semibold text-ink-700">{t("distill.chatTitle")}</div>
         {workflow.source_model && (
           <div className="text-[10px] text-ink-400 mt-0.5 truncate" title={workflow.source_model}>
             {workflow.source_model.split("::").pop()}
@@ -293,7 +296,7 @@ function ChatPanel({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 space-y-2">
         {messages.length === 0 && (
           <div className="text-xs text-muted py-4 text-center">
-            Уточни результат дистилляции: попроси изменить шаги, добавить inputs, поменять промпты...
+            {t("distill.chatEmpty")}
           </div>
         )}
         {messages.map((msg, i) => (
@@ -308,7 +311,7 @@ function ChatPanel({
           </div>
         ))}
         {loading && (
-          <div className="text-xs text-muted py-2 text-center">Обрабатываю...</div>
+          <div className="text-xs text-muted py-2 text-center">{t("distill.chatProcessing")}</div>
         )}
       </div>
       <div className="px-3 pb-3 pt-2 border-t border-ink-900/5">
@@ -316,7 +319,7 @@ function ChatPanel({
           <textarea
             ref={textareaRef}
             className="flex-1 rounded-lg border border-ink-900/10 px-2.5 py-1.5 text-xs focus:border-accent focus:outline-none resize-none overflow-hidden"
-            placeholder="Уточнение по workflow..."
+            placeholder={t("distill.chatPlaceholder")}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
@@ -365,6 +368,7 @@ export default function DistillPanel({
   verifyCycles,
   debugLogPath,
 }: DistillPanelProps) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 bg-ink-900/40 flex items-center justify-center p-4">
       <div className="w-full max-w-[95vw] h-[90vh] rounded-xl border border-ink-900/10 bg-white shadow-xl flex overflow-hidden">
@@ -379,7 +383,7 @@ export default function DistillPanel({
         {/* Center panel: main form */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-ink-900/10">
-            <h3 className="text-sm font-semibold text-ink-800">Create Vale App</h3>
+            <h3 className="text-sm font-semibold text-ink-800">{t("distill.title")}</h3>
             <div className="flex items-center gap-3">
               {distillUsage && (
                 <div className="flex items-center gap-2 text-xs text-ink-500">
@@ -401,7 +405,7 @@ export default function DistillPanel({
                 className="rounded-md border border-ink-900/10 px-2 py-1 text-xs text-ink-600 hover:bg-ink-100"
                 onClick={onClose}
               >
-                Close
+                {t("distill.close")}
               </button>
             </div>
           </div>
@@ -409,9 +413,9 @@ export default function DistillPanel({
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {distillLoading && (
               <div className="rounded-lg border border-ink-900/10 bg-surface p-4 text-sm text-ink-700 space-y-3">
-                <div className="font-medium">Анализирую сессию...</div>
+                <div className="font-medium">{t("distill.analyzing")}</div>
                 <div className="text-xs text-ink-400 leading-relaxed">
-                  Дистилляция — многоступенчатый процесс: агент анализирует историю, выделяет переменные, строит цепочку шагов и верифицирует результат. В зависимости от объёма чата и скорости LLM это может занять 10–20 минут и более.
+                  {t("distill.analyzeDescription")}
                 </div>
                 {distillProgress && (
                   <>
@@ -429,7 +433,7 @@ export default function DistillPanel({
                     <div className="text-xs text-ink-500">{distillProgress.label}</div>
                     {distillUsage && (
                       <div className="text-xs text-ink-400">
-                        Токены: {distillUsage.input_tokens.toLocaleString()} in / {distillUsage.output_tokens.toLocaleString()} out
+                        {t("distill.tokens")}: {distillUsage.input_tokens.toLocaleString()} in / {distillUsage.output_tokens.toLocaleString()} out
                       </div>
                     )}
                   </>
@@ -439,7 +443,7 @@ export default function DistillPanel({
                     className="mt-2 rounded-lg border border-ink-900/10 px-3 py-1.5 text-xs text-ink-600 hover:bg-ink-100"
                     onClick={onCancel}
                   >
-                    Отменить
+                    {t("distill.cancelBtn")}
                   </button>
                 )}
               </div>
@@ -450,7 +454,7 @@ export default function DistillPanel({
                 {distillError}
                 {distillQuestions.length > 0 && (
                   <div className="mt-2 space-y-2">
-                    <div className="text-xs font-semibold text-error/80 mb-1">Ошибки валидации:</div>
+                    <div className="text-xs font-semibold text-error/80 mb-1">{t("distill.validationErrors")}</div>
                     <ul className="list-disc pl-4 text-xs">
                       {distillQuestions.map((q) => <li key={q}>{q}</li>)}
                     </ul>
@@ -459,7 +463,7 @@ export default function DistillPanel({
                         className="rounded-lg px-3 py-1.5 text-xs text-white bg-accent hover:bg-accent-hover"
                         onClick={() => onRetry(distillQuestions)}
                       >
-                        Повторить дистилляцию
+                        {t("distill.retryDistill")}
                       </button>
                     </div>
                   </div>
@@ -502,7 +506,7 @@ export default function DistillPanel({
                 <div className="rounded-lg border border-ink-900/10 p-3">
                   <div className="text-xs font-semibold text-ink-700 mb-2">Inputs ({distillWorkflow.inputs.length})</div>
                   {distillWorkflow.inputs.length === 0 ? (
-                    <div className="text-xs text-muted">Inputs не найдены автоматически.</div>
+                    <div className="text-xs text-muted">{t("distill.inputsNotFound")}</div>
                   ) : (
                     <div className="space-y-2">
                       {distillWorkflow.inputs.map((input, index) => (
@@ -574,11 +578,11 @@ export default function DistillPanel({
                     <div className="flex items-center gap-2">
                       <span className="text-sm">{replayVerification.match ? "✅" : "⚠️"}</span>
                       <div className="text-xs font-semibold text-ink-700">
-                        Результат верификации
+                        {t("distill.verificationResult")}
                       </div>
                       {verifyCycles && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-ink-100 text-ink-500">
-                          {verifyCycles.used}/{verifyCycles.max} итер.
+                          {verifyCycles.used}/{verifyCycles.max} {t("distill.iterations")}
                         </span>
                       )}
                       <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -586,13 +590,13 @@ export default function DistillPanel({
                           ? "bg-success/20 text-green-700"
                           : "bg-amber-200 text-amber-800"
                       }`}>
-                        {replayVerification.match ? "совпадает" : "расхождения"}
+                        {replayVerification.match ? t("distill.match") : t("distill.discrepancies")}
                       </span>
                     </div>
                     <div className="text-xs text-ink-600">{replayVerification.summary}</div>
                     {replayVerification.discrepancies.length > 0 && (
                       <div className="space-y-1">
-                        <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Расхождения</div>
+                        <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">{t("distill.discrepanciesTitle")}</div>
                         <ul className="list-disc pl-4 text-xs text-ink-600 space-y-0.5">
                           {replayVerification.discrepancies.map((d, i) => <li key={i}>{d}</li>)}
                         </ul>
@@ -600,7 +604,7 @@ export default function DistillPanel({
                     )}
                     {replayVerification.suggestions.length > 0 && (
                       <div className="space-y-1">
-                        <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Рекомендации</div>
+                        <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">{t("distill.suggestions")}</div>
                         <ul className="list-disc pl-4 text-xs text-ink-600 space-y-0.5">
                           {replayVerification.suggestions.map((s, i) => <li key={i}>{s}</li>)}
                         </ul>
@@ -618,7 +622,7 @@ export default function DistillPanel({
                         }}
                         className="px-2.5 py-1 rounded text-[11px] font-medium border border-ink-900/15 bg-surface-secondary hover:bg-surface-tertiary text-ink-600 disabled:opacity-50 transition-colors"
                       >
-                        Повторить ревью
+                        {t("distill.rerunReview")}
                       </button>
                       {!replayVerification.match && replayVerification.discrepancies.length > 0 && (
                         <button
@@ -638,7 +642,7 @@ export default function DistillPanel({
                           }}
                           className="px-2.5 py-1 rounded text-[11px] font-medium border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 disabled:opacity-50 transition-colors"
                         >
-                          Устранить расхождения
+                          {t("distill.fixDiscrepancies")}
                         </button>
                       )}
                     </div>
@@ -647,7 +651,7 @@ export default function DistillPanel({
                     {replayArtifacts && replayArtifacts.filesCreated.length > 0 && (
                       <div className="space-y-1 pt-1">
                         <div className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">
-                          Артефакты верификации ({replayArtifacts.filesCreated.length})
+                          {t("distill.verificationArtifacts", { count: replayArtifacts.filesCreated.length })}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {replayArtifacts.filesCreated.map((file, i) => {
@@ -683,7 +687,7 @@ export default function DistillPanel({
                     {replayArtifacts && Object.keys(replayArtifacts.stepResults).length > 0 && (
                       <details className="pt-1">
                         <summary className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide cursor-pointer hover:text-ink-700">
-                          Результаты шагов ({Object.keys(replayArtifacts.stepResults).length})
+                          {t("distill.stepResults", { count: Object.keys(replayArtifacts.stepResults).length })}
                         </summary>
                         <div className="mt-1 space-y-1 max-h-[200px] overflow-y-auto">
                           {Object.entries(replayArtifacts.stepResults).map(([stepId, result]) => (
@@ -736,13 +740,13 @@ export default function DistillPanel({
                     className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover"
                     onClick={() => onSave(distillWorkflow, "published")}
                   >
-                    Publish
+                    {t("distill.publish")}
                   </button>
                   <button
                     className="rounded-lg border border-ink-900/20 bg-ink-100 px-3 py-1.5 text-xs text-ink-700 hover:bg-ink-200"
                     onClick={() => onSave(distillWorkflow, "draft")}
                   >
-                    Save as draft
+                    {t("distill.saveDraft")}
                   </button>
                 </div>
               </div>

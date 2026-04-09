@@ -142,9 +142,9 @@ function AppHeader({
                 : "bg-ink-900/5 border-ink-900/10 text-ink-600"
             }`}
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            title="Vale Apps"
+            title={t("valeApps.title")}
           >
-            Vale Apps
+            {t("valeApps.title")}
           </button>
         )}
         <button
@@ -287,6 +287,7 @@ export function AppModals(props: AppModalsProps) {
 }
 
 function App() {
+  const { t } = useI18n();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const partialMessageRef = useRef("");
@@ -498,11 +499,11 @@ function App() {
       } else if (result.status === "needs_clarification") {
         setDistillWorkflow(null);
         setDistillQuestions(result.questions || []);
-        setDistillError("Нужны уточнения для построения workflow.");
+        setDistillError(t("distill.needsClarification"));
       } else {
         setDistillWorkflow(null);
         setDistillQuestions([]);
-        setDistillError(result.reason || "Сессия не подходит для distill.");
+        setDistillError(result.reason || t("distill.notSuitable"));
       }
     }
     if (event.type === "miniworkflow.loaded") {
@@ -1053,7 +1054,7 @@ function App() {
         }`}
       >
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-ink-700">Vale Apps</h3>
+            <h3 className="text-sm font-semibold text-ink-700">{t("valeApps.title")}</h3>
             <button
               type="button"
               className="rounded-lg border border-ink-900/10 px-2 py-1 text-xs text-ink-600 hover:bg-ink-100"
@@ -1064,13 +1065,13 @@ function App() {
           </div>
           <input
             className="mb-3 w-full rounded-xl border border-ink-900/10 bg-white pl-2.5 pr-2.5 py-1.5 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
-            placeholder="Filter by name/tags..."
+            placeholder={t("valeApps.filterPlaceholder")}
             value={workflowFilter}
             onChange={(e) => setWorkflowFilter(e.target.value)}
           />
           {miniWorkflows.length === 0 ? (
             <div className="rounded-lg border border-ink-900/10 bg-white p-3 text-xs text-muted">
-              No published workflows yet.
+              {t("valeApps.noWorkflows")}
             </div>
           ) : (
             <div className="space-y-2">
@@ -1105,7 +1106,7 @@ function App() {
                               setOpenWorkflowMenuId(null);
                             }}
                           >
-                            Edit
+                            {t("valeApps.edit")}
                           </button>
                           <button
                             className="block w-full rounded px-2 py-1 text-left text-xs text-ink-700 hover:bg-ink-100"
@@ -1114,7 +1115,7 @@ function App() {
                               setOpenWorkflowMenuId(null);
                             }}
                           >
-                            Archive
+                            {t("valeApps.archive")}
                           </button>
                           <button
                             className="block w-full rounded px-2 py-1 text-left text-xs text-error hover:bg-error/10"
@@ -1123,7 +1124,7 @@ function App() {
                               setOpenWorkflowMenuId(null);
                             }}
                           >
-                            Delete
+                            {t("valeApps.delete")}
                           </button>
                         </div>
                       )}
@@ -1138,7 +1139,7 @@ function App() {
                         sendEvent({ type: "miniworkflow.get", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
                       }}
                     >
-                      Run
+                      {t("valeApps.run")}
                     </button>
                   </div>
                 </div>
@@ -1183,24 +1184,24 @@ function App() {
       {showDistillConfig && (
         <div className="fixed inset-0 z-50 bg-ink-900/40 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-xl border border-ink-900/10 bg-white shadow-xl p-6 space-y-4">
-            <h3 className="text-sm font-semibold text-ink-800">Настройки дистилляции</h3>
+            <h3 className="text-sm font-semibold text-ink-800">{t("distillConfig.title")}</h3>
             <label className="block text-xs text-ink-700">
-              Модель
-              <div className="text-[10px] text-ink-400 mb-1">Рекомендуется использовать самую мощную / размышляющую модель</div>
+              {t("distillConfig.model")}
+              <div className="text-[10px] text-ink-400 mb-1">{t("distillConfig.modelHint")}</div>
               <select
                 className="mt-1 w-full rounded-lg border border-ink-900/10 px-2 py-1.5 text-sm"
                 value={distillConfigModel}
                 onChange={(e) => setDistillConfigModel(e.target.value)}
               >
-                <option value="">Модель сессии ({activeSession?.model?.split("::").pop() || "default"})</option>
+                <option value="">{t("distillConfig.sessionModel", { model: activeSession?.model?.split("::").pop() || "default" })}</option>
                 {llmModels.filter(m => m.enabled !== false).map(m => (
                   <option key={m.id} value={m.id}>{m.name} ({llmProviders.find(p => p.id === m.providerId)?.name || m.providerType})</option>
                 ))}
               </select>
             </label>
             <label className="block text-xs text-ink-700">
-              Макс. циклов ревью-багфикс
-              <div className="text-[10px] text-ink-400 mb-1">Сколько итераций "тестовый прогон → верификация → исправление" (1-10)</div>
+              {t("distillConfig.maxCycles")}
+              <div className="text-[10px] text-ink-400 mb-1">{t("distillConfig.maxCyclesHint")}</div>
               <input
                 type="number"
                 min={1}
@@ -1215,13 +1216,13 @@ function App() {
                 className="rounded-lg border border-ink-900/20 bg-ink-100 px-3 py-1.5 text-xs text-ink-700 hover:bg-ink-200"
                 onClick={() => setShowDistillConfig(false)}
               >
-                Отмена
+                {t("distillConfig.cancel")}
               </button>
               <button
                 className="rounded-lg bg-accent px-4 py-1.5 text-xs text-white hover:bg-accent-hover"
                 onClick={() => handleDistillStart(distillConfigModel, distillConfigMaxCycles)}
               >
-                Начать дистилляцию
+                {t("distillConfig.start")}
               </button>
             </div>
           </div>
@@ -1286,17 +1287,17 @@ function App() {
         <div className="fixed inset-0 z-50 bg-ink-900/40 flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-xl border border-ink-900/10 bg-white p-4 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ink-800">Запуск: {runWorkflow.name}</h3>
+              <h3 className="text-sm font-semibold text-ink-800">{t("runWorkflow.title", { name: runWorkflow.name })}</h3>
               <button className="rounded-md border border-ink-900/10 px-2 py-1 text-xs text-ink-600 hover:bg-ink-100" onClick={() => setRunWorkflow(null)}>
-                Close
+                {t("runWorkflow.close")}
               </button>
             </div>
             <div className="mb-3">
-              <label className="block text-xs text-ink-700 font-medium mb-1">Model</label>
+              <label className="block text-xs text-ink-700 font-medium mb-1">{t("runWorkflow.model")}</label>
               {(() => {
                 const enabledModels = llmModels.filter(m => m.enabled !== false);
                 if (enabledModels.length === 0) {
-                  return <p className="text-xs text-ink-500">No models configured</p>;
+                  return <p className="text-xs text-ink-500">{t("runWorkflow.noModels")}</p>;
                 }
                 return (
                   <select
@@ -1330,7 +1331,7 @@ function App() {
                       value={runInputs[input.id] ?? ""}
                       onChange={(e) => setRunInputs((prev) => ({ ...prev, [input.id]: e.target.value }))}
                     >
-                      <option value="">Выберите значение</option>
+                      <option value="">{t("runWorkflow.selectValue")}</option>
                       {input.enum_values.map((v) => <option key={v} value={v}>{v}</option>)}
                     </select>
                   ) : (
@@ -1353,7 +1354,7 @@ function App() {
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button className="rounded-lg border border-ink-900/10 px-3 py-1.5 text-xs text-ink-700 hover:bg-ink-100" onClick={() => setRunWorkflow(null)}>
-                Отмена
+                {t("runWorkflow.cancel")}
               </button>
               <button
                 className={`rounded-lg px-3 py-1.5 text-xs text-white ${
@@ -1370,7 +1371,7 @@ function App() {
                   setRunWorkflow(null);
                 }}
               >
-                Запустить
+                {t("runWorkflow.start")}
               </button>
             </div>
           </div>

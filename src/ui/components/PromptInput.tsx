@@ -174,9 +174,9 @@ export function PromptInput({ sendEvent, onSaveMiniWorkflow, canSaveMiniWorkflow
             onClick={() => {
               if (canSaveMiniWorkflow) onSaveMiniWorkflow?.();
             }}
-            title={canSaveMiniWorkflow ? "Create Vale App" : saveMiniWorkflowHint}
+            title={canSaveMiniWorkflow ? t("valeApps.createValeApp") : saveMiniWorkflowHint}
           >
-            {saveMiniWorkflowLoading ? "Analyzing..." : "Create Vale App"}
+            {saveMiniWorkflowLoading ? t("valeApps.analyzing") : t("valeApps.createValeApp")}
           </button>
           <textarea
             rows={1}
