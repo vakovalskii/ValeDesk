@@ -46,8 +46,9 @@ function StepsPanel({
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
 
-  const systemPrompt = `${t("distill.goal")} ${workflow.goal}\nDefinition of done: ${workflow.definition_of_done || ""}${
-    workflow.constraints.length > 0 ? "\n" + t("distill.constraints") + "\n" + workflow.constraints.map(c => `- ${c}`).join("\n") : ""
+  const constraints = Array.isArray(workflow.constraints) ? workflow.constraints : [];
+  const systemPrompt = `${t("distill.goal")} ${workflow.goal || ""}\nDefinition of done: ${workflow.definition_of_done || ""}${
+    constraints.length > 0 ? "\n" + t("distill.constraints") + "\n" + constraints.map(c => `- ${c}`).join("\n") : ""
   }`;
 
   const updateStep = (index: number, patch: Partial<ChainStep>) => {
@@ -152,7 +153,7 @@ function StepsPanel({
                 <span className="font-medium">{t("distill.requirements")}</span> {workflow.source_result.requirements}
               </div>
             )}
-            {workflow.source_result.artifacts.length > 0 && (
+            {Array.isArray(workflow.source_result.artifacts) && workflow.source_result.artifacts.length > 0 && (
               <div className="space-y-1 mt-1">
                 {workflow.source_result.artifacts.map((art, i) => {
                   const isPath = /[/\\]/.test(art) || /\.\w{1,10}$/.test(art);
@@ -380,7 +381,11 @@ export default function DistillPanel({
   useEffect(() => {
     const handler = () => setVerifyBusy(null);
     window.addEventListener("distill-error" as any, handler);
-    return () => window.removeEventListener("distill-error" as any, handler);
+    window.addEventListener("distill-refine" as any, handler);
+    return () => {
+      window.removeEventListener("distill-error" as any, handler);
+      window.removeEventListener("distill-refine" as any, handler);
+    };
   }, []);
 
   useEffect(() => {

@@ -77,21 +77,27 @@ export class MemorySessionStore {
   private messages = new Map<string, StreamMessage[]>();
   private todos = new Map<string, TodoItem[]>();
   private fileChanges = new Map<string, FileChange[]>();
+  private ephemeralIds = new Set<string>();
   private syncCallback?: SyncCallback;
 
   setSyncCallback(callback: SyncCallback): void {
     this.syncCallback = callback;
   }
 
-  createSession(options: { 
-    cwd?: string; 
-    allowedTools?: string; 
-    prompt?: string; 
-    title: string; 
-    model?: string; 
-    threadId?: string; 
+  isEphemeral(id: string): boolean {
+    return this.ephemeralIds.has(id);
+  }
+
+  createSession(options: {
+    cwd?: string;
+    allowedTools?: string;
+    prompt?: string;
+    title: string;
+    model?: string;
+    threadId?: string;
     temperature?: number;
     id?: string; // Allow external ID
+    ephemeral?: boolean; // Skip sync to Rust DB (used by distillation sub-sessions)
   }): Session {
     const id = options.id || crypto.randomUUID();
     const session: Session = {
@@ -110,16 +116,20 @@ export class MemorySessionStore {
     this.messages.set(id, []);
     this.todos.set(id, []);
     this.fileChanges.set(id, []);
-    
-    // Sync to Rust DB
-    this.syncCallback?.('create', id, {
-      title: session.title,
-      cwd: session.cwd,
-      allowedTools: session.allowedTools,
-      model: session.model,
-      threadId: session.threadId
-    });
-    
+
+    if (options.ephemeral) {
+      this.ephemeralIds.add(id);
+    } else {
+      // Sync to Rust DB
+      this.syncCallback?.('create', id, {
+        title: session.title,
+        cwd: session.cwd,
+        allowedTools: session.allowedTools,
+        model: session.model,
+        threadId: session.threadId
+      });
+    }
+
     return session;
   }
 
@@ -210,9 +220,10 @@ export class MemorySessionStore {
 
   saveTodos(sessionId: string, todos: TodoItem[]): void {
     this.todos.set(sessionId, todos);
-    
-    // Sync todos to Rust DB
-    this.syncCallback?.('todos', sessionId, todos);
+
+    if (!this.ephemeralIds.has(sessionId)) {
+      this.syncCallback?.('todos', sessionId, todos);
+    }
   }
 
   getTodos(sessionId: string): TodoItem[] {
@@ -277,10 +288,10 @@ export class MemorySessionStore {
     if (updates.inputTokens !== undefined) syncUpdates.inputTokens = session.inputTokens;
     if (updates.outputTokens !== undefined) syncUpdates.outputTokens = session.outputTokens;
     
-    if (Object.keys(syncUpdates).length > 0) {
+    if (Object.keys(syncUpdates).length > 0 && !this.ephemeralIds.has(id)) {
       this.syncCallback?.('update', id, syncUpdates);
     }
-    
+
     return session;
   }
 
@@ -294,9 +305,10 @@ export class MemorySessionStore {
     const messages = this.messages.get(sessionId) || [];
     messages.push(message);
     this.messages.set(sessionId, messages);
-    
-    // Sync message to Rust DB
-    this.syncCallback?.('message', sessionId, message);
+
+    if (!this.ephemeralIds.has(sessionId)) {
+      this.syncCallback?.('message', sessionId, message);
+    }
   }
 
   truncateHistoryAfter(sessionId: string, messageIndex: number): void {
@@ -350,7 +362,9 @@ export class MemorySessionStore {
           });
           
           // Sync updated message to Rust DB
-          this.syncCallback?.('message', sessionId, updatedMessage);
+          if (!this.ephemeralIds.has(sessionId)) {
+            this.syncCallback?.('message', sessionId, updatedMessage);
+          }
           return;
         }
         
@@ -374,6 +388,7 @@ export class MemorySessionStore {
     this.messages.delete(id);
     this.todos.delete(id);
     this.fileChanges.delete(id);
+    this.ephemeralIds.delete(id);
     return this.sessions.delete(id);
   }
 

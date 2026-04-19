@@ -89,7 +89,7 @@ export function I18nProvider({
     try {
       const base = (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL) ?? "/";
       const url = `${base}locales/${loc}.json`;
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: "no-cache" });
       if (res.ok) {
         const data = (await res.json()) as Record<string, unknown>;
         setElectronTranslations(toDict(data));

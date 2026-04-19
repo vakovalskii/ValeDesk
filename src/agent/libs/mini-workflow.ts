@@ -772,21 +772,26 @@ ${chainLines}
 // ─── SKILL.md generation ───
 
 export async function generateSkillMarkdown(workflow: MiniWorkflow): Promise<string> {
-  const tools = workflow.compatibility.tools_required.map((t) => `"${t}"`).join(", ");
-  const inputsYaml = workflow.inputs
-    .map((i) => `  - id: ${i.id}\n    title: "${i.title.replace(/"/g, '\\"')}"\n    type: ${i.type}\n    required: ${i.required ? "true" : "false"}`)
+  const toolsRequired = workflow.compatibility?.tools_required ?? [];
+  const inputs = Array.isArray(workflow.inputs) ? workflow.inputs : [];
+  const chain = Array.isArray(workflow.chain) ? workflow.chain : [];
+  const constraints = Array.isArray(workflow.constraints) ? workflow.constraints : [];
+
+  const tools = toolsRequired.map((t) => `"${t}"`).join(", ");
+  const inputsYaml = inputs
+    .map((i) => `  - id: ${i.id}\n    title: "${(i.title || "").replace(/"/g, '\\"')}"\n    type: ${i.type}\n    required: ${i.required ? "true" : "false"}`)
     .join("\n");
 
-  const chainMd = workflow.chain
-    .map((s, idx) => `${idx + 1}. **${s.title}**\n   Tools: ${s.tools.join(", ") || "none"}`)
+  const chainMd = chain
+    .map((s, idx) => `${idx + 1}. **${s.title}**\n   Tools: ${(s.tools || []).join(", ") || "none"}`)
     .join("\n");
 
-  const inputsMd = workflow.inputs.length > 0
-    ? workflow.inputs.map((i) => `- \`${i.id}\` (${i.type})${i.required ? " [required]" : ""} — ${i.description || i.title}`).join("\n")
+  const inputsMd = inputs.length > 0
+    ? inputs.map((i) => `- \`${i.id}\` (${i.type})${i.required ? " [required]" : ""} — ${i.description || i.title}`).join("\n")
     : "- Нет входных параметров.";
 
-  const constraintsMd = workflow.constraints.length > 0
-    ? workflow.constraints.map((c) => `- ${c}`).join("\n")
+  const constraintsMd = constraints.length > 0
+    ? constraints.map((c) => `- ${c}`).join("\n")
     : "- Нет дополнительных ограничений.";
 
   return `---
@@ -857,7 +862,7 @@ export async function saveNewVersion(workflow: MiniWorkflow, options?: { baseDir
 }
 
 export class MiniWorkflowStore {
-  private async listOneRoot(options?: { baseDir?: string }): Promise<MiniWorkflowSummary[]> {
+  private async listOneRoot(options?: { baseDir?: string; includeArchived?: boolean }): Promise<MiniWorkflowSummary[]> {
     const { skillsDir } = baseDirs(options?.baseDir);
     await fs.mkdir(skillsDir, { recursive: true });
     const dirs = await fs.readdir(skillsDir, { withFileTypes: true });
@@ -868,7 +873,7 @@ export class MiniWorkflowStore {
       try {
         const raw = await fs.readFile(wfPath, "utf8");
         const wf = JSON.parse(raw) as MiniWorkflow;
-        if (wf.status === "archived") continue;
+        if (wf.status === "archived" && !options?.includeArchived) continue;
         result.push({
           id: wf.id,
           name: wf.name,
@@ -887,10 +892,10 @@ export class MiniWorkflowStore {
     return result.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
   }
 
-  async list(options?: { baseDir?: string; projectCwd?: string; includeProject?: boolean }): Promise<MiniWorkflowSummary[]> {
-    const globalItems = await this.listOneRoot({ baseDir: options?.baseDir });
+  async list(options?: { baseDir?: string; projectCwd?: string; includeProject?: boolean; includeArchived?: boolean }): Promise<MiniWorkflowSummary[]> {
+    const globalItems = await this.listOneRoot({ baseDir: options?.baseDir, includeArchived: options?.includeArchived });
     if (!options?.includeProject || !options.projectCwd) return globalItems;
-    const projectItems = await this.listOneRoot({ baseDir: options.projectCwd });
+    const projectItems = await this.listOneRoot({ baseDir: options.projectCwd, includeArchived: options?.includeArchived });
     return dedupeById([...projectItems, ...globalItems]);
   }
 

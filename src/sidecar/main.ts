@@ -1405,7 +1405,8 @@ async function runFullReplay(
     title: silent ? `[verify] ${workflow.name}` : workflow.name,
     allowedTools: (workflow.compatibility?.tools_required || []).join(","),
     prompt: "",
-    model: options?.model || undefined
+    model: options?.model || undefined,
+    ephemeral: silent
   });
   sessions.updateSession(session.id, { status: "running" });
 
@@ -1568,7 +1569,8 @@ async function runAgentVerification(
     title: `[verify] ${workflow.name}`,
     allowedTools: "",
     prompt: "",
-    model: options?.model || undefined
+    model: options?.model || undefined,
+    ephemeral: true
   });
   sessions.updateSession(session.id, { status: "running" });
 
@@ -1696,7 +1698,8 @@ async function runAgentRefine(
     title: `[refine] ${workflow.name}`,
     allowedTools: "",
     prompt: "",
-    model: options?.model || undefined
+    model: options?.model || undefined,
+    ephemeral: true
   });
   sessions.updateSession(session.id, { status: "running" });
 
@@ -1896,7 +1899,8 @@ async function handleClientEvent(event: ClientEvent) {
     case "miniworkflow.list": {
       const workflows = await miniWorkflowStore.list({
         projectCwd: (event as any).payload?.cwd,
-        includeProject: true
+        includeProject: true,
+        includeArchived: Boolean((event as any).payload?.includeArchived)
       });
       emit({ type: "miniworkflow.list", payload: { workflows } } as any);
       return;
@@ -1929,28 +1933,56 @@ async function handleClientEvent(event: ClientEvent) {
       emit({ type: "miniworkflow.list", payload: { workflows: afterDelete } } as any);
       return;
     }
-    case "miniworkflow.archive": {
-      const { workflowId: archId, cwd: archCwd } = (event as any).payload;
-      // Detect actual source scope: check project first, fall back to global
+    case "miniworkflow.restore": {
+      const { workflowId: restoreId, cwd: restoreCwd } = (event as any).payload;
       let sourceScope: "global" | "project" = "global";
-      let wfToArch = null;
-      if (archCwd) {
-        wfToArch = await miniWorkflowStore.load(archId, { baseDir: archCwd });
-        if (wfToArch) sourceScope = "project";
+      let wfToRestore = null;
+      if (restoreCwd) {
+        wfToRestore = await miniWorkflowStore.load(restoreId, { baseDir: restoreCwd });
+        if (wfToRestore) sourceScope = "project";
       }
-      if (!wfToArch) {
-        wfToArch = await miniWorkflowStore.load(archId);
+      if (!wfToRestore) {
+        wfToRestore = await miniWorkflowStore.load(restoreId);
       }
-      if (!wfToArch) {
-        emit({ type: "miniworkflow.error", payload: { message: `Workflow not found: ${archId}` } } as any);
+      if (!wfToRestore) {
+        emit({ type: "miniworkflow.error", payload: { message: `Workflow not found: ${restoreId}` } } as any);
         return;
       }
+      const restoredStatus = (wfToRestore as any).inputs?.length === 0 || !wfToRestore.chain?.length ? "draft" : "published";
       await miniWorkflowStore.save(
-        { ...wfToArch, status: "archived", updated_at: new Date().toISOString() },
-        { scope: sourceScope, projectCwd: archCwd }
+        { ...wfToRestore, status: restoredStatus as any, updated_at: new Date().toISOString() },
+        { scope: sourceScope, projectCwd: restoreCwd }
       );
-      const afterArchive = await miniWorkflowStore.list({ projectCwd: archCwd, includeProject: Boolean(archCwd) });
-      emit({ type: "miniworkflow.list", payload: { workflows: afterArchive } } as any);
+      const afterRestore = await miniWorkflowStore.list({ projectCwd: restoreCwd, includeProject: Boolean(restoreCwd), includeArchived: true });
+      emit({ type: "miniworkflow.list", payload: { workflows: afterRestore } } as any);
+      return;
+    }
+    case "miniworkflow.archive": {
+      const { workflowId: archId, cwd: archCwd } = (event as any).payload;
+      try {
+        // Detect actual source scope: check project first, fall back to global
+        let sourceScope: "global" | "project" = "global";
+        let wfToArch = null;
+        if (archCwd) {
+          wfToArch = await miniWorkflowStore.load(archId, { baseDir: archCwd });
+          if (wfToArch) sourceScope = "project";
+        }
+        if (!wfToArch) {
+          wfToArch = await miniWorkflowStore.load(archId);
+        }
+        if (!wfToArch) {
+          emit({ type: "miniworkflow.error", payload: { message: `Workflow not found: ${archId}` } } as any);
+          return;
+        }
+        await miniWorkflowStore.save(
+          { ...wfToArch, status: "archived", updated_at: new Date().toISOString() },
+          { scope: sourceScope, projectCwd: archCwd }
+        );
+        const afterArchive = await miniWorkflowStore.list({ projectCwd: archCwd, includeProject: Boolean(archCwd) });
+        emit({ type: "miniworkflow.list", payload: { workflows: afterArchive } } as any);
+      } catch (err) {
+        emit({ type: "miniworkflow.error", payload: { message: `Failed to archive: ${String(err)}` } } as any);
+      }
       return;
     }
     case "miniworkflow.distill": {

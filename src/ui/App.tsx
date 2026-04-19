@@ -317,6 +317,17 @@ function App() {
   const [miniWorkflows, setMiniWorkflows] = useState<MiniWorkflowSummary[]>([]);
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<"run" | "edit">("run");
+  const pendingWorkflowActionRef = useRef<"run" | "edit">("run");
+  useEffect(() => { pendingWorkflowActionRef.current = pendingWorkflowAction; }, [pendingWorkflowAction]);
+  const [pendingRunWorkflowId, setPendingRunWorkflowId] = useState<string | null>(null);
+  const pendingRunTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPendingRunTimeout = useCallback(() => {
+    if (pendingRunTimeoutRef.current) {
+      clearTimeout(pendingRunTimeoutRef.current);
+      pendingRunTimeoutRef.current = null;
+    }
+  }, []);
+  const [showArchivedWorkflows, setShowArchivedWorkflows] = useState(false);
   const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | null>(null);
   const [distillSessionId, setDistillSessionId] = useState<string | null>(null);
   const [distillLoading, setDistillLoading] = useState(false);
@@ -328,6 +339,11 @@ function App() {
   const [replayVerification, setReplayVerification] = useState<{ match: boolean; summary: string; discrepancies: string[]; suggestions: string[] } | null>(null);
   const [replayArtifacts, setReplayArtifacts] = useState<{ filesCreated: string[]; stepResults: Record<string, string>; workspaceDir?: string } | null>(null);
   const [verifyCycles, setVerifyCycles] = useState<{ used: number; max: number } | null>(null);
+  const verificationCacheRef = useRef<Map<string, {
+    verification: { match: boolean; summary: string; discrepancies: string[]; suggestions: string[] } | null;
+    artifacts: { filesCreated: string[]; stepResults: Record<string, string>; workspaceDir?: string } | null;
+    cycles: { used: number; max: number } | null;
+  }>>(new Map());
   const [distillDebugLogPath, setDistillDebugLogPath] = useState<string | null>(null);
   const [showDistillConfig, setShowDistillConfig] = useState(false);
   const [distillConfigModel, setDistillConfigModel] = useState("");
@@ -516,23 +532,38 @@ function App() {
     }
     if (event.type === "miniworkflow.loaded") {
       const full = event.payload.workflow;
-      if (pendingWorkflowAction === "edit") {
+      const action = pendingWorkflowActionRef.current;
+      if (action === "edit") {
         setDistillSessionId(full.source_session_id || "manual");
         setDistillWorkflow(full);
         setDistillLoading(false);
         setDistillError(null);
         setDistillQuestions([]);
+        const cached = verificationCacheRef.current.get(full.id);
+        setReplayVerification(cached?.verification ?? null);
+        setReplayArtifacts(cached?.artifacts ?? null);
+        setVerifyCycles(cached?.cycles ?? null);
       } else {
         const defaults: Record<string, string> = {};
         for (const input of full.inputs) defaults[input.id] = String(input.default ?? "");
         setRunInputs(defaults);
         setRunWorkflow(full);
+        clearPendingRunTimeout();
+        setPendingRunWorkflowId(null);
       }
     }
     if (event.type === "miniworkflow.replay.verified") {
       setReplayVerification(event.payload.verification);
       setReplayArtifacts(event.payload.replayArtifacts || null);
       setVerifyCycles(event.payload.verifyCycles || null);
+      const wfId = event.payload.workflowId;
+      if (wfId) {
+        verificationCacheRef.current.set(wfId, {
+          verification: event.payload.verification,
+          artifacts: event.payload.replayArtifacts || null,
+          cycles: event.payload.verifyCycles || null,
+        });
+      }
     }
     if (event.type === "miniworkflow.refine.result") {
       // Forward to DistillPanel via CustomEvent
@@ -540,6 +571,8 @@ function App() {
     }
     if (event.type === "miniworkflow.error") {
       setGlobalError(event.payload.message);
+      clearPendingRunTimeout();
+      setPendingRunWorkflowId(null);
       window.dispatchEvent(new CustomEvent("distill-error", { detail: event }));
     }
     if (event.type === "miniworkflow.replay.started") {
@@ -551,7 +584,7 @@ function App() {
     if (event.type === "scheduler.notification") {
       console.log(`[scheduler] 🔔 ${event.payload.title}: ${event.payload.body}`);
     }
-  }, [handleServerEvent, handlePartialMessages, pendingWorkflowAction, setGlobalError]);
+  }, [handleServerEvent, handlePartialMessages, pendingWorkflowAction, setGlobalError, clearPendingRunTimeout]);
 
   const { connected, sendEvent } = useIPC(onEvent);
 
@@ -564,7 +597,7 @@ function App() {
   useEffect(() => {
     if (connected) {
       sendEvent({ type: "session.list" });
-      sendEvent({ type: "miniworkflow.list", payload: { cwd: activeSession?.cwd, global: true } });
+      sendEvent({ type: "miniworkflow.list", payload: { cwd: activeSession?.cwd, global: true, includeArchived: showArchivedWorkflows } });
       sendEvent({ type: "settings.get" });
       sendEvent({ type: "models.get" });
       sendEvent({ type: "llm.providers.get" });
@@ -577,9 +610,9 @@ function App() {
   const anyCwd = activeSession?.cwd || Object.values(sessions).find(s => s.cwd)?.cwd;
   useEffect(() => {
     if (connected && anyCwd) {
-      sendEvent({ type: "miniworkflow.list", payload: { cwd: anyCwd, global: true } });
+      sendEvent({ type: "miniworkflow.list", payload: { cwd: anyCwd, global: true, includeArchived: showArchivedWorkflows } });
     }
-  }, [connected, activeSessionId, anyCwd, sendEvent]);
+  }, [connected, activeSessionId, anyCwd, sendEvent, showArchivedWorkflows]);
 
   // Detect system locale for first-run (Tauri: getLocale, Electron: navigator.language)
   useEffect(() => {
@@ -1070,11 +1103,19 @@ function App() {
             </button>
           </div>
           <input
-            className="mb-3 w-full rounded-xl border border-ink-900/10 bg-white pl-2.5 pr-2.5 py-1.5 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
+            className="mb-2 w-full rounded-xl border border-ink-900/10 bg-white pl-2.5 pr-2.5 py-1.5 text-xs text-ink-800 placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
             placeholder={t("valeApps.filterPlaceholder")}
             value={workflowFilter}
             onChange={(e) => setWorkflowFilter(e.target.value)}
           />
+          <label className="mb-3 flex items-center gap-2 text-xs text-ink-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArchivedWorkflows}
+              onChange={(e) => setShowArchivedWorkflows(e.target.checked)}
+            />
+            {t("valeApps.showArchived")}
+          </label>
           {miniWorkflows.length === 0 ? (
             <div className="rounded-lg border border-ink-900/10 bg-white p-3 text-xs text-muted">
               {t("valeApps.noWorkflows")}
@@ -1090,14 +1131,15 @@ function App() {
                 })
                 .map((wf) => {
                   const isDraft = (wf as any).status === "draft";
+                  const isArchived = (wf as any).status === "archived";
                   return (
                 <div
                   key={wf.id}
-                  className={`rounded-lg border p-3 ${isDraft ? "border-ink-900/10 bg-ink-900/[0.02] opacity-80" : "border-ink-900/10 bg-white"}`}
+                  className={`rounded-lg border p-3 ${isArchived ? "border-ink-900/10 bg-ink-900/[0.03] opacity-60" : isDraft ? "border-ink-900/10 bg-ink-900/[0.02] opacity-80" : "border-ink-900/10 bg-white"}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className={`truncate text-sm font-medium ${isDraft ? "text-ink-600" : "text-ink-800"}`}>
+                      <div className={`truncate text-sm font-medium ${isArchived ? "text-ink-500" : isDraft ? "text-ink-600" : "text-ink-800"}`}>
                         {wf.icon} {wf.name}
                         {isDraft && (
                           <span
@@ -1109,6 +1151,11 @@ function App() {
                               <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                             </svg>
                             {t("valeApps.draftBadge")}
+                          </span>
+                        )}
+                        {isArchived && (
+                          <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-ink-900/10 text-ink-600">
+                            {t("valeApps.archivedBadge")}
                           </span>
                         )}
                       </div>
@@ -1134,15 +1181,27 @@ function App() {
                           >
                             {t("valeApps.edit")}
                           </button>
-                          <button
-                            className="block w-full rounded px-2 py-1 text-left text-xs text-ink-700 hover:bg-ink-100"
-                            onClick={() => {
-                              sendEvent({ type: "miniworkflow.archive", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
-                              setOpenWorkflowMenuId(null);
-                            }}
-                          >
-                            {t("valeApps.archive")}
-                          </button>
+                          {isArchived ? (
+                            <button
+                              className="block w-full rounded px-2 py-1 text-left text-xs text-ink-700 hover:bg-ink-100"
+                              onClick={() => {
+                                sendEvent({ type: "miniworkflow.restore", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                                setOpenWorkflowMenuId(null);
+                              }}
+                            >
+                              {t("valeApps.restore")}
+                            </button>
+                          ) : (
+                            <button
+                              className="block w-full rounded px-2 py-1 text-left text-xs text-ink-700 hover:bg-ink-100"
+                              onClick={() => {
+                                sendEvent({ type: "miniworkflow.archive", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                                setOpenWorkflowMenuId(null);
+                              }}
+                            >
+                              {t("valeApps.archive")}
+                            </button>
+                          )}
                           <button
                             className="block w-full rounded px-2 py-1 text-left text-xs text-error hover:bg-error/10"
                             onClick={() => {
@@ -1158,7 +1217,16 @@ function App() {
                   </div>
                   <p className="mt-2 text-xs text-ink-600">{wf.description}</p>
                   <div className="mt-2 flex items-center justify-end">
-                    {isDraft ? (
+                    {isArchived ? (
+                      <button
+                        className="rounded-md border border-ink-900/10 bg-white px-2.5 py-1.5 text-xs text-ink-700 hover:bg-ink-100"
+                        onClick={() => {
+                          sendEvent({ type: "miniworkflow.restore", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                        }}
+                      >
+                        {t("valeApps.restore")}
+                      </button>
+                    ) : isDraft ? (
                       <button
                         className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
                         title={t("valeApps.draftEditTooltip")}
@@ -1172,13 +1240,21 @@ function App() {
                       </button>
                     ) : (
                       <button
-                        className="rounded-md border border-accent/30 bg-accent/10 px-2.5 py-1.5 text-xs text-accent hover:bg-accent/20"
+                        className="rounded-md border border-accent/30 bg-accent/10 px-2.5 py-1.5 text-xs text-accent hover:bg-accent/20 disabled:opacity-60"
+                        disabled={pendingRunWorkflowId === wf.id}
                         onClick={() => {
+                          clearPendingRunTimeout();
+                          setPendingRunWorkflowId(wf.id);
                           setPendingWorkflowAction("run");
                           sendEvent({ type: "miniworkflow.get", payload: { workflowId: wf.id, cwd: activeSession?.cwd } });
+                          setShowWorkflowPanel(false);
+                          pendingRunTimeoutRef.current = setTimeout(() => {
+                            setPendingRunWorkflowId(null);
+                            pendingRunTimeoutRef.current = null;
+                          }, 15_000);
                         }}
                       >
-                        {t("valeApps.run")}
+                        {pendingRunWorkflowId === wf.id ? t("valeApps.loading") : t("valeApps.run")}
                       </button>
                     )}
                   </div>

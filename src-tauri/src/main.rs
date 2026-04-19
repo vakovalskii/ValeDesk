@@ -1364,15 +1364,32 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
         .get("payload")
         .and_then(|v| v.as_object())
         .ok_or_else(|| "[client_event] open.path payload is missing/invalid".to_string())?;
-      let path = payload
+      let raw = payload
         .get("path")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "[client_event] open.path payload.path is missing".to_string())?;
-      let trimmed = path.trim();
+      let trimmed = raw.trim();
       if trimmed.is_empty() {
         return Ok(());
       }
-      if let Err(error) = open_target(trimmed) {
+      let explicit_cwd = payload.get("cwd").and_then(|v| v.as_str());
+      let candidate = std::path::PathBuf::from(trimmed);
+      let resolved = if candidate.is_absolute() {
+        candidate
+      } else if let Some(cwd) = explicit_cwd {
+        std::path::PathBuf::from(cwd).join(trimmed)
+      } else {
+        candidate
+      };
+      if !resolved.exists() {
+        emit_server_event_app(
+          &app,
+          &json!({ "type": "runner.error", "payload": { "message": format!("File not found: {}", resolved.display()) } }),
+        )?;
+        return Ok(());
+      }
+      let target_str = resolved.to_string_lossy().to_string();
+      if let Err(error) = open_target(&target_str) {
         emit_server_event_app(
           &app,
           &json!({ "type": "runner.error", "payload": { "message": format!("Failed to open path: {error}") } }),

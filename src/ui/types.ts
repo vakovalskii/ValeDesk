@@ -334,11 +334,12 @@ export type ClientEvent =
   | { type: "skills.remove-repository"; payload: { id: string } }
   | { type: "skills.toggle-repository"; payload: { id: string; enabled: boolean } }
   // Mini workflow events
-  | { type: "miniworkflow.list"; payload?: { cwd?: string } }
+  | { type: "miniworkflow.list"; payload?: { cwd?: string; global?: boolean; includeArchived?: boolean } }
   | { type: "miniworkflow.get"; payload: { workflowId: string; cwd?: string } }
   | { type: "miniworkflow.distill"; payload: { sessionId: string; validationErrors?: string[]; model?: string; maxVerifyCycles?: number } }
   | { type: "miniworkflow.distill.cancel"; payload: { sessionId: string } }
   | { type: "miniworkflow.archive"; payload: { workflowId: string; cwd?: string } }
+  | { type: "miniworkflow.restore"; payload: { workflowId: string; cwd?: string } }
   | { type: "miniworkflow.save"; payload: { workflow: MiniWorkflow; scope?: "global" | "project"; cwd?: string } }
   | { type: "miniworkflow.delete"; payload: { workflowId: string; scope?: "global" | "project" | "both"; cwd?: string } }
   | { type: "miniworkflow.replay"; payload: { workflowId: string; inputs: Record<string, unknown>; cwd?: string; model?: string } }
