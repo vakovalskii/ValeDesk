@@ -5,6 +5,15 @@ Tauri (Rust) + Node.js Sidecar + React 19 | OpenAI-compatible API
 
 Version: 0.0.8 | Author: Valerii Kovalskii | [GitHub](https://github.com/vakovalskii/ValeDesk)
 
+## Important: Tauri is the primary platform
+
+- **Build and test on Tauri**, not Electron. Electron code (`src/agent/ipc-handlers.ts`, `src/agent/main.ts`) is legacy.
+- The active runtime path is: **UI → Tauri (Rust) → Sidecar (Node.js)** via stdin/stdout JSON protocol.
+- New event handlers must be added to `src/sidecar/main.ts`. If also needed for Electron, mirror in `src/agent/ipc-handlers.ts`.
+- Rust backend (`src-tauri/src/main.rs`) may enrich events with DB data before forwarding to sidecar (see `session.continue`, `miniworkflow.distill`).
+- Sidecar uses `MemorySessionStore` — old sessions must be restored from data provided by Rust.
+- Use `make dev` to run (Tauri + Vite + Sidecar). Use `cargo check` in `src-tauri/` for Rust validation.
+
 ## Quick Reference
 
 | What | Where |

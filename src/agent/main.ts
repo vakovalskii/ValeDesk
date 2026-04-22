@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } from "electron";
 import { ipcMainHandle, isDev, DEV_PORT } from "./util.js";
 import { getPreloadPath, getUIPath, getIconPath } from "./pathResolver.js";
 import { getStaticData, pollResources } from "./test.js";
@@ -66,8 +66,10 @@ app.on("ready", () => {
     trafficLightPosition: { x: 15, y: 18 },
   });
 
-  if (isDev()) loadURLWithRetry(mainWindow, `http://localhost:${DEV_PORT}`);
-  else mainWindow.loadFile(getUIPath());
+  if (isDev()) {
+    loadURLWithRetry(mainWindow, `http://localhost:${DEV_PORT}`);
+    mainWindow.webContents.openDevTools({ mode: "bottom" });
+  } else mainWindow.loadFile(getUIPath());
 
   // Register window with SessionManager for event routing
   sessionManager.registerWindow(mainWindow);
@@ -136,7 +138,31 @@ app.on("ready", () => {
       console.error("[Main] Unable to determine window ID for client event");
       return;
     }
-    handleClientEvent(data, windowId);
+    handleClientEvent(data, windowId).catch(err => {
+      console.error("[Main] handleClientEvent error:", event.type || data?.type, err);
+    });
+  });
+
+  // Handle window resize for side panels (expand/shrink window instead of compressing content)
+  const PANEL_WIDTH = 320;
+  ipcMain.on("toggle-side-panel", (event, show: boolean) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    const bounds = win.getBounds();
+    const display = screen.getDisplayMatching(bounds);
+    const maxRight = display.workArea.x + display.workArea.width;
+
+    if (show) {
+      const newWidth = bounds.width + PANEL_WIDTH;
+      // If expanding would go off-screen, shift window left
+      const newX = (bounds.x + newWidth > maxRight)
+        ? Math.max(display.workArea.x, maxRight - newWidth)
+        : bounds.x;
+      win.setBounds({ x: newX, y: bounds.y, width: newWidth, height: bounds.height }, true);
+    } else {
+      const newWidth = Math.max(bounds.width - PANEL_WIDTH, 900);
+      win.setBounds({ x: bounds.x, y: bounds.y, width: newWidth, height: bounds.height }, true);
+    }
   });
 
   // Handle open directory in Finder/Explorer

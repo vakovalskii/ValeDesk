@@ -1,0 +1,44 @@
+---
+description: Auto-run skill bootstrap: index existing skills, detect gaps, search skills.sh candidates (no auto-install by default)
+alwaysApply: true
+---
+
+# Auto Skill Bootstrap (always)
+
+## When to run
+
+Run **at the start of any non-trivial task** (anything beyond a simple Q&A), and **again** whenever the user adds new requirements/tech constraints.
+
+## Procedure
+
+1) **Update local skills inventory** (deterministic):
+
+```bash
+python3 .cursor/skills/auto-skill-bootstrap/bin/update-manifest.py
+```
+
+2) **Pick capabilities** for the task (3–8 max) using:
+- `.cursor/skills/find-skills/domains.json` (domain vocabulary)
+- `.cursor/skills/auto-skill-bootstrap/capabilities.json` (capability mapping + queries)
+
+3) **Search missing capability skills** (deterministic, no install):
+
+```bash
+python3 .cursor/skills/auto-skill-bootstrap/bin/auto-skill-bootstrap.py --no-install \
+  --cap <cap1> --cap <cap2> --cap <cap3>
+```
+
+This produces:
+- `.cursor/skills/auto-skill-bootstrap/candidates.json`
+- `.cursor/skills/auto-skill-bootstrap/state.json`
+
+4) **If candidates exist**:
+- prefer already-installed project skills first
+- if multiple candidates: ask user to choose (multi-select)
+- **do not auto-install** unless the user explicitly authorizes it
+
+## Hard rules
+
+- Never install skills from non-allowlisted sources (`trust-policy.json`).
+- Never “install until satisfied”; stop when coverage is good enough to proceed.
+

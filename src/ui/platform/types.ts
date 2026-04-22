@@ -11,6 +11,7 @@ export type PlatformAdapter = {
   generateSessionTitle: (userInput: string | null) => Promise<string>;
   getRecentCwds: (limit?: number) => Promise<string[]>;
   selectDirectory: () => Promise<string | null>;
+  selectFile: () => Promise<string | null>;
 
   // Generic IPC helpers (kept for incremental migration)
   invoke: <TResult = unknown>(channel: string, ...args: unknown[]) => Promise<TResult>;

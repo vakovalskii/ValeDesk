@@ -1,11 +1,44 @@
 import type { SDKMessage, PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import type { MiniWorkflow, MiniWorkflowSummary } from "../shared/mini-workflow-types.js";
+export type { MiniWorkflow, MiniWorkflowSummary, MiniWorkflowTestResult } from "../shared/mini-workflow-types.js";
+export { detectPermissions } from "../shared/mini-workflow-types.js";
+export type { DetectedPermissions } from "../shared/mini-workflow-types.js";
 
 export type UserPromptMessage = {
   type: "user_prompt";
   prompt: string;
 };
 
-export type StreamMessage = SDKMessage | UserPromptMessage;
+export type MiniAppStepProgressMessage = {
+  type: "miniapp_step_progress";
+  stepId?: string;
+  stepIndex?: number;
+  totalSteps?: number;
+  title: string;
+  text: string;
+};
+
+export type MiniAppStepResultMessage = {
+  type: "miniapp_step_result";
+  stepId: string;
+  stepIndex?: number;
+  totalSteps?: number;
+  title: string;
+  status: "success" | "failed";
+  summary: string;
+  fullText?: string;
+  artifactPaths?: string[];
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+};
+
+export type StreamMessage =
+  | SDKMessage
+  | UserPromptMessage
+  | MiniAppStepProgressMessage
+  | MiniAppStepResultMessage;
 
 export type SessionStatus = "idle" | "running" | "completed" | "error";
 
@@ -116,6 +149,7 @@ export type ThreadTask = {
   roleId?: RoleGroupRoleId;
   roleName?: string;
 };
+
 
 export type CreateTaskPayload = {
   mode: TaskMode;
@@ -266,6 +300,15 @@ export type ServerEvent =
   // Skills events
   | { type: "skills.loaded"; payload: { skills: Skill[]; repositories: SkillRepository[]; lastFetched?: number } }
   | { type: "skills.error"; payload: { message: string } }
+  // Mini workflow events
+  | { type: "miniworkflow.list"; payload: { workflows: MiniWorkflowSummary[] } }
+  | { type: "miniworkflow.loaded"; payload: { workflow: MiniWorkflow } }
+  | { type: "miniworkflow.distill.progress"; payload: { sessionId: string; step: number; totalSteps: number; label: string; usage?: { input_tokens: number; output_tokens: number } } }
+  | { type: "miniworkflow.distill.result"; payload: { sessionId: string; usage?: { input_tokens: number; output_tokens: number }; debugLogPath?: string; result: { status: "success"; workflow: MiniWorkflow } | { status: "needs_clarification"; questions: string[] } | { status: "not_suitable"; reason: string; suggest_prompt_preset: boolean } | { status: "cancelled" } } }
+  | { type: "miniworkflow.replay.started"; payload: { workflowId: string; sessionId: string } }
+  | { type: "miniworkflow.replay.verified"; payload: { workflowId: string; sessionId: string; source?: "runtime" | "editor_verify" | "distill"; verification: { match: boolean; summary: string; discrepancies: string[]; suggestions: string[] }; verifyCycles?: { used: number; max: number }; replayArtifacts?: { filesCreated: string[]; stepResults: Record<string, string>; workspaceDir?: string } } }
+  | { type: "miniworkflow.refine.result"; payload: { sessionId: string; result: { status: "success"; message: string; workflow: MiniWorkflow } | { status: "error"; message: string } } }
+  | { type: "miniworkflow.error"; payload: { message: string } }
   // Compact events
   | { type: "session.compacting"; payload: { sessionId: string } }
   | { type: "session.compacted"; payload: { oldSessionId: string; newSessionId: string } }
@@ -296,6 +339,7 @@ export type ClientEvent =
   | { type: "settings.get" }
   | { type: "settings.save"; payload: { settings: ApiSettings; } }
   | { type: "open.external"; payload: { url: string; } }
+  | { type: "open.path"; payload: { path: string; cwd?: string } }
   | { type: "models.get" }
   | { type: "file_changes.confirm"; payload: { sessionId: string; } }
   | { type: "file_changes.rollback"; payload: { sessionId: string; } }
@@ -318,6 +362,20 @@ export type ClientEvent =
   | { type: "skills.update-repository"; payload: { id: string; updates: Partial<Omit<SkillRepository, "id">> } }
   | { type: "skills.remove-repository"; payload: { id: string } }
   | { type: "skills.toggle-repository"; payload: { id: string; enabled: boolean } }
+  // Mini workflow events
+  | { type: "miniworkflow.list"; payload?: { cwd?: string; global?: boolean; includeArchived?: boolean } }
+  | { type: "miniworkflow.get"; payload: { workflowId: string; cwd?: string } }
+  | { type: "miniworkflow.distill"; payload: { sessionId: string; validationErrors?: string[]; model?: string; maxVerifyCycles?: number } }
+  | { type: "miniworkflow.distill.cancel"; payload: { sessionId: string } }
+  | { type: "miniworkflow.archive"; payload: { workflowId: string; cwd?: string } }
+  | { type: "miniworkflow.restore"; payload: { workflowId: string; cwd?: string } }
+  | { type: "miniworkflow.save"; payload: { workflow: MiniWorkflow; scope?: "global" | "project"; cwd?: string } }
+  | { type: "miniworkflow.delete"; payload: { workflowId: string; scope?: "global" | "project" | "both"; cwd?: string } }
+  | { type: "miniworkflow.replay"; payload: { workflowId: string; inputs: Record<string, unknown>; cwd?: string; model?: string } }
+  | { type: "miniworkflow.refine"; payload: { sessionId: string; workflow: MiniWorkflow; userMessage: string } }
+  | { type: "miniworkflow.refine.cancel"; payload: { sessionId: string } }
+  | { type: "miniworkflow.verify"; payload: { sessionId: string; workflow: MiniWorkflow } }
+  | { type: "miniworkflow.fix-discrepancies"; payload: { sessionId: string; workflow: MiniWorkflow; discrepancies: string[]; suggestions: string[] } }
   // Compact events
   | { type: "session.compact"; payload: { sessionId: string } }
   // Scheduler events

@@ -1,4 +1,5 @@
 import { BrowserWindow, powerMonitor, shell } from "electron";
+import OpenAI from "openai";
 import type { ClientEvent, ServerEvent, MultiThreadTask } from "./types.js";
 import { runClaude as runClaudeSDK, type RunnerHandle } from "./libs/runner.js"; // Claude Code SDK runner (subscription)
 import { runClaude as runOpenAI } from "./libs/runner-openai.js"; // OpenAI SDK runner
@@ -9,7 +10,10 @@ import { SchedulerService } from "./libs/scheduler-service.js";
 import { loadApiSettings, saveApiSettings } from "./libs/settings-store.js";
 import { generateSessionTitle } from "./libs/util.js";
 import { app } from "electron";
-import { join } from "path";
+import path from "path";
+const { join } = path;
+import { promises as fs } from "fs";
+import { homedir } from "os";
 import { sessionManager } from "./session-manager.js";
 import * as gitUtils from "./git-utils.js";
 import type { CreateTaskPayload, ThreadTask } from "./types.js";
@@ -18,6 +22,32 @@ import { loadLLMProviderSettings, saveLLMProviderSettings } from "./libs/llm-pro
 import { fetchModelsFromProvider, checkModelsAvailability, validateProvider, createProvider } from "./libs/llm-providers.js";
 import { loadSkillsSettings, saveSkillsSettings, toggleSkill, setMarketplaceUrl, addRepository, updateRepository, removeRepository, toggleRepository } from "./libs/skills-store.js";
 import { fetchSkillsFromMarketplace } from "./libs/skills-loader.js";
+import {
+  MiniWorkflowStore,
+  buildReplayPrompt,
+  buildStepPrompt,
+  getLlmSteps,
+  checkDistillability,
+  generateSkillMarkdown,
+  writeReplayLog,
+  renderTemplate,
+} from "./libs/mini-workflow.js";
+import {
+  extractJsonObject,
+  getLlmConnection,
+  llmCall,
+  verifyTestRun,
+  buildVerificationPrompt,
+  buildRefinePrompt,
+  refineWorkflowFromFeedback,
+  redactDebugLog,
+  distillChain,
+  validateWorkflow,
+  getMiniWorkflowSchemaPrompt,
+  type DistillDebugLog,
+  type DistillUsage,
+  type VerifyResult,
+} from "./libs/distill-service.js";
 import { openAIOAuthConfig, startBrowserOAuthFlow, stopOAuthFlow, getCredential, setCredential, deleteCredential, isExpired, readCodexCliCredentials } from "./libs/auth/index.js";
 
 const DB_PATH = join(app.getPath("userData"), "sessions.db");
@@ -25,6 +55,8 @@ const sessions = new SessionStore(DB_PATH);
 const schedulerStore = new SchedulerStore(sessions['db']); // Access the database
 const runnerHandles = new Map<string, RunnerHandle>();
 const multiThreadTasks = new Map<string, MultiThreadTask>();
+const miniWorkflowStore = new MiniWorkflowStore();
+const distillAbortControllers = new Map<string, AbortController>();
 let suppressStreamEvents = false;
 
 app.on("ready", () => {
@@ -52,6 +84,473 @@ function selectRunner(model: string | undefined) {
   }
   console.log('[IPC] Using OpenAI SDK runner for model:', model);
   return runOpenAI;
+}
+
+// extractJsonObject, getLlmConnection — moved to libs/distill-service.ts
+
+// testRunScripts, verifyTestRun, refineWorkflowFromFeedback, llmCall, llmCallMultiTurn,
+// distillChain, redactDebugLog, types — moved to libs/distill-service.ts
+
+// ─── Full workflow replay (scripts + LLM steps) for verification ───
+
+interface FullReplayResult {
+  stepResults: Record<string, string>;
+  scriptErrors: Record<string, string>;
+  filesCreated: string[];
+  sessionId: string;
+}
+
+/**
+ * Run a full workflow replay: scripts via subprocess, LLM steps via agent runner.
+ * Creates a temporary session, executes all steps, returns collected outputs.
+ * Used by both miniworkflow.replay and the verification loop during distillation.
+ */
+async function runFullReplay(
+  workflow: any,
+  workspaceDir: string,
+  windowId: number,
+  options?: { model?: string; silent?: boolean }
+): Promise<FullReplayResult> {
+  const silent = options?.silent ?? false;
+
+  // Clean and prepare workspace
+  await fs.rm(workspaceDir, { recursive: true, force: true });
+  await fs.mkdir(workspaceDir, { recursive: true });
+
+  // Build inputs from defaults
+  const inputs: Record<string, unknown> = {};
+  for (const inp of workflow.inputs || []) {
+    inputs[inp.id] = inp.default ?? "";
+  }
+
+  // Create a temp session for execution
+  const session = sessions.createSession({
+    cwd: workspaceDir,
+    title: silent ? `[verify] ${workflow.name}` : workflow.name,
+    allowedTools: (workflow.compatibility?.tools_required || []).join(","),
+    prompt: "",
+    model: options?.model || undefined
+  });
+  sessions.updateSession(session.id, { status: "running" });
+  sessionManager.setWindowSession(windowId, session.id);
+
+  if (!silent) {
+    emit({
+      type: "session.status",
+      payload: { sessionId: session.id, status: "running", title: session.title, cwd: session.cwd }
+    });
+  }
+
+  const secretBag: Record<string, string> = {};
+  for (const inputSpec of workflow.inputs || []) {
+    if (inputSpec.type === "secret" || inputSpec.redaction) {
+      const v = inputs[inputSpec.id];
+      if (typeof v === "string" && v) secretBag[inputSpec.id] = v;
+    }
+  }
+
+  // ─── Execute script steps ───
+  const scriptResults: Record<string, string> = {};
+  const scriptErrors: Record<string, string> = {};
+  const scriptSteps = (workflow.chain || []).filter((s: any) => s.execution === "script" && s.script?.code);
+
+  if (scriptSteps.length > 0) {
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const execFileAsync = promisify(execFile);
+
+    for (const step of scriptSteps) {
+      try {
+        const SAFE_ENV_KEYS = new Set(["PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "LANG", "SYSTEMROOT", "COMSPEC", "SHELL", "PYTHONPATH", "PYTHONHOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "WINDIR"]);
+        const SECRET_PATTERNS = /(_KEY|_SECRET|_TOKEN|_PASSWORD|_CREDENTIAL|_AUTH)$|^(OPENAI|ANTHROPIC|TAVILY|ZAI|AWS_|AZURE_|GOOGLE_|GITHUB_TOKEN|NPM_TOKEN|CODEX_)/i;
+        const env: Record<string, string> = {};
+        for (const [k, v] of Object.entries(process.env)) {
+          if (v == null || SECRET_PATTERNS.test(k)) continue;
+          if (SAFE_ENV_KEYS.has(k)) env[k] = v;
+        }
+        for (const [k, v] of Object.entries(inputs)) env[`INPUTS_${k.toUpperCase()}`] = String(v);
+        for (const [k, v] of Object.entries(scriptResults)) env[`STEP_${k.toUpperCase()}_RESULT`] = v;
+        env["WORKSPACE"] = workspaceDir;
+
+        const scriptFile = join(workspaceDir, `${step.id}.py`);
+        await fs.writeFile(scriptFile, step.script.code, "utf8");
+
+        const { stdout } = await execFileAsync("python", [scriptFile], {
+          cwd: workspaceDir,
+          env,
+          timeout: 120_000,
+          maxBuffer: 10 * 1024 * 1024
+        });
+        scriptResults[step.id] = (stdout || "").trim();
+        console.log(`[FullReplay] Script step "${step.id}" completed (${(stdout || "").length} chars)`);
+      } catch (err: any) {
+        console.error(`[FullReplay] Script step "${step.id}" failed:`, err.message);
+        scriptErrors[step.id] = err.message || String(err);
+        scriptResults[step.id] = `[SCRIPT ERROR: ${err.message}]`;
+      }
+    }
+  }
+
+  // ─── Execute LLM steps via agent runner ───
+  const llmSteps = getLlmSteps(workflow);
+  const allStepResults: Record<string, string> = { ...scriptResults };
+
+  const runSingleStep = (stepPrompt: string, stepTitle: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      let collectedText = "";
+      let stepCompleted = false;
+
+      const stepEmit = (serverEvent: ServerEvent) => {
+        if (!silent) emit(serverEvent);
+
+        if (serverEvent.type === "stream.message" && serverEvent.payload.sessionId === session.id) {
+          const msg = serverEvent.payload.message as any;
+          if (msg.type === "result" && msg.result) {
+            // Final result from runner — contains full assistant response
+            collectedText = msg.result;
+          } else if (msg.type === "assistant" && msg.message?.content) {
+            const parts = Array.isArray(msg.message.content) ? msg.message.content : [msg.message.content];
+            for (const p of parts) {
+              if (p.type === "text" && p.text) collectedText += p.text;
+            }
+          } else if (msg.type === "text" && msg.text) {
+            collectedText += msg.text;
+          } else if (msg.type === "user" && msg.message?.content) {
+            // Capture tool results so verification sees tool outputs
+            const parts = Array.isArray(msg.message.content) ? msg.message.content : [msg.message.content];
+            for (const part of parts) {
+              if (part.type === "tool_result" && part.content) {
+                collectedText += `\n[tool_result] ${part.content}`;
+              }
+            }
+          }
+        }
+        if (serverEvent.type === "session.status" && serverEvent.payload.sessionId === session.id) {
+          if (serverEvent.payload.status === "completed" || serverEvent.payload.status === "idle") {
+            if (!stepCompleted) { stepCompleted = true; resolve(collectedText.trim()); }
+          }
+          if (serverEvent.payload.status === "error") {
+            if (!stepCompleted) { stepCompleted = true; reject(new Error(`Step "${stepTitle}" failed`)); }
+          }
+        }
+        if (serverEvent.type === "runner.error" && serverEvent.payload.sessionId === session.id) {
+          if (!stepCompleted) { stepCompleted = true; reject(new Error(serverEvent.payload.message)); }
+        }
+      };
+
+      const runner = selectRunner(session.model);
+      runner({
+        prompt: stepPrompt,
+        session,
+        resumeSessionId: session.claudeSessionId,
+        onEvent: stepEmit,
+        secretBag,
+        onSessionUpdate: (updates) => { sessions.updateSession(session.id, updates); }
+      })
+        .then((handle) => { runnerHandles.set(session.id, handle); })
+        .catch((error) => { if (!stepCompleted) { stepCompleted = true; reject(error); } });
+    });
+  };
+
+  for (let i = 0; i < llmSteps.length; i++) {
+    const step = llmSteps[i];
+    const stepPrompt = buildStepPrompt(workflow, step, i, llmSteps.length, inputs, allStepResults);
+    sessions.updateSession(session.id, { lastPrompt: stepPrompt, status: "running" });
+
+    if (!silent) {
+      emit({ type: "stream.user_prompt", payload: { sessionId: session.id, prompt: stepPrompt } });
+    }
+
+    try {
+      const result = await runSingleStep(stepPrompt, step.title);
+      allStepResults[step.id] = result;
+      console.log(`[FullReplay] LLM step "${step.id}" completed (${result.length} chars)`);
+    } catch (stepErr) {
+      console.error(`[FullReplay] LLM step "${step.id}" failed:`, stepErr);
+      allStepResults[step.id] = `[LLM ERROR: ${String(stepErr)}]`;
+    }
+  }
+
+  // List files in workspace
+  let filesCreated: string[] = [];
+  try {
+    const entries = await fs.readdir(workspaceDir, { recursive: true }) as string[];
+    filesCreated = entries.filter(f => !f.endsWith(".py"));
+  } catch { /* ignore */ }
+
+  // Clean up: silent sessions are internal (verification/replay) — delete from DB
+  if (silent) {
+    runnerHandles.delete(session.id);
+    sessions.deleteSession(session.id);
+  } else {
+    sessions.updateSession(session.id, { status: "completed" });
+    emit({ type: "session.status", payload: { sessionId: session.id, status: "completed" } });
+  }
+
+  return { stepResults: allStepResults, scriptErrors, filesCreated, sessionId: session.id };
+}
+
+/**
+ * Run verification as a full agent with tools (read_file, attach_image, etc.)
+ * so it can actually inspect CSV files, view images, etc.
+ * Reuses an existing session in the workspace directory.
+ */
+async function runAgentVerification(
+  workflow: any,
+  replayResult: FullReplayResult,
+  workspaceDir: string,
+  windowId: number,
+  options?: { model?: string; debugLog?: DistillDebugLog; debugStep?: string }
+): Promise<VerifyResult> {
+  const prompt = buildVerificationPrompt(workflow, replayResult);
+
+  // Create a temp session for verification agent
+  const session = sessions.createSession({
+    cwd: workspaceDir,
+    title: `[verify] ${workflow.name}`,
+    allowedTools: "", // all tools available
+    prompt: "",
+    model: options?.model || undefined
+  });
+  sessions.updateSession(session.id, { status: "running" });
+  sessionManager.setWindowSession(windowId, session.id);
+
+  const emit = (event: ServerEvent) => sessionManager.emitToWindow(windowId, event);
+
+  return new Promise((resolve, reject) => {
+    let collectedText = "";
+    let completed = false;
+
+    const onEvent = (serverEvent: ServerEvent) => {
+      // Don't emit to UI (silent verification)
+      if (serverEvent.type === "stream.message" && serverEvent.payload.sessionId === session.id) {
+        const msg = serverEvent.payload.message as any;
+        if (msg.type === "result" && msg.result) {
+          // Final result from runner — contains full assistant response
+          collectedText = msg.result;
+        } else if (msg.type === "assistant" && msg.message?.content) {
+          // Non-streaming assistant message
+          const parts = Array.isArray(msg.message.content) ? msg.message.content : [msg.message.content];
+          for (const p of parts) {
+            if (p.type === "text" && p.text) collectedText += p.text;
+          }
+        } else if (msg.type === "text" && msg.text) {
+          collectedText += msg.text;
+        }
+      }
+      if (serverEvent.type === "session.status" && serverEvent.payload.sessionId === session.id) {
+        if (serverEvent.payload.status === "completed" || serverEvent.payload.status === "idle") {
+          if (!completed) {
+            completed = true;
+            finalize();
+          }
+        }
+        if (serverEvent.payload.status === "error") {
+          if (!completed) {
+            completed = true;
+            runnerHandles.delete(session.id);
+            sessions.deleteSession(session.id);
+            resolve({
+              match: false,
+              summary: `Verification agent error: ${serverEvent.payload.error || "unknown"}`,
+              discrepancies: ["Verification agent failed"],
+              suggestions: [],
+              usage: { input_tokens: 0, output_tokens: 0 }
+            });
+          }
+        }
+      }
+    };
+
+    const finalize = () => {
+      // Parse JSON from agent's response
+      const jsonRaw = extractJsonObject(collectedText);
+      const usage = {
+        input_tokens: sessions.getSession(session.id)?.inputTokens || 0,
+        output_tokens: sessions.getSession(session.id)?.outputTokens || 0
+      };
+
+      // Clean up internal verification session from DB
+      runnerHandles.delete(session.id);
+      sessions.deleteSession(session.id);
+
+      if (options?.debugLog) {
+        options.debugLog.push({
+          step: options.debugStep || "verify_agent",
+          timestamp: new Date().toISOString(),
+          system: "(agent with tools)",
+          user: prompt.slice(0, 2000),
+          response: collectedText.slice(0, 5000),
+          parsed: jsonRaw ? JSON.parse(jsonRaw) : null,
+          usage
+        });
+      }
+
+      if (!jsonRaw) {
+        resolve({
+          match: false,
+          summary: collectedText.slice(0, 500) || "Agent did not return JSON",
+          discrepancies: ["Verification agent did not return structured JSON"],
+          suggestions: [],
+          usage
+        });
+        return;
+      }
+
+      try {
+        const data = JSON.parse(jsonRaw);
+        resolve({
+          match: Boolean(data.match),
+          summary: String(data.summary || ""),
+          discrepancies: Array.isArray(data.discrepancies) ? data.discrepancies.map(String) : [],
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions.map(String) : [],
+          usage
+        });
+      } catch {
+        resolve({
+          match: false,
+          summary: "Failed to parse verification JSON",
+          discrepancies: ["JSON parse error"],
+          suggestions: [],
+          usage
+        });
+      }
+    };
+
+    const runner = selectRunner(session.model);
+    runner({
+      prompt,
+      session,
+      onEvent,
+      onSessionUpdate: (updates) => { sessions.updateSession(session.id, updates); }
+    })
+      .then((handle) => { runnerHandles.set(session.id, handle); })
+      .catch((error) => {
+        if (!completed) {
+          completed = true;
+          runnerHandles.delete(session.id);
+          sessions.deleteSession(session.id);
+          resolve({
+            match: false,
+            summary: `Verification runner error: ${String(error)}`,
+            discrepancies: [String(error)],
+            suggestions: [],
+            usage: { input_tokens: 0, output_tokens: 0 }
+          });
+        }
+      });
+  });
+}
+
+/**
+ * Run refinement as a full agent with tools.
+ * Same context as llmCall refine but can use tools to inspect workspace.
+ */
+async function runAgentRefine(
+  workflow: any,
+  verification: { discrepancies: string[]; suggestions: string[] },
+  schemaRef: string,
+  workspaceDir: string,
+  windowId: number,
+  options?: { model?: string; debugLog?: DistillDebugLog; debugStep?: string }
+): Promise<{ message: string; workflow: any; usage: { input_tokens: number; output_tokens: number } }> {
+  const prompt = buildRefinePrompt(workflow, verification, schemaRef);
+
+  const session = sessions.createSession({
+    cwd: workspaceDir,
+    title: `[refine] ${workflow.name}`,
+    allowedTools: "",
+    prompt: "",
+    model: options?.model || undefined
+  });
+  sessions.updateSession(session.id, { status: "running" });
+  sessionManager.setWindowSession(windowId, session.id);
+
+  return new Promise((resolve) => {
+    let collectedText = "";
+    let completed = false;
+
+    const cleanup = () => {
+      runnerHandles.delete(session.id);
+      sessions.deleteSession(session.id);
+    };
+
+    const onEvent = (serverEvent: ServerEvent) => {
+      if (serverEvent.type === "stream.message" && serverEvent.payload.sessionId === session.id) {
+        const msg = serverEvent.payload.message as any;
+        if (msg.type === "result" && msg.result) {
+          collectedText = msg.result;
+        } else if (msg.type === "assistant" && msg.message?.content) {
+          const parts = Array.isArray(msg.message.content) ? msg.message.content : [msg.message.content];
+          for (const p of parts) {
+            if (p.type === "text" && p.text) collectedText += p.text;
+          }
+        } else if (msg.type === "text" && msg.text) {
+          collectedText += msg.text;
+        }
+      }
+      if (serverEvent.type === "session.status" && serverEvent.payload.sessionId === session.id) {
+        if ((serverEvent.payload.status === "completed" || serverEvent.payload.status === "idle") && !completed) {
+          completed = true;
+          finalize();
+        }
+        if (serverEvent.payload.status === "error" && !completed) {
+          completed = true;
+          cleanup();
+          resolve({ message: `Refine agent error`, workflow: null, usage: { input_tokens: 0, output_tokens: 0 } });
+        }
+      }
+    };
+
+    const finalize = () => {
+      const usage = {
+        input_tokens: sessions.getSession(session.id)?.inputTokens || 0,
+        output_tokens: sessions.getSession(session.id)?.outputTokens || 0
+      };
+      cleanup();
+
+      if (options?.debugLog) {
+        const jsonRaw = extractJsonObject(collectedText);
+        options.debugLog.push({
+          step: options.debugStep || "refine_agent",
+          timestamp: new Date().toISOString(),
+          system: "(agent with tools)",
+          user: prompt.slice(0, 2000),
+          response: collectedText.slice(0, 5000),
+          parsed: jsonRaw ? JSON.parse(jsonRaw) : null,
+          usage
+        });
+      }
+
+      const jsonRaw = extractJsonObject(collectedText);
+      if (!jsonRaw) {
+        resolve({ message: "Agent did not return JSON", workflow: null, usage });
+        return;
+      }
+      try {
+        const data = JSON.parse(jsonRaw);
+        resolve({ message: data.message || "", workflow: data.workflow || null, usage });
+      } catch {
+        resolve({ message: "JSON parse error", workflow: null, usage });
+      }
+    };
+
+    const runner = selectRunner(session.model);
+    runner({
+      prompt,
+      session,
+      onEvent,
+      onSessionUpdate: (updates) => { sessions.updateSession(session.id, updates); }
+    })
+      .then((handle) => { runnerHandles.set(session.id, handle); })
+      .catch((error) => {
+        if (!completed) {
+          completed = true;
+          cleanup();
+          resolve({ message: String(error), workflow: null, usage: { input_tokens: 0, output_tokens: 0 } });
+        }
+      });
+  });
 }
 
 // Broadcast function for events without sessionId (session.list, models.loaded, etc.)
@@ -422,7 +921,7 @@ async function performCompact(sessionId: string, windowId: number, nextPrompt?: 
     if (msg.type === 'user_prompt') {
       const text = (msg as any).prompt || '';
       if (text.trim()) lines.push(`User: ${text}`);
-    } else if (msg.type === 'text') {
+    } else if ((msg as any).type === 'text') {
       const text = (msg as any).text || '';
       if (text.trim()) lines.push(`Assistant: ${text}`);
     }
@@ -506,6 +1005,10 @@ async function performCompact(sessionId: string, windowId: number, nextPrompt?: 
 }
 
 export async function handleClientEvent(event: ClientEvent, windowId: number) {
+  if (event.type.startsWith("miniworkflow.")) {
+    console.log("[IPC] Received miniworkflow event:", event.type);
+  }
+
   if (event.type === "session.compact") {
     const { sessionId } = event.payload;
     // Run async without blocking
@@ -963,6 +1466,35 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
 
   if (event.type === "open.external") {
     shell.openExternal(event.payload.url);
+    return;
+  }
+
+  if (event.type === "open.path") {
+    let filePath = event.payload.path;
+    const explicitCwd = event.payload.cwd;
+    const sessionId = sessionManager.getWindowSession(windowId);
+    const session = sessionId ? sessions.getSession(sessionId) : undefined;
+    const cwd = explicitCwd || session?.cwd || process.cwd();
+
+    // Resolve relative paths against the active session's cwd
+    if (filePath && !path.isAbsolute(filePath)) {
+      filePath = path.resolve(cwd, filePath);
+    }
+
+    // Security: only allow paths inside the session workspace or user home
+    const normalized = path.normalize(filePath);
+    const home = homedir();
+    const normalizedCwd = path.normalize(cwd);
+    const normalizedHome = path.normalize(home);
+    const insideWorkspace = normalized.startsWith(normalizedCwd + path.sep) || normalized === normalizedCwd;
+    const insideHome = normalized.startsWith(normalizedHome + path.sep);
+    console.log(`[open.path] path=${normalized} cwd=${normalizedCwd} home=${normalizedHome} insideWorkspace=${insideWorkspace} insideHome=${insideHome}`);
+    if (!insideWorkspace && !insideHome) {
+      console.warn(`[open.path] Blocked path outside workspace/home: ${normalized}`);
+      return;
+    }
+
+    shell.openPath(normalized);
     return;
   }
 
@@ -1688,6 +2220,413 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
     return;
   }
 
+  if (event.type === "miniworkflow.list") {
+    const workflows = await miniWorkflowStore.list({
+      projectCwd: event.payload?.cwd,
+      includeProject: true
+    });
+    sessionManager.emitToWindow(windowId, {
+      type: "miniworkflow.list",
+      payload: { workflows }
+    });
+    return;
+  }
+
+  if (event.type === "miniworkflow.get") {
+    const workflow = await miniWorkflowStore.load(event.payload.workflowId, {
+      projectCwd: event.payload.cwd,
+      preferProject: true
+    });
+    if (!workflow) {
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.error",
+        payload: { message: `Workflow not found: ${event.payload.workflowId}` }
+      });
+      return;
+    }
+    sessionManager.emitToWindow(windowId, {
+      type: "miniworkflow.loaded",
+      payload: { workflow: workflow as any }
+    });
+    return;
+  }
+
+  if (event.type === "miniworkflow.distill") {
+    const { sessionId, validationErrors, model: distillModel, maxVerifyCycles: userMaxCycles } = event.payload as { sessionId: string; validationErrors?: string[]; model?: string; maxVerifyCycles?: number };
+    const history = sessions.getSessionHistory(sessionId);
+    if (!history) {
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.error",
+        payload: { message: "Session not found for distill" }
+      });
+      return;
+    }
+
+    // Quick check: does session have tool calls?
+    const suitability = checkDistillability(history.messages);
+    if (!suitability.suitable) {
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.distill.result",
+        payload: {
+          sessionId,
+          result: {
+            status: "not_suitable",
+            reason: "Сессия не содержит вызовов инструментов.",
+            suggest_prompt_preset: Boolean(suitability.suggest_prompt_preset)
+          }
+        }
+      });
+      return;
+    }
+
+    // 3-step LLM distillation chain
+    const distillAC = new AbortController();
+    distillAbortControllers.set(sessionId, distillAC);
+    const distillSignal = distillAC.signal;
+
+    try {
+      const chainResult = await distillChain({
+        sessionId,
+        cwd: history.session.cwd,
+        history: history.messages as any[],
+        model: distillModel || history.session.model,
+        previousErrors: validationErrors
+      }, (step, totalSteps, label, usage) => {
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.distill.progress",
+          payload: { sessionId, step, totalSteps, label, usage: { ...usage } }
+        });
+      }, distillSignal);
+
+      const distillUsage = chainResult.usage;
+
+      if (chainResult.status === "not_suitable") {
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.distill.result",
+          payload: {
+            sessionId,
+            usage: distillUsage,
+            result: { status: "not_suitable", reason: chainResult.reason, suggest_prompt_preset: false }
+          }
+        });
+        return;
+      }
+
+      const validation = validateWorkflow(chainResult.workflow as Record<string, unknown>);
+      if (!validation.valid) {
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.distill.result",
+          payload: {
+            sessionId,
+            usage: distillUsage,
+            result: { status: "needs_clarification", questions: validation.errors }
+          }
+        });
+        return;
+      }
+
+      // ─── Verification loop: test-run → verify → refine (up to 3 cycles) ───
+      let finalWorkflow = chainResult.workflow;
+      const debugLog = chainResult.debugLog;
+      const MAX_VERIFY_CYCLES = Math.max(1, Math.min(10, userMaxCycles ?? 3));
+      let verificationResult: { match: boolean; summary: string; discrepancies: string[]; suggestions: string[] } | null = null;
+      let lastReplayResult: FullReplayResult | null = null;
+      let verifyCyclesUsed = 0;
+      const testDir = join(app.getPath("userData"), "distill-verify", sessionId);
+
+      if (finalWorkflow.source_result?.description) {
+        const verifyModel = finalWorkflow.source_model || history.session.model;
+        const { client: vClient, modelName: vModelName } = getLlmConnection(verifyModel);
+        const schemaRef = getMiniWorkflowSchemaPrompt();
+        // Unified progress scale: 5 distill steps + 3 per verify cycle (replay + verify + refine)
+        const TOTAL_STEPS = 5 + MAX_VERIFY_CYCLES * 3;
+
+        for (let cycle = 0; cycle < MAX_VERIFY_CYCLES; cycle++) {
+          if (distillSignal.aborted) break;
+          const cycleBase = 5 + cycle * 3;
+          // Progress: full replay
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.distill.progress",
+            payload: {
+              sessionId,
+              step: cycleBase + 1,
+              totalSteps: TOTAL_STEPS,
+              label: `Полный прогон (${cycle + 1}/${MAX_VERIFY_CYCLES})...`,
+              usage: { ...distillUsage }
+            }
+          });
+
+          // Run full replay (scripts + LLM steps) in temp workspace
+          const replayResult = await runFullReplay(finalWorkflow, testDir, windowId, {
+            model: verifyModel,
+            silent: true
+          });
+          lastReplayResult = replayResult;
+          console.log(`[Distill] Full replay cycle ${cycle + 1}: ${Object.keys(replayResult.scriptErrors).length} script errors, ${replayResult.filesCreated.length} files, ${Object.keys(replayResult.stepResults).length} total steps`);
+
+          // Progress: verification
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.distill.progress",
+            payload: {
+              sessionId,
+              step: cycleBase + 2,
+              totalSteps: TOTAL_STEPS,
+              label: `Верификация результата (${cycle + 1}/${MAX_VERIFY_CYCLES})...`,
+              usage: { ...distillUsage }
+            }
+          });
+
+          const verifyRes = await runAgentVerification(finalWorkflow, replayResult, testDir, windowId, {
+            model: verifyModel, debugLog, debugStep: `verify_cycle${cycle + 1}`
+          });
+          distillUsage.input_tokens += verifyRes.usage.input_tokens;
+          distillUsage.output_tokens += verifyRes.usage.output_tokens;
+          verificationResult = verifyRes;
+          verifyCyclesUsed = cycle + 1;
+          console.log(`[Distill] Verification cycle ${cycle + 1}: match=${verificationResult.match}, discrepancies=${verificationResult.discrepancies.length}`);
+
+          if (verificationResult.match) {
+            console.log(`[Distill] Verification passed on cycle ${cycle + 1}`);
+            break;
+          }
+
+          // Last cycle — don't refine, just report
+          if (cycle === MAX_VERIFY_CYCLES - 1) {
+            console.log(`[Distill] Verification failed after ${MAX_VERIFY_CYCLES} cycles`);
+            break;
+          }
+
+          // Refine workflow based on feedback
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.distill.progress",
+            payload: {
+              sessionId,
+              step: cycleBase + 3,
+              totalSteps: TOTAL_STEPS,
+              label: `Исправление по замечаниям (${cycle + 1}/${MAX_VERIFY_CYCLES})...`,
+              usage: { ...distillUsage }
+            }
+          });
+
+          try {
+            const refineData = await runAgentRefine(
+              finalWorkflow, verificationResult, schemaRef, testDir, windowId,
+              { model: verifyModel, debugLog, debugStep: `refine_cycle${cycle + 1}` }
+            );
+            if (refineData.usage) {
+              distillUsage.input_tokens += refineData.usage.input_tokens;
+              distillUsage.output_tokens += refineData.usage.output_tokens;
+            }
+            if (refineData.workflow) {
+              const refineValidation = validateWorkflow(refineData.workflow as Record<string, unknown>);
+              if (refineValidation.valid) {
+                refineData.workflow.source_model = finalWorkflow.source_model;
+                refineData.workflow.source_context = finalWorkflow.source_context;
+                refineData.workflow.source_result = finalWorkflow.source_result;
+                finalWorkflow = refineData.workflow;
+                console.log(`[Distill] Workflow refined: ${refineData.message}`);
+              } else {
+                console.warn(`[Distill] Refined workflow invalid: ${refineValidation.errors.join("; ")}`);
+              }
+            }
+          } catch (refineErr) {
+            console.error(`[Distill] Refine failed on cycle ${cycle + 1}:`, refineErr);
+          }
+        }
+
+        // Keep workspace for user inspection; it will be cleaned on next replay run
+      }
+
+      // Save debug log to file
+      let debugLogPath: string | undefined;
+      if (debugLog.length > 0) {
+        const debugDir = join(app.getPath("userData"), "distill-debug");
+        await fs.mkdir(debugDir, { recursive: true });
+        debugLogPath = join(debugDir, `${sessionId}_${Date.now()}.json`);
+        const exportData = {
+          sessionId,
+          timestamp: new Date().toISOString(),
+          model: history.session.model,
+          usage: distillUsage,
+          workflow: finalWorkflow,
+          verification: verificationResult,
+          llm_calls: redactDebugLog(debugLog)
+        };
+        await fs.writeFile(debugLogPath, JSON.stringify(exportData, null, 2), "utf8");
+        console.log(`[Distill] Debug log saved: ${debugLogPath}`);
+      }
+
+      // Send final result with verification status
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.distill.result",
+        payload: { sessionId, usage: distillUsage, debugLogPath, result: { status: "success", workflow: finalWorkflow } }
+      });
+
+      // Send verification result if available
+      if (verificationResult) {
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.replay.verified",
+          payload: {
+            workflowId: finalWorkflow.id,
+            sessionId,
+            verification: verificationResult,
+            verifyCycles: { used: verifyCyclesUsed, max: MAX_VERIFY_CYCLES },
+            replayArtifacts: lastReplayResult ? {
+              filesCreated: lastReplayResult.filesCreated,
+              stepResults: lastReplayResult.stepResults,
+              workspaceDir: testDir
+            } : undefined
+          }
+        });
+      }
+    } catch (err) {
+      if (distillSignal.aborted) {
+        console.log("[Distill] Cancelled by user");
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.distill.result",
+          payload: { sessionId, result: { status: "cancelled" } }
+        });
+      } else {
+        console.error("[Distill] Error:", err);
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.error",
+          payload: { message: `Distill failed: ${String(err)}` }
+        });
+      }
+    } finally {
+      distillAbortControllers.delete(sessionId);
+    }
+    return;
+  }
+
+  if (event.type === "miniworkflow.distill.cancel") {
+    const { sessionId: cancelSessionId } = event.payload as { sessionId: string };
+    const ac = distillAbortControllers.get(cancelSessionId);
+    if (ac) {
+      ac.abort();
+      distillAbortControllers.delete(cancelSessionId);
+      console.log(`[Distill] Cancelled distillation for session ${cancelSessionId}`);
+    }
+    return;
+  }
+
+  // ─── miniworkflow.verify: full replay + verification on current workflow ───
+  if (event.type === "miniworkflow.verify") {
+    const { sessionId, workflow } = event.payload as { sessionId: string; workflow: any };
+    console.log("[Verify] Running full replay + verification for workflow:", workflow?.id);
+    try {
+      const verifyModel = workflow.source_model;
+      const { client: vClient, modelName: vModelName } = getLlmConnection(verifyModel);
+      const testDir = join(app.getPath("userData"), "distill-verify", sessionId);
+
+      const replayResult = await runFullReplay(workflow, testDir, windowId, {
+        model: verifyModel,
+        silent: true
+      });
+      const verification = await runAgentVerification(workflow, replayResult, testDir, windowId, {
+        model: verifyModel
+      });
+
+      // Keep workspace for user inspection; it will be cleaned on next replay run
+
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.replay.verified",
+        payload: {
+          workflowId: workflow.id, sessionId, verification,
+          replayArtifacts: {
+            filesCreated: replayResult.filesCreated,
+            stepResults: replayResult.stepResults,
+            workspaceDir: testDir
+          }
+        }
+      });
+    } catch (err) {
+      console.error("[Verify] Error:", err);
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.replay.verified",
+        payload: {
+          workflowId: workflow.id, sessionId,
+          verification: { match: false, summary: `Ошибка верификации: ${String(err)}`, discrepancies: [String(err)], suggestions: [] }
+        }
+      });
+    }
+    return;
+  }
+
+  // ─── miniworkflow.fix-discrepancies: refine workflow via agent with tools ───
+  if (event.type === "miniworkflow.fix-discrepancies") {
+    const { sessionId, workflow, discrepancies, suggestions } = event.payload as {
+      sessionId: string; workflow: any; discrepancies: string[]; suggestions: string[];
+    };
+    console.log("[Fix] Fixing discrepancies (agent) for workflow:", workflow?.id);
+    try {
+      const schemaRef = getMiniWorkflowSchemaPrompt();
+      const testDir = join(app.getPath("userData"), "distill-verify", sessionId);
+      await fs.mkdir(testDir, { recursive: true });
+
+      const refineData = await runAgentRefine(
+        workflow, { discrepancies, suggestions }, schemaRef, testDir, windowId,
+        { model: workflow.source_model }
+      );
+      if (refineData.workflow) {
+        const validation = validateWorkflow(refineData.workflow as Record<string, unknown>);
+        if (validation.valid) {
+          refineData.workflow.source_model = workflow.source_model;
+          refineData.workflow.source_context = workflow.source_context;
+          refineData.workflow.source_result = workflow.source_result;
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.refine.result",
+            payload: { sessionId, result: { status: "success", message: refineData.message || "Workflow исправлен.", workflow: refineData.workflow } }
+          });
+        } else {
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.refine.result",
+            payload: { sessionId, result: { status: "error", message: `Невалидный workflow: ${validation.errors.join("; ")}` } }
+          });
+        }
+      } else {
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.refine.result",
+          payload: { sessionId, result: { status: "error", message: refineData.message || "Не удалось исправить." } }
+        });
+      }
+    } catch (err) {
+      console.error("[Fix] Error:", err);
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.refine.result",
+        payload: { sessionId, result: { status: "error", message: `Ошибка: ${String(err)}` } }
+      });
+    }
+    return;
+  }
+
+  if (event.type === "miniworkflow.archive") {
+    const wf = await miniWorkflowStore.load(event.payload.workflowId, {
+      projectCwd: event.payload.cwd,
+      preferProject: true
+    });
+    if (!wf) {
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.error",
+        payload: { message: `Workflow not found: ${event.payload.workflowId}` }
+      });
+      return;
+    }
+    await miniWorkflowStore.save(
+      { ...wf, status: "archived", updated_at: new Date().toISOString() },
+      { scope: event.payload.cwd ? "project" : "global", projectCwd: event.payload.cwd }
+    );
+    const workflows = await miniWorkflowStore.list({
+      projectCwd: event.payload.cwd,
+      includeProject: Boolean(event.payload.cwd)
+    });
+    broadcast({
+      type: "miniworkflow.list",
+      payload: { workflows }
+    });
+    return;
+  }
+
   if (event.type === "skills.remove-repository") {
     const { id } = event.payload;
     removeRepository(id);
@@ -1700,6 +2639,436 @@ export async function handleClientEvent(event: ClientEvent, windowId: number) {
         lastFetched: settings.lastFetched
       }
     });
+    return;
+  }
+
+  if (event.type === "miniworkflow.save") {
+    const workflow = event.payload.workflow as any;
+    // Always save globally so workflows are visible in all chats
+    await miniWorkflowStore.save(workflow as any, { scope: "global" });
+    // Also save to project if cwd is provided
+    if (event.payload.cwd) {
+      await miniWorkflowStore.save(workflow as any, {
+        scope: "project",
+        projectCwd: event.payload.cwd
+      });
+    }
+    const workflows = await miniWorkflowStore.list({
+      projectCwd: event.payload.cwd,
+      includeProject: Boolean(event.payload.cwd)
+    });
+    broadcast({
+      type: "miniworkflow.list",
+      payload: { workflows }
+    });
+    return;
+  }
+
+  if (event.type === "miniworkflow.refine") {
+    const { sessionId, workflow, userMessage } = event.payload as {
+      sessionId: string;
+      workflow: any;
+      userMessage: string;
+    };
+    console.log("[Refine] Received refine request:", { sessionId, userMessage: userMessage?.slice(0, 100), source_model: workflow?.source_model });
+    try {
+      const { client, modelName } = getLlmConnection(workflow.source_model);
+      console.log("[Refine] LLM connection established, model:", modelName);
+      const schemaRef = getMiniWorkflowSchemaPrompt();
+      const sourceCtx = workflow.source_context
+        ? `\n\n<SOURCE_SESSION_CONTEXT>\n${String(workflow.source_context).slice(0, 6000)}\n</SOURCE_SESSION_CONTEXT>`
+        : "";
+
+      const systemPrompt = `Ты редактор MiniWorkflow. Пользователь просит внести изменения в workflow.
+
+${schemaRef}
+
+Текущий workflow (JSON):
+\`\`\`json
+${JSON.stringify(workflow, null, 2)}
+\`\`\`
+${sourceCtx}
+
+Ответь JSON (без markdown-обёртки):
+{
+  "message": "краткое описание что изменено",
+  "workflow": { ...обновлённый workflow целиком }
+}
+
+Если запрос непонятен или невыполним, верни:
+{ "message": "пояснение почему нельзя", "workflow": null }`;
+
+      const result = await llmCall(client, modelName, systemPrompt, userMessage);
+      const data = result.data;
+
+      if (data.workflow) {
+        // Validate refined workflow before accepting
+        const validation = validateWorkflow(data.workflow as Record<string, unknown>);
+        if (!validation.valid) {
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.refine.result",
+            payload: {
+              sessionId,
+              result: { status: "error", message: `Агент вернул невалидный workflow: ${validation.errors.join("; ")}` }
+            }
+          });
+        } else {
+          sessionManager.emitToWindow(windowId, {
+            type: "miniworkflow.refine.result",
+            payload: {
+              sessionId,
+              result: { status: "success", message: data.message || "Workflow обновлён.", workflow: data.workflow }
+            }
+          });
+        }
+      } else {
+        sessionManager.emitToWindow(windowId, {
+          type: "miniworkflow.refine.result",
+          payload: {
+            sessionId,
+            result: { status: "error", message: data.message || "Не удалось обработать запрос." }
+          }
+        });
+      }
+    } catch (err) {
+      console.error("[Refine] Error:", err);
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.refine.result",
+        payload: {
+          sessionId,
+          result: { status: "error", message: `Ошибка: ${String(err)}` }
+        }
+      });
+    }
+    return;
+  }
+
+  if (event.type === "miniworkflow.delete") {
+    await miniWorkflowStore.delete(event.payload.workflowId, {
+      scope: event.payload.scope ?? "both",
+      projectCwd: event.payload.cwd
+    });
+    const workflows = await miniWorkflowStore.list({
+      projectCwd: event.payload.cwd,
+      includeProject: Boolean(event.payload.cwd)
+    });
+    broadcast({
+      type: "miniworkflow.list",
+      payload: { workflows }
+    });
+    return;
+  }
+
+  if (event.type === "miniworkflow.replay") {
+    const workflow = await miniWorkflowStore.load(event.payload.workflowId, {
+      projectCwd: event.payload.cwd,
+      preferProject: true
+    });
+    if (!workflow) {
+      sessionManager.emitToWindow(windowId, {
+        type: "miniworkflow.error",
+        payload: { message: `Workflow not found: ${event.payload.workflowId}` }
+      });
+      return;
+    }
+
+    const inputs = event.payload.inputs || {};
+    const firstInputValue = Object.values(inputs).find((v) => typeof v === "string" && String(v).trim().length > 0);
+
+    const workflowDir = join(workflow.source_session_cwd || event.payload.cwd || ".", ".valera", "workflows", workflow.id, "workspace");
+    // Clean workspace from previous runs to avoid agent wasting tokens on old files
+    await fs.rm(workflowDir, { recursive: true, force: true });
+    await fs.mkdir(workflowDir, { recursive: true });
+
+    // Create session IMMEDIATELY so user sees the new chat right away
+    const session = sessions.createSession({
+      cwd: workflowDir,
+      title: `${workflow.name}${firstInputValue ? `: ${String(firstInputValue)}` : ""}`,
+      allowedTools: workflow.compatibility.tools_required.join(","),
+      prompt: "",
+      model: event.payload.model || undefined
+    });
+    sessions.updateSession(session.id, { status: "running" });
+    sessionManager.setWindowSession(windowId, session.id);
+    // Notify UI immediately so it switches to the new chat
+    emit({
+      type: "session.status",
+      payload: { sessionId: session.id, status: "running", title: session.title, cwd: session.cwd }
+    });
+    sessionManager.emitToWindow(windowId, {
+      type: "miniworkflow.replay.started",
+      payload: { workflowId: workflow.id, sessionId: session.id }
+    });
+
+    const secretBag: Record<string, string> = {};
+    for (const inputSpec of workflow.inputs) {
+      if (inputSpec.type === "secret" || inputSpec.redaction) {
+        const v = inputs[inputSpec.id];
+        if (typeof v === "string" && v) secretBag[inputSpec.id] = v;
+      }
+    }
+
+    // Execute scripted steps — session is already visible, show progress via stream messages
+    const scriptResults: Record<string, string> = {};
+    const scriptSteps = (workflow as any).chain?.filter((s: any) => s.execution === "script" && s.script?.code) || [];
+    if (scriptSteps.length > 0) {
+      console.log(`[Replay] Executing ${scriptSteps.length} scripted steps...`);
+      const { execFile } = await import("child_process");
+      const { promisify } = await import("util");
+      const execFileAsync = promisify(execFile);
+
+      // Show progress in chat using system/notice format
+      const emitProgress = (text: string) => emit({
+        type: "stream.message",
+        payload: { sessionId: session.id, message: { type: "system", subtype: "notice", text } as any }
+      });
+      emitProgress(`⏳ Выполняю предварительные скрипты (${scriptSteps.length})...`);
+
+      for (const step of scriptSteps) {
+        try {
+          // Build clean env: only pass safe system vars, not API keys or secrets
+          const SAFE_ENV_KEYS = new Set(["PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "LANG", "SYSTEMROOT", "COMSPEC", "SHELL", "TERM", "PYTHONPATH", "PYTHONHOME", "NODE_PATH", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "WINDIR"]);
+          const SAFE_ENV_PREFIXES = ["LC_", "PYTHON"];
+          const SECRET_PATTERNS = /(_KEY|_SECRET|_TOKEN|_PASSWORD|_CREDENTIAL|_AUTH)$|^(OPENAI|ANTHROPIC|TAVILY|ZAI|AWS_|AZURE_|GOOGLE_|GITHUB_TOKEN|NPM_TOKEN|CODEX_)/i;
+          const env: Record<string, string> = {};
+          for (const [k, v] of Object.entries(process.env)) {
+            if (v == null) continue;
+            if (SECRET_PATTERNS.test(k)) continue;
+            if (SAFE_ENV_KEYS.has(k) || SAFE_ENV_PREFIXES.some(p => k.startsWith(p))) {
+              env[k] = v;
+            }
+          }
+          for (const [k, v] of Object.entries(inputs)) {
+            env[`INPUTS_${k.toUpperCase()}`] = String(v);
+          }
+          for (const [k, v] of Object.entries(scriptResults)) {
+            env[`STEP_${k.toUpperCase()}_RESULT`] = v;
+          }
+          env["WORKSPACE"] = workflowDir;
+
+          const scriptFile = join(workflowDir, `${step.id}.py`);
+          await fs.writeFile(scriptFile, step.script.code, "utf8");
+
+          emitProgress(`▸ ${step.title}...`);
+
+          const { stdout } = await execFileAsync("python", [scriptFile], {
+            cwd: workflowDir,
+            env,
+            timeout: 120_000,
+            maxBuffer: 10 * 1024 * 1024
+          });
+          scriptResults[step.id] = (stdout || "").trim();
+          console.log(`[Replay] Script step "${step.id}" completed (${(stdout || "").length} chars)`);
+        } catch (err: any) {
+          console.error(`[Replay] Script step "${step.id}" failed:`, err.message);
+          scriptResults[step.id] = `[SCRIPT ERROR: ${err.message}]`;
+        }
+      }
+
+      emitProgress(`✅ Скрипты выполнены. Запускаю агента...`);
+    }
+
+    // ─── Step-by-step chain execution ───
+    const llmSteps = getLlmSteps(workflow as any);
+    const allStepResults: Record<string, string> = { ...scriptResults };
+
+    let replayLogged = false;
+    const orderedSteps: Array<{ step_id: string; status: "success" | "failed" | "skipped"; outputs?: unknown; error?: string | null; started_at?: string; finished_at?: string; duration_ms?: number }> = [];
+
+    const finalizeReplayLog = (status: "success" | "partial" | "failed" | "aborted") => {
+      if (replayLogged) return;
+      replayLogged = true;
+      void writeReplayLog(workflow as any, { inputs, final_status: status, step_results: orderedSteps });
+    };
+
+    // Show progress in chat
+    const emitStepProgress = (text: string) => emit({
+      type: "stream.message",
+      payload: { sessionId: session.id, message: { type: "system", subtype: "notice", text } as any }
+    });
+
+    /** Run a single LLM step and collect the final text result */
+    const runSingleStep = (stepPrompt: string, stepTitle: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        let collectedText = "";
+        let stepCompleted = false;
+
+        const stepEmit = (serverEvent: ServerEvent) => {
+          emit(serverEvent); // forward all events to UI
+
+          if (serverEvent.type === "stream.message" && serverEvent.payload.sessionId === session.id) {
+            const msg = serverEvent.payload.message as any;
+            if (msg.type === "assistant" && msg.content) {
+              collectedText += msg.content;
+            } else if (msg.type === "text" && msg.text) {
+              collectedText += msg.text;
+            }
+          }
+          if (serverEvent.type === "session.status" && serverEvent.payload.sessionId === session.id) {
+            if (serverEvent.payload.status === "completed" || serverEvent.payload.status === "idle") {
+              if (!stepCompleted) {
+                stepCompleted = true;
+                resolve(collectedText.trim());
+              }
+            }
+            if (serverEvent.payload.status === "error") {
+              if (!stepCompleted) {
+                stepCompleted = true;
+                reject(new Error(`Step "${stepTitle}" failed`));
+              }
+            }
+          }
+          if (serverEvent.type === "runner.error" && serverEvent.payload.sessionId === session.id) {
+            if (!stepCompleted) {
+              stepCompleted = true;
+              reject(new Error(serverEvent.payload.message));
+            }
+          }
+        };
+
+        const runner = selectRunner(session.model);
+        runner({
+          prompt: stepPrompt,
+          session,
+          resumeSessionId: session.claudeSessionId,
+          onEvent: stepEmit,
+          secretBag,
+          onSessionUpdate: (updates) => {
+            sessions.updateSession(session.id, updates);
+          }
+        })
+          .then((handle) => {
+            runnerHandles.set(session.id, handle);
+          })
+          .catch((error) => {
+            if (!stepCompleted) {
+              stepCompleted = true;
+              reject(error);
+            }
+          });
+      });
+    };
+
+    // Execute LLM steps sequentially
+    (async () => {
+      try {
+        for (let i = 0; i < llmSteps.length; i++) {
+          const step = llmSteps[i];
+          const stepStartedAt = Date.now();
+
+          emitStepProgress(`▸ Шаг ${i + 1}/${llmSteps.length}: ${step.title}...`);
+
+          const stepPrompt = buildStepPrompt(
+            workflow as any,
+            step,
+            i,
+            llmSteps.length,
+            inputs,
+            allStepResults
+          );
+
+          sessions.updateSession(session.id, { lastPrompt: stepPrompt, status: "running" });
+          emit({
+            type: "stream.user_prompt",
+            payload: { sessionId: session.id, prompt: stepPrompt }
+          });
+
+          try {
+            const result = await runSingleStep(stepPrompt, step.title);
+            allStepResults[step.id] = result;
+
+            orderedSteps.push({
+              step_id: step.id,
+              status: "success",
+              outputs: result.slice(0, 500),
+              started_at: new Date(stepStartedAt).toISOString(),
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - stepStartedAt
+            });
+
+            console.log(`[Replay] Step "${step.id}" completed (${result.length} chars)`);
+          } catch (stepErr) {
+            console.error(`[Replay] Step "${step.id}" failed:`, stepErr);
+            orderedSteps.push({
+              step_id: step.id,
+              status: "failed",
+              error: String(stepErr),
+              started_at: new Date(stepStartedAt).toISOString(),
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - stepStartedAt
+            });
+            finalizeReplayLog("partial");
+            return; // stop chain on failure
+          }
+        }
+
+        const totalSteps = scriptSteps.length + llmSteps.length;
+        emitStepProgress(`✅ Все ${totalSteps} шагов выполнены.`);
+
+        // ─── Verification: compare replay result with original session result ───
+        if (workflow.source_result?.description) {
+          emitStepProgress(`🔍 Верификация результата...`);
+          try {
+            const verifyModel = workflow.source_model || event.payload.model;
+            const { client: vClient, modelName: vModelName } = getLlmConnection(verifyModel);
+
+            // Collect files in workspace
+            let replayFiles: string[] = [];
+            try {
+              const entries = await fs.readdir(workflowDir, { recursive: true }) as string[];
+              replayFiles = entries.filter(f => !f.endsWith(".py"));
+            } catch { /* ignore */ }
+
+            const replayResultForVerify: FullReplayResult = {
+              stepResults: allStepResults,
+              scriptErrors: {},
+              filesCreated: replayFiles,
+              sessionId: session.id
+            };
+            const verification = await runAgentVerification(workflow, replayResultForVerify, workflowDir, windowId, {
+              model: verifyModel
+            });
+
+            sessionManager.emitToWindow(windowId, {
+              type: "miniworkflow.replay.verified",
+              payload: {
+                workflowId: workflow.id, sessionId: session.id, verification,
+                replayArtifacts: {
+                  filesCreated: replayFiles,
+                  stepResults: allStepResults,
+                  workspaceDir: workflowDir
+                }
+              }
+            });
+
+            if (verification.match) {
+              emitStepProgress(`✅ Верификация пройдена: результат соответствует ожиданиям.`);
+            } else {
+              emitStepProgress(`⚠️ Верификация: обнаружены расхождения. Подробности на форме дистилляции.`);
+            }
+          } catch (verifyErr) {
+            console.error("[Replay] Verification failed:", verifyErr);
+            emitStepProgress(`⚠️ Верификация не выполнена: ${String(verifyErr)}`);
+          }
+        }
+
+        finalizeReplayLog("success");
+        sessions.updateSession(session.id, { status: "completed" });
+        emit({
+          type: "session.status",
+          payload: { sessionId: session.id, status: "completed" }
+        });
+      } catch (err) {
+        finalizeReplayLog("failed");
+        sessions.updateSession(session.id, { status: "error" });
+        sessionManager.emitToWindow(windowId, {
+          type: "runner.error",
+          payload: { sessionId: session.id, message: String(err) }
+        });
+      }
+    })();
+
+    // NOTE: miniworkflow.replay.started already emitted earlier (before scripts)
     return;
   }
 

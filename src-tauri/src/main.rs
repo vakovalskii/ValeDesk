@@ -1125,6 +1125,12 @@ fn select_directory() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn select_file() -> Result<Option<String>, String> {
+  let picked = rfd::FileDialog::new().pick_file();
+  Ok(picked.map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
 fn generate_session_title(user_input: Option<String>) -> Result<String, String> {
   let input = user_input.unwrap_or_default();
   let trimmed = input.trim();
@@ -1348,6 +1354,45 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
         emit_server_event_app(
           &app,
           &json!({ "type": "runner.error", "payload": { "message": format!("Failed to open external URL: {error}") } }),
+        )?;
+      }
+      Ok(())
+    }
+
+    "open.path" => {
+      let payload = event
+        .get("payload")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "[client_event] open.path payload is missing/invalid".to_string())?;
+      let raw = payload
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "[client_event] open.path payload.path is missing".to_string())?;
+      let trimmed = raw.trim();
+      if trimmed.is_empty() {
+        return Ok(());
+      }
+      let explicit_cwd = payload.get("cwd").and_then(|v| v.as_str());
+      let candidate = std::path::PathBuf::from(trimmed);
+      let resolved = if candidate.is_absolute() {
+        candidate
+      } else if let Some(cwd) = explicit_cwd {
+        std::path::PathBuf::from(cwd).join(trimmed)
+      } else {
+        candidate
+      };
+      if !resolved.exists() {
+        emit_server_event_app(
+          &app,
+          &json!({ "type": "runner.error", "payload": { "message": format!("File not found: {}", resolved.display()) } }),
+        )?;
+        return Ok(());
+      }
+      let target_str = resolved.to_string_lossy().to_string();
+      if let Err(error) = open_target(&target_str) {
+        emit_server_event_app(
+          &app,
+          &json!({ "type": "runner.error", "payload": { "message": format!("Failed to open path: {error}") } }),
         )?;
       }
       Ok(())
@@ -1908,6 +1953,45 @@ fn client_event(app: tauri::AppHandle, state: tauri::State<'_, AppState>, event:
       Ok(())
     }
 
+    // miniworkflow.distill - enrich with session data and messages from DB
+    "miniworkflow.distill" => {
+      let payload = event.get("payload").ok_or_else(|| "[miniworkflow.distill] missing payload".to_string())?;
+      let session_id = payload.get("sessionId").and_then(|v| v.as_str())
+        .ok_or_else(|| "[miniworkflow.distill] missing sessionId".to_string())?;
+
+      match state.db.get_session_history(session_id) {
+        Ok(Some(history)) => {
+          eprintln!("[miniworkflow.distill] Found session: {}, messages={}", session_id, history.messages.len());
+          let enriched_event = json!({
+            "type": "miniworkflow.distill",
+            "payload": {
+              "sessionId": session_id,
+              "validationErrors": payload.get("validationErrors"),
+              "model": payload.get("model"),
+              "maxVerifyCycles": payload.get("maxVerifyCycles"),
+              "sessionData": {
+                "title": history.session.title,
+                "cwd": history.session.cwd,
+                "model": history.session.model,
+                "allowedTools": history.session.allowed_tools,
+                "temperature": history.session.temperature
+              },
+              "messages": history.messages
+            }
+          });
+          send_to_sidecar(app, state.inner(), &enriched_event)
+        }
+        Ok(None) => {
+          eprintln!("[miniworkflow.distill] Session {} NOT FOUND in DB!", session_id);
+          send_to_sidecar(app, state.inner(), &event)
+        }
+        Err(e) => {
+          eprintln!("[miniworkflow.distill] DB error: {}", e);
+          send_to_sidecar(app, state.inner(), &event)
+        }
+      }
+    }
+
     _ => {
       // Forward unknown events to sidecar
       send_to_sidecar(app, state.inner(), &event)
@@ -2239,6 +2323,7 @@ fn main() {
       open_file,
       get_build_info,
       select_directory,
+      select_file,
       generate_session_title,
       get_recent_cwds,
       // Code Sandbox commands

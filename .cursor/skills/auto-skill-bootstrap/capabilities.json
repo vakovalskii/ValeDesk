@@ -1,0 +1,38 @@
+{
+  "docker": {
+    "domain": "devops",
+    "keywords": ["docker", "compose", "container", "image"],
+    "queries": ["docker", "docker compose", "docker security"]
+  },
+  "devcontainers": {
+    "domain": "devops",
+    "keywords": ["devcontainer", "devcontainers", "container features"],
+    "queries": ["devcontainer", "devcontainers"]
+  },
+  "github": {
+    "domain": "productivity",
+    "keywords": ["github", "gh", "pull request", "branch protection", "ruleset", "actions"],
+    "queries": ["github", "gh cli", "branch protection", "rulesets"]
+  },
+  "powershell": {
+    "domain": "devops",
+    "keywords": ["powershell", "ps1", "windows"],
+    "queries": ["powershell", "windows scripting"]
+  },
+  "testing": {
+    "domain": "testing",
+    "keywords": ["test", "tests", "jest", "pytest", "playwright", "e2e"],
+    "queries": ["testing", "playwright", "jest", "pytest"]
+  },
+  "docs": {
+    "domain": "documentation",
+    "keywords": ["docs", "documentation", "readme", "changelog"],
+    "queries": ["documentation", "readme", "changelog"]
+  },
+  "security": {
+    "domain": "devops",
+    "keywords": ["security", "secrets", "permissions", "hardening"],
+    "queries": ["security", "secrets", "hardening"]
+  }
+}
+

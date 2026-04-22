@@ -442,8 +442,8 @@ export function SettingsModal({ onClose, onSave, currentSettings }: SettingsModa
         onClose();
       }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl max-h-[85vh] rounded-2xl border border-ink-900/10 bg-surface shadow-2xl flex flex-col overflow-hidden">
+        <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-[90] -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl max-h-[85vh] rounded-2xl border border-ink-900/10 bg-surface shadow-2xl flex flex-col overflow-hidden">
           <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-ink-900/10">
             <Dialog.Title className="text-xl font-semibold text-ink-900">
               {t('settings.title')}
@@ -1267,36 +1267,40 @@ function AddProviderButton({ onAdd, providers, models, setLlmProviders, setLlmMo
       enabled: true,
     };
 
-    // Send test request
-    getPlatform().sendClientEvent({
-      type: "llm.models.test",
-      payload: { provider: tempProvider }
-    });
+    let resolved = false;
+    const timeoutId = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      setTesting(false);
+      setError('Connection timeout - please check your settings');
+      removeListener();
+    }, 30000);
 
-    // Listen for response
     const removeListener = getPlatform().onServerEvent((event) => {
       if (event.type === "llm.models.fetched" && event.payload.providerId === tempProvider.id) {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        removeListener();
         setTesting(false);
         setTestSuccess(true);
         setAvailableModels(event.payload.models);
         setError('');
-        removeListener();
       } else if (event.type === "llm.models.error" && event.payload.providerId === tempProvider.id) {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        removeListener();
         setTesting(false);
         setTestSuccess(false);
         setError(`Connection failed: ${event.payload.message}`);
-        removeListener();
       }
     });
 
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      if (testing) {
-        setTesting(false);
-        setError('Connection timeout - please check your settings');
-        removeListener();
-      }
-    }, 30000);
+    getPlatform().sendClientEvent({
+      type: "llm.models.test",
+      payload: { provider: tempProvider }
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {

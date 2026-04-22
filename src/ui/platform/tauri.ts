@@ -112,6 +112,7 @@ export function createTauriPlatform(): PlatformAdapter {
     generateSessionTitle: (userInput) => tauriInvoke("generate_session_title", { user_input: userInput ?? "" }),
     getRecentCwds: (limit) => tauriInvoke("get_recent_cwds", { limit }),
     selectDirectory: () => tauriInvoke("select_directory"),
+    selectFile: () => tauriInvoke("select_file"),
 
     invoke: (channel, ...args) => {
       switch (channel) {

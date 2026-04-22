@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getPlatform } from "../platform";
-import { dirnameFsPath, isPathWithin, normalizeFsPath } from "../platform/fs-path";
+import { basenameFsPath, dirnameFsPath, isPathWithin, normalizeFsPath } from "../platform/fs-path";
 import { useI18n } from "../i18n";
 import { FilePreviewPanel } from "./FilePreviewPanel";
 
@@ -57,6 +57,7 @@ type FileBrowserProps = {
   onClose: () => void;
   /** true = single click opens built-in preview panel; false = single click opens in OS app (old behaviour) */
   useBuiltinViewer?: boolean;
+  initialPreviewPath?: string | null;
 };
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.tif', '.tiff', '.heic', '.heif']);
@@ -134,7 +135,7 @@ function FileThumbnail({ path }: { path: string }) {
   );
 }
 
-export function FileBrowser({ cwd, onClose, useBuiltinViewer = true }: FileBrowserProps) {
+export function FileBrowser({ cwd, onClose, useBuiltinViewer = true, initialPreviewPath = null }: FileBrowserProps) {
   const { t } = useI18n();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,10 +147,31 @@ export function FileBrowser({ cwd, onClose, useBuiltinViewer = true }: FileBrows
     loadFiles(currentPath);
   }, [currentPath]);
 
+  useEffect(() => {
+    if (!useBuiltinViewer || !initialPreviewPath) return;
+    const previewDir = dirnameFsPath(initialPreviewPath);
+    if (isPathWithin(previewDir, cwd)) {
+      setCurrentPath(previewDir);
+    }
+    setSelectedFile({
+      name: basenameFsPath(initialPreviewPath),
+      path: initialPreviewPath,
+      isDirectory: false
+    });
+  }, [cwd, initialPreviewPath, useBuiltinViewer]);
+
   // Close preview when navigating to another directory
   useEffect(() => {
     setSelectedFile(null);
   }, [currentPath]);
+
+  useEffect(() => {
+    if (!initialPreviewPath || currentPath !== dirnameFsPath(initialPreviewPath)) return;
+    const matchingFile = files.find((file) => file.path === initialPreviewPath && !file.isDirectory);
+    if (matchingFile) {
+      setSelectedFile(matchingFile);
+    }
+  }, [currentPath, files, initialPreviewPath]);
 
   const loadFiles = async (path: string) => {
     setLoading(true);

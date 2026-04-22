@@ -5,20 +5,23 @@ import { getPlatform } from "../platform";
 export function useIPC(onEvent: (event: ServerEvent) => void) {
   const [connected, setConnected] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const onEventRef = useRef(onEvent);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   useEffect(() => {
     const platform = getPlatform();
-    // Subscribe to server events, wait for listener to be ready
     const unsubscribe = platform.onServerEvent(
       (event: ServerEvent) => {
-        onEvent(event);
+        onEventRef.current(event);
       },
       () => {
-        // onReady callback - listener is now established
         setConnected(true);
       }
     );
-    
+
     unsubscribeRef.current = unsubscribe;
 
     return () => {
@@ -28,7 +31,7 @@ export function useIPC(onEvent: (event: ServerEvent) => void) {
       }
       setConnected(false);
     };
-  }, [onEvent]);
+  }, []);
 
   const sendEvent = useCallback((event: ClientEvent) => {
     getPlatform().sendClientEvent(event);

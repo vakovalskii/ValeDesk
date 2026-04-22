@@ -17,6 +17,7 @@ export function createElectronPlatform(): PlatformAdapter {
     generateSessionTitle: (userInput) => window.electron.generateSessionTitle(userInput),
     getRecentCwds: (limit) => window.electron.getRecentCwds(limit),
     selectDirectory: () => window.electron.selectDirectory(),
+    selectFile: () => (window.electron as any).selectFile?.() ?? Promise.resolve(null),
 
     invoke: (channel, ...args) => window.electron.invoke(channel, ...args),
     send: (channel, ...args) => window.electron.send(channel, ...args),

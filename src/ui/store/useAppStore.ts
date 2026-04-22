@@ -446,7 +446,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             // Accumulate token usage from result messages (additive — runner sends per-run totals)
             let inputTokens = existing.inputTokens ?? 0;
             let outputTokens = existing.outputTokens ?? 0;
-            if (message.type === "result" && (message as any).usage) {
+            if ((message.type === "result" || message.type === "miniapp_step_result") && (message as any).usage) {
               const { input_tokens, output_tokens } = (message as any).usage;
               if (input_tokens !== undefined) {
                 inputTokens += input_tokens;
@@ -472,7 +472,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           // Accumulate token usage from result messages (additive — runner sends per-run totals)
           let inputTokens = existing.inputTokens ?? 0;
           let outputTokens = existing.outputTokens ?? 0;
-          if (message.type === "result" && message.usage) {
+          if ((message.type === "result" || message.type === "miniapp_step_result") && message.usage) {
             const { input_tokens, output_tokens } = message.usage;
             if (input_tokens !== undefined) {
               inputTokens += input_tokens;

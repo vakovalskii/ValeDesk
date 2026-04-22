@@ -44,6 +44,8 @@ type EventPayloadMapping = {
     "open-external-url": { success: boolean; error?: string };
     "get-file-old-content": string;
     "get-file-new-content": string;
+    "get-file-snapshot": string;
+    "save-file-snapshot": void;
 }
 
 interface Window {

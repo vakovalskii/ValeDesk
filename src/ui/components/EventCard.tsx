@@ -22,6 +22,16 @@ type ToolStatus = "pending" | "success" | "error";
 const toolStatusMap = new Map<string, ToolStatus>();
 const toolStatusListeners = new Set<() => void>();
 const MAX_VISIBLE_LINES = 3;
+type MiniAppStepResultMessage = Extract<StreamMessage, { type: "miniapp_step_result" }>;
+
+function extractReferencedPaths(text: string): string[] {
+  return Array.from(new Set(
+    text
+      .split("\n")
+      .map((line) => line.trim().replace(/^-\s*/, ""))
+      .filter((line) => !!line && !/\s/.test(line) && /[./\\]/.test(line))
+  ));
+}
 
 type AskUserQuestionInput = {
   questions?: Array<{
@@ -172,6 +182,23 @@ export function isMarkdown(text: string): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function looksLikeStructuredData(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    return true;
+  }
+  return /"\w+"\s*:/.test(trimmed) && (trimmed.includes("{") || trimmed.includes("["));
+}
+
+function formatStructuredData(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
 function extractTagContent(input: string, tag: string): string | null {
   const match = input.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
   return match ? match[1] : null;
@@ -239,6 +266,9 @@ const ToolResult = ({ messageContent }: { messageContent: ToolResultContent }) =
 const AssistantBlockCard = ({ title, text, showIndicator = false, isTextBlock = false }: { title: string; text: string; showIndicator?: boolean; isTextBlock?: boolean }) => {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const structuredData = isTextBlock && looksLikeStructuredData(text);
+  const formattedStructuredData = structuredData ? formatStructuredData(text) : text;
+  const shouldCollapseStructured = structuredData && formattedStructuredData.length > 120;
 
   const handleCopy = async () => {
     try {
@@ -256,7 +286,29 @@ const AssistantBlockCard = ({ title, text, showIndicator = false, isTextBlock = 
         <StatusDot variant="success" isActive={showIndicator} isVisible={showIndicator} />
         {title}
       </div>
-      <MDContent text={text} />
+      {shouldCollapseStructured ? (
+        <details className="group mt-1 overflow-hidden rounded-xl border border-ink-900/10 bg-surface-secondary">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-left text-sm text-ink-700 transition-colors hover:bg-ink-900/5">
+            <span className="flex-1 truncate">Step output</span>
+            <svg className="h-3.5 w-3.5 flex-shrink-0 text-ink-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+          <div className="border-t border-ink-900/10 px-4 py-3">
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-ink-950 px-3 py-2 text-xs text-ink-50">
+              <code>{formattedStructuredData}</code>
+            </pre>
+          </div>
+        </details>
+      ) : structuredData ? (
+        <div className="mt-1 rounded-xl border border-ink-900/10 bg-surface-secondary p-3">
+          <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-ink-950 px-3 py-2 text-xs text-ink-50">
+            <code>{formattedStructuredData}</code>
+          </pre>
+        </div>
+      ) : (
+        <MDContent text={text} />
+      )}
       {isTextBlock && (
         <button
           onClick={handleCopy}
@@ -273,6 +325,91 @@ const AssistantBlockCard = ({ title, text, showIndicator = false, isTextBlock = 
           {copied ? t("eventCard.copied") : t("eventCard.copy")}
         </button>
       )}
+    </div>
+  );
+};
+
+const MiniAppStepResultCard = ({
+  message,
+  showIndicator = false,
+  defaultOpen = false,
+  sessionId
+}: {
+  message: MiniAppStepResultMessage;
+  showIndicator?: boolean;
+  defaultOpen?: boolean;
+  sessionId?: string;
+}) => {
+  const structuredData = Boolean(message.fullText && looksLikeStructuredData(message.fullText));
+  const formattedStructuredData = structuredData && message.fullText ? formatStructuredData(message.fullText) : message.fullText || "";
+  const bodyText = structuredData ? formattedStructuredData : (message.fullText || message.summary);
+  const label = message.stepIndex && message.totalSteps
+    ? `Step ${message.stepIndex}/${message.totalSteps}`
+    : "Step result";
+  const sessions = useAppStore((state) => state.sessions);
+  const cwd = sessionId ? sessions[sessionId]?.cwd : undefined;
+  const inlinePaths = extractReferencedPaths(bodyText);
+  const allPaths = Array.from(new Set([...(message.artifactPaths || []), ...inlinePaths]));
+  const openArtifact = (artifactPath: string) => {
+    const resolvedPath = cwd && !/^[A-Za-z]:[\\/]/.test(artifactPath) && !artifactPath.startsWith("/") ? `${cwd.replace(/[\\/]+$/, "")}/${artifactPath.replace(/^[\\/]+/, "")}` : artifactPath;
+    const previewEvent = new CustomEvent("valedesk:preview-file", {
+      detail: {
+        path: resolvedPath,
+        cwd
+      }
+    });
+    window.dispatchEvent(previewEvent);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 mt-4 overflow-hidden">
+      <div className="header text-accent flex items-center gap-2">
+        <StatusDot variant={message.status === "failed" ? "error" : "success"} isActive={showIndicator} isVisible={true} />
+        {label}
+      </div>
+      <details className="group overflow-hidden rounded-xl border border-ink-900/10 bg-surface-secondary" open={message.status === "failed" || defaultOpen}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-left text-sm text-ink-700 transition-colors hover:bg-ink-900/5">
+          <span className="flex-1 truncate">{message.title}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${message.status === "failed" ? "bg-error/10 text-error" : "bg-success/10 text-success"}`}>
+            {message.status}
+          </span>
+          <svg className="h-3.5 w-3.5 flex-shrink-0 text-ink-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+        <div className="border-t border-ink-900/10 px-4 py-3">
+          <div className="text-sm text-ink-700 whitespace-pre-wrap break-words">{message.summary}</div>
+          {allPaths.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {allPaths.map((artifactPath) => (
+                <button
+                  type="button"
+                  key={artifactPath}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openArtifact(artifactPath);
+                  }}
+                  className="rounded-md border border-ink-900/10 bg-white px-2 py-1 text-[11px] text-ink-600 transition-colors hover:border-ink-900/20 hover:bg-ink-100 hover:text-accent"
+                >
+                  {artifactPath}
+                </button>
+              ))}
+            </div>
+          )}
+          {bodyText && (
+            structuredData ? (
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-ink-950 px-3 py-2 text-xs text-ink-50">
+                <code>{bodyText}</code>
+              </pre>
+            ) : (
+              <div className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs text-ink-700 whitespace-pre-wrap break-words max-h-[320px] overflow-auto">
+                {bodyText}
+              </div>
+            )
+          )}
+        </div>
+      </details>
     </div>
   );
 };
@@ -520,15 +657,30 @@ const SystemInfoCard = ({ message, showIndicator = false }: { message: SDKMessag
 
   if (systemMsg.subtype === "notice") {
     const noticeText = systemMsg.text || systemMsg.message || t("eventCard.systemNotice");
+    const noticeLines = String(noticeText).split("\n").filter(Boolean);
+    const previewLine = noticeLines[0] || noticeText;
+    const canExpand = noticeLines.length > 1 || String(noticeText).length > 120;
     return (
       <div className="flex flex-col gap-2">
         <div className="header text-accent flex items-center gap-2">
           <StatusDot variant="success" isActive={showIndicator} isVisible={showIndicator} />
           {t("eventCard.systemNotice")}
         </div>
-        <div className="rounded-xl px-4 py-2 border border-ink-900/10 bg-surface-secondary text-sm text-ink-700">
-          {noticeText}
-        </div>
+        {canExpand ? (
+          <details className="group overflow-hidden rounded-xl border border-ink-900/10 bg-surface-secondary">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-left text-sm text-ink-700 transition-colors hover:bg-ink-900/5">
+              <span className="flex-1 truncate group-open:hidden">{previewLine}</span>
+              <span className="hidden flex-1 whitespace-pre-wrap group-open:block">{noticeText}</span>
+              <svg className="h-3.5 w-3.5 flex-shrink-0 text-ink-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+          </details>
+        ) : (
+          <div className="rounded-xl border border-ink-900/10 bg-surface-secondary px-4 py-2 text-sm text-ink-700">
+            {noticeText}
+          </div>
+        )}
       </div>
     );
   }
@@ -558,12 +710,59 @@ const SystemInfoCard = ({ message, showIndicator = false }: { message: SDKMessag
   );
 };
 
-const UserMessageCard = ({ 
-  message, 
+const MiniAppPromptCard = ({ prompt, name, onCopy, copied, onEdit }: {
+  prompt: string;
+  name: string;
+  onCopy: () => void;
+  copied: boolean;
+  onEdit?: () => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  // Parse sections from compact prompt
+  const lines = prompt.split("\n");
+  const goalLine = lines.find(l => l.startsWith("Цель приложения: ") || l.startsWith("Цель: "));
+  const goal = goalLine?.replace(/^Цель(?: приложения)?: /, "") || "";
+
+  return (
+    <div className="mt-1 rounded-lg border border-accent/20 bg-accent/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/10 transition-colors"
+      >
+        <span className="text-base">{">"}</span>
+        <span className="text-sm font-medium text-ink-800 truncate flex-1">{name}</span>
+        <span className="text-[11px] text-muted flex-shrink-0">{goal.slice(0, 60)}{goal.length > 60 ? "..." : ""}</span>
+        <svg className={`w-3.5 h-3.5 text-ink-400 transition-transform flex-shrink-0 ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 border-t border-accent/10">
+          <div className="mt-2 text-xs text-ink-600 max-h-[300px] overflow-y-auto">
+            <MDContent text={prompt} />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {onEdit && (
+              <button onClick={onEdit} className="text-xs px-2 py-1 rounded text-ink-400 hover:text-accent hover:bg-surface-tertiary transition-colors">Edit</button>
+            )}
+            <button onClick={onCopy} className="text-xs px-2 py-1 rounded text-ink-400 hover:text-accent hover:bg-surface-tertiary transition-colors">
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const UserMessageCard = ({
+  message,
   showIndicator = false,
   onEdit
-}: { 
-  message: { type: "user_prompt"; prompt: string }; 
+}: {
+  message: { type: "user_prompt"; prompt: string };
   showIndicator?: boolean;
   onEdit?: (newPrompt: string) => void;
 }) => {
@@ -623,35 +822,46 @@ const UserMessageCard = ({
             </button>
           </div>
         </div>
-      ) : (
-        <>
-          <MDContent text={message.prompt} />
-          <div className="mt-2 flex items-center gap-2 self-start">
-            {onEdit && (
+      ) : (() => {
+        const isMiniAppLegacy = message.prompt.startsWith('Выполни мини-приложение "');
+        const stepMatch = message.prompt.match(/^Мини-приложение "([^"]+)" — Шаг (\d+)\/(\d+): (.+)/);
+        const isMiniApp = isMiniAppLegacy || !!stepMatch;
+        const miniAppName = isMiniAppLegacy
+          ? message.prompt.match(/^Выполни мини-приложение "([^"]+)"/)?.[1] || "Mini-app"
+          : stepMatch ? `${stepMatch[1]} — Шаг ${stepMatch[2]}/${stepMatch[3]}: ${stepMatch[4]}` : "Mini-app";
+
+        return isMiniApp ? (
+          <MiniAppPromptCard prompt={message.prompt} name={miniAppName} onCopy={handleCopy} copied={copied} onEdit={onEdit ? () => setIsEditing(true) : undefined} />
+        ) : (
+          <>
+            <MDContent text={message.prompt} />
+            <div className="mt-2 flex items-center gap-2 self-start">
+              {onEdit && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200"
+                >
+                  {t("eventCard.edit")}
+                </button>
+              )}
               <button
-                onClick={() => setIsEditing(true)}
-                className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200"
+                onClick={handleCopy}
+                className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1.5"
+                title={t("eventCard.copyUserMessage")}
               >
-                {t("eventCard.edit")}
+                <svg className={`w-4 h-4 ${copied ? 'text-success' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {copied ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  )}
+                </svg>
+                {copied ? t("eventCard.copied") : t("eventCard.copy")}
               </button>
-            )}
-            <button
-              onClick={handleCopy}
-              className="text-xs px-3 py-1.5 rounded-md text-ink-400 hover:text-accent hover:bg-surface-tertiary opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1.5"
-              title={t("eventCard.copyUserMessage")}
-            >
-              <svg className={`w-4 h-4 ${copied ? 'text-success' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {copied ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                )}
-              </svg>
-              {copied ? t("eventCard.copied") : t("eventCard.copy")}
-            </button>
-          </div>
-        </>
-      )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 };
@@ -685,6 +895,14 @@ export function MessageCard({
 }) {
   const { t } = useI18n();
   const showIndicator = isLast && isRunning;
+
+  if (message.type === "miniapp_step_progress") {
+    return null;
+  }
+
+  if (message.type === "miniapp_step_result") {
+    return <MiniAppStepResultCard message={message} showIndicator={showIndicator} defaultOpen={isLast} sessionId={sessionId} />;
+  }
 
   if (message.type === "user_prompt") {
     return <UserMessageCard 

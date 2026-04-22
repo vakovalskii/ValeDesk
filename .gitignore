@@ -1,3 +1,6 @@
+# Temp
+temp/
+
 # Logs
 logs
 *.log
@@ -6,6 +9,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+tmp/
 
 node_modules
 
@@ -73,3 +77,6 @@ sessions.db-shm
 # Locales directory
 public/locales/
 public/locales/*
+
+# GitHub workflows (token lacks workflow scope)
+.github/workflows/

@@ -107,7 +107,7 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
           try {
             console.log(`[DiffViewer] Getting old content for ${file.file_path} in cwd ${cwd}`);
             oldContentValue = await getPlatform().invoke<string>("get-file-old-content", file.file_path, cwd, true);
-            console.log(`[DiffViewer] Old content length: ${oldContentValue.length} for ${file.file_path}`);
+            console.log(`[DiffViewer] Old content length: ${(oldContentValue ?? "").length} for ${file.file_path}`);
           } catch (err) {
             // If file doesn't exist in git, use empty string
             console.error(`[DiffViewer] File ${file.file_path} not found in git HEAD, treating as new file:`, err);
@@ -145,7 +145,7 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
         try {
           console.log(`[DiffViewer] Getting new content for ${file.file_path} in cwd ${cwd}`);
           newContentValue = await getPlatform().invoke<string>("get-file-new-content", file.file_path, cwd);
-          console.log(`[DiffViewer] New content length: ${newContentValue.length} for ${file.file_path}`);
+          console.log(`[DiffViewer] New content length: ${(newContentValue ?? "").length} for ${file.file_path}`);
         } catch (err) {
           // Check if it's a "file not found" error (new file) or a real error
           const errorMessage = err instanceof Error ? err.message : String(err);
@@ -159,8 +159,8 @@ export function DiffViewerModal({ file, files = [], cwd, open, onClose, onFileCh
           }
         }
 
-        setOldContent(oldContentValue);
-        setNewContent(newContentValue);
+        setOldContent(oldContentValue ?? "");
+        setNewContent(newContentValue ?? "");
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         console.error("Failed to load file contents:", err);
